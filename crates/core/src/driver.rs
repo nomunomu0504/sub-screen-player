@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use crate::{Display, Result, hid};
+use crate::{Display, Error, Result, hid};
 
 /// A USB interface a driver can handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,12 +59,47 @@ pub trait Driver: Send + Sync {
 
     /// Opens a matching interface and prepares the display for use.
     fn open(&self, candidate: &Candidate) -> Result<Box<dyn Display>>;
+
+    /// Whether the driver is still being developed. Experimental drivers are only used when
+    /// asked for by id (`--driver <id>` or `[drivers] enable` in the config), so they never
+    /// take over a device on their own.
+    fn experimental(&self) -> bool {
+        false
+    }
 }
 
-/// The set of drivers the program was built with.
+/// Which drivers to use, e.g. from `--driver` options or the `[drivers]` config section.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DriverSelection {
+    /// If not empty, only these drivers are used (experimental ones included).
+    pub only: Vec<String>,
+    /// Drivers that are never used.
+    pub exclude: Vec<String>,
+}
+
+impl DriverSelection {
+    /// Whether `driver` is used under this selection.
+    pub fn allows(&self, driver: &dyn Driver) -> bool {
+        let named = |ids: &[String]| ids.iter().any(|id| id == driver.id());
+        if named(&self.exclude) {
+            false
+        } else if self.only.is_empty() {
+            !driver.experimental()
+        } else {
+            named(&self.only)
+        }
+    }
+}
+
+/// The set of drivers the program was built with, and which of them are in use.
 #[derive(Default)]
 pub struct Registry {
-    drivers: Vec<Box<dyn Driver>>,
+    drivers: Vec<Entry>,
+}
+
+struct Entry {
+    driver: Box<dyn Driver>,
+    enabled: bool,
 }
 
 /// A candidate together with the driver that claimed it.
@@ -82,14 +117,44 @@ impl Registry {
     }
 
     /// Adds a driver. Drivers registered first win when two match the same device.
+    /// Experimental drivers start disabled; see [`Registry::select`].
     pub fn register(&mut self, driver: impl Driver + 'static) -> &mut Self {
-        self.drivers.push(Box::new(driver));
+        let enabled = !driver.experimental();
+        self.drivers.push(Entry {
+            driver: Box::new(driver),
+            enabled,
+        });
         self
     }
 
-    /// Registered drivers, in registration order.
+    /// Enables exactly the drivers `selection` allows. Fails on ids no driver has.
+    pub fn select(&mut self, selection: &DriverSelection) -> Result<()> {
+        for id in selection.only.iter().chain(&selection.exclude) {
+            if !self.drivers.iter().any(|e| e.driver.id() == id) {
+                let known: Vec<&str> = self.drivers.iter().map(|e| e.driver.id()).collect();
+                return Err(Error::InvalidArgument(format!(
+                    "unknown driver {id:?} (available: {})",
+                    known.join(", ")
+                )));
+            }
+        }
+        for entry in &mut self.drivers {
+            entry.enabled = selection.allows(entry.driver.as_ref());
+        }
+        Ok(())
+    }
+
+    /// All registered drivers, in registration order, enabled or not.
     pub fn drivers(&self) -> impl Iterator<Item = &dyn Driver> {
-        self.drivers.iter().map(|d| d.as_ref())
+        self.drivers.iter().map(|e| e.driver.as_ref())
+    }
+
+    /// The drivers in use, in registration order.
+    pub fn enabled(&self) -> impl Iterator<Item = &dyn Driver> {
+        self.drivers
+            .iter()
+            .filter(|e| e.enabled)
+            .map(|e| e.driver.as_ref())
     }
 
     /// Returns the connected devices some driver can handle.
@@ -97,13 +162,13 @@ impl Registry {
         Ok(self.claim(hid::enumerate()?))
     }
 
-    /// Assigns each candidate to the first driver that matches it.
+    /// Assigns each candidate to the first enabled driver that matches it.
     pub fn claim(&self, candidates: Vec<Candidate>) -> Vec<Found<'_>> {
         candidates
             .into_iter()
             .filter_map(|candidate| {
                 let driver = self
-                    .drivers()
+                    .enabled()
                     .find(|d| d.usb_matches().iter().any(|m| m.matches(&candidate)))?;
                 Some(Found { driver, candidate })
             })
@@ -114,9 +179,29 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Error;
 
     struct Dummy;
+
+    /// Same device as `Dummy`, but still being developed.
+    struct Experimental;
+
+    impl Driver for Experimental {
+        fn id(&self) -> &'static str {
+            "next"
+        }
+        fn name(&self) -> &'static str {
+            "Next"
+        }
+        fn usb_matches(&self) -> &'static [UsbMatch] {
+            Dummy.usb_matches()
+        }
+        fn open(&self, _: &Candidate) -> Result<Box<dyn Display>> {
+            Err(Error::Unsupported("open"))
+        }
+        fn experimental(&self) -> bool {
+            true
+        }
+    }
 
     impl Driver for Dummy {
         fn id(&self) -> &'static str {
@@ -161,5 +246,55 @@ mod tests {
         let pages: Vec<u16> = found.iter().map(|f| f.candidate.usage_page).collect();
         assert_eq!(pages, [0xFFA0, 0]);
         assert_eq!(found[0].driver.id(), "dummy");
+    }
+
+    fn claimed_by(registry: &Registry) -> Vec<&'static str> {
+        registry
+            .claim(vec![candidate(0x1234, 0x0001, 0xFFA0)])
+            .iter()
+            .map(|f| f.driver.id())
+            .collect()
+    }
+
+    fn selection(only: &[&str], exclude: &[&str]) -> DriverSelection {
+        DriverSelection {
+            only: only.iter().map(ToString::to_string).collect(),
+            exclude: exclude.iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    #[test]
+    fn experimental_drivers_are_off_unless_named() {
+        let mut registry = Registry::new();
+        registry.register(Experimental).register(Dummy);
+        assert_eq!(claimed_by(&registry), ["dummy"]);
+
+        registry.select(&selection(&["next"], &[])).unwrap();
+        assert_eq!(claimed_by(&registry), ["next"]);
+
+        registry.select(&DriverSelection::default()).unwrap();
+        assert_eq!(claimed_by(&registry), ["dummy"]);
+    }
+
+    #[test]
+    fn excluded_drivers_claim_nothing() {
+        let mut registry = Registry::new();
+        registry.register(Dummy);
+        registry.select(&selection(&[], &["dummy"])).unwrap();
+        assert!(claimed_by(&registry).is_empty());
+        assert_eq!(registry.drivers().count(), 1);
+        assert_eq!(registry.enabled().count(), 0);
+    }
+
+    #[test]
+    fn unknown_driver_ids_are_rejected() {
+        let mut registry = Registry::new();
+        registry.register(Dummy);
+        let err = registry.select(&selection(&["d93"], &[])).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unknown driver \"d93\" (available: dummy)"),
+            "{err}"
+        );
     }
 }

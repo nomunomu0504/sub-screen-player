@@ -25,7 +25,7 @@ mod transport;
 pub use display::{
     Capabilities, Display, DisplayInfo, EncodedImage, ImageFormat, PanelSpec, Rotation,
 };
-pub use driver::{Candidate, Driver, Found, Registry, UsbMatch};
+pub use driver::{Candidate, Driver, DriverSelection, Found, Registry, UsbMatch};
 pub use error::{Error, Result};
 pub use frame::{Encoder, Fit, Frame};
 pub use presenter::{Presenter, PresenterOptions, PresenterStats, StopAction};

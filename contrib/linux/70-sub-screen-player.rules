@@ -1,0 +1,6 @@
+# Lets the logged-in user access supported displays without root.
+# Install: sudo cp 70-sub-screen-player.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
+# Then replug the display. One line per supported device (see docs/adding-a-device.md).
+
+# upHere / MiraBox D92 (9.2", 1920x462)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2100", ATTRS{idProduct}=="0006", MODE="0660", TAG+="uaccess"

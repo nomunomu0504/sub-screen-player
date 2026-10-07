@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs ssp (sub-screen-player) from the latest GitHub release on macOS or Linux.
 #
-#   curl -fsSL https://<website>/install.sh | sh
+#   curl -fsSL https://subscreen.dev/install.sh | sh
 #
 # Environment:
 #   SSP_VERSION      release to install, e.g. v0.1.0 (default: the latest)

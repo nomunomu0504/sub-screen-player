@@ -4,10 +4,10 @@ import starlight from '@astrojs/starlight';
 
 const repo = 'https://github.com/nomunomu0504/sub-screen-player';
 
-// Set by the deploy workflow. With a custom domain the site lives at the root; on
-// github.io it lives under /<repository>.
-const site = process.env.SITE_URL ?? 'https://nomunomu0504.github.io';
-const base = process.env.SITE_BASE ?? '/sub-screen-player';
+// Set by the deploy workflow from the SITE_DOMAIN repository variable. With a custom domain
+// the site lives at the root; on github.io it would live under /<repository>.
+const site = process.env.SITE_URL ?? 'https://subscreen.dev';
+const base = process.env.SITE_BASE ?? '/';
 
 export default defineConfig({
 	site,

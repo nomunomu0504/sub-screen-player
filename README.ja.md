@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/nomunomu0504/sub-screen-player)](https://github.com/nomunomu0504/sub-screen-player/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#ライセンス)
 
-[English](README.md) · **Web サイト: [nomunomu0504.github.io/sub-screen-player](https://nomunomu0504.github.io/sub-screen-player/ja/)**（ダウンロード、1行インストール、ドキュメント）
+[English](README.md) · **Web サイト: [subscreen.dev](https://subscreen.dev/ja/)**（ダウンロード、1行インストール、ドキュメント）
 
 USB 接続の小型サブディスプレイ（モニター下や PC ケース内に置く横長のバー型ディスプレイ）を、
 macOS・Linux・Windows から操作するためのツールです。単一バイナリの `ssp` が常駐デーモンとして
@@ -42,8 +42,8 @@ API を通して、他のプログラムからも自由に描画できます。
 ### 1行インストール
 
 ```sh
-curl -fsSL https://nomunomu0504.github.io/sub-screen-player/install.sh | sh   # macOS・Linux
-irm https://nomunomu0504.github.io/sub-screen-player/install.ps1 | iex       # Windows（PowerShell）
+curl -fsSL https://subscreen.dev/install.sh | sh   # macOS・Linux
+irm https://subscreen.dev/install.ps1 | iex       # Windows（PowerShell）
 ```
 
 お使いの環境向けの最新リリースをダウンロードし、SHA-256 チェックサムを確認してから `ssp` を `PATH` の通った場所に置きます。

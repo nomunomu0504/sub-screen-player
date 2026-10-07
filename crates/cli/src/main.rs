@@ -18,7 +18,8 @@ use client::Client;
 #[command(
     name = "ssp",
     version,
-    about = "Drive small USB sub-displays from your computer"
+    about = "Drive small USB sub-displays from your computer",
+    after_help = "Guide with examples: https://github.com/nomunomu0504/sub-screen-player/blob/main/docs/cli.md"
 )]
 struct Cli {
     /// Config file [default: the platform's config directory]
@@ -33,7 +34,7 @@ struct Cli {
     #[arg(long, env = "SSP_TOKEN", global = true, hide_env_values = true)]
     token: Option<String>,
 
-    /// Display to act on (see `ssp devices`) [default: the first connected one]
+    /// Display to act on, as listed by `ssp devices`; `default` is the first connected one
     #[arg(long, short, global = true, default_value = "default")]
     display: String,
 

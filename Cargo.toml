@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/drivers/d92",
+    "crates/server",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+authors = ["sub-screen-player contributors"]
+
+[workspace.dependencies]
+# Crates of this workspace
+ssp-core = { path = "crates/core", version = "0.1.0" }
+ssp-driver-d92 = { path = "crates/drivers/d92", version = "0.1.0" }
+ssp-server = { path = "crates/server", version = "0.1.0" }
+
+# Devices and images
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev", "windows-native"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+jpeg-encoder = { version = "0.7.1", features = ["simd"] }
+ab_glyph = "0.2.32"
+jiff = "0.2.38"
+
+# Errors and logging
+thiserror = "2.0.21"
+anyhow = "1.0.104"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+# Daemon
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+axum = { version = "0.8.9", features = ["ws"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.6"
+
+# CLI
+clap = { version = "4.6.7", features = ["derive", "env"] }
+ureq = { version = "3.4.2", default-features = false, features = ["json"] }
+directories = "6.0.0"
+winreg = "0.56.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

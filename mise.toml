@@ -1,0 +1,34 @@
+# Tool versions shared by every contributor and by CI.
+# First time: `mise install`. Then use the tasks below, e.g. `mise run ci`.
+min_version = "2026.8.0"
+
+[tools]
+rust = { version = "1.99.0", components = "rustfmt,clippy", profile = "minimal" }
+
+[tasks.fmt]
+description = "Format all Rust code"
+run = "cargo fmt --all"
+
+[tasks."fmt:check"]
+description = "Fail if any Rust code is not formatted"
+run = "cargo fmt --all -- --check"
+
+[tasks.lint]
+description = "Run clippy on every crate and target, warnings are errors"
+run = "cargo clippy --workspace --all-targets --locked -- -D warnings"
+
+[tasks.test]
+description = "Run all tests (no hardware needed)"
+run = "cargo test --workspace --locked"
+
+[tasks.build]
+description = "Build the release binary (target/release/ssp)"
+run = "cargo build --workspace --release --locked"
+
+[tasks.serve]
+description = "Run the daemon from source in the foreground"
+run = "cargo run -p sub-screen-player -- serve"
+
+[tasks.ci]
+description = "Everything CI checks"
+depends = ["fmt:check", "lint", "test"]

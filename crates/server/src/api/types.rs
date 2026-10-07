@@ -11,6 +11,10 @@ pub struct Health {
     pub status: String,
     /// Version of the daemon.
     pub version: String,
+    /// Ids of the drivers the daemon uses; it only touches displays these drivers handle.
+    /// Missing from daemons before 0.1.1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drivers: Option<Vec<String>>,
 }
 
 /// One display in `GET /api/v1/displays`.

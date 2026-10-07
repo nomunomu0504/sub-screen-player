@@ -37,6 +37,10 @@ seconds = true
 date_format = "%Y-%m-%d %a"   # "" hides the date
 color = "#F0F2F8"
 background = "#000000"
+
+[drivers]
+# enable = ["d92"]       # use only these drivers (experimental ones included)
+# disable = []           # never use these drivers
 "##;
 
 /// Top-level configuration (`config.toml`).
@@ -54,6 +58,8 @@ pub struct Config {
     pub startup: StartupConfig,
     /// Look of the built-in clock.
     pub clock: ClockConfig,
+    /// Which device drivers the daemon uses.
+    pub drivers: DriversConfig,
 }
 
 impl Default for Config {
@@ -64,6 +70,27 @@ impl Default for Config {
             display: DisplayConfig::default(),
             startup: StartupConfig::default(),
             clock: ClockConfig::default(),
+            drivers: DriversConfig::default(),
+        }
+    }
+}
+
+/// Which device drivers the daemon uses (driver ids such as `"d92"`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DriversConfig {
+    /// If not empty, only these drivers are used, experimental ones included.
+    pub enable: Vec<String>,
+    /// Drivers that are never used.
+    pub disable: Vec<String>,
+}
+
+impl DriversConfig {
+    /// The selection for [`ssp_core::Registry::select`].
+    pub fn selection(&self) -> ssp_core::DriverSelection {
+        ssp_core::DriverSelection {
+            only: self.enable.clone(),
+            exclude: self.disable.clone(),
         }
     }
 }
@@ -352,6 +379,8 @@ mod tests {
             seconds = false
             date_format = ""
             color = "#ff8800"
+            [drivers]
+            enable = ["d92", "dnext"]
             "##,
         )
         .unwrap();
@@ -359,6 +388,7 @@ mod tests {
         assert_eq!(config.display.on_exit, OnExit::SaveLast);
         assert_eq!(config.clock.time_format(), "%H:%M");
         assert_eq!(parse_color(&config.clock.color), Some([0xff, 0x88, 0x00]));
+        assert_eq!(config.drivers.selection().only, ["d92", "dnext"]);
     }
 
     #[test]

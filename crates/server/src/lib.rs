@@ -33,7 +33,9 @@ pub async fn serve(
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
     config.validate()?;
-    let manager = Arc::new(Manager::new(drivers::registry(), &config).map_err(anyhow::Error::msg)?);
+    let registry =
+        drivers::registry(&config.drivers.selection()).context("invalid [drivers] config")?;
+    let manager = Arc::new(Manager::new(registry, &config).map_err(anyhow::Error::msg)?);
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .with_context(|| {

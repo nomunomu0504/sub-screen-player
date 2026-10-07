@@ -103,6 +103,11 @@ impl Manager {
         })
     }
 
+    /// Ids of the drivers in use.
+    pub fn drivers(&self) -> Vec<&'static str> {
+        self.registry.enabled().map(|d| d.id()).collect()
+    }
+
     fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner
             .lock()

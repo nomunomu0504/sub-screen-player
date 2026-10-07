@@ -56,17 +56,26 @@ enum Cmd {
         /// Start in the background without a console window (Windows autostart)
         #[arg(long, hide = true)]
         detach: bool,
+        /// Use only this driver (repeatable; overrides `[drivers] enable` in the config)
+        #[arg(long = "driver", value_name = "ID")]
+        drivers: Vec<String>,
     },
     /// List displays
     Devices {
         /// Print JSON
         #[arg(long)]
         json: bool,
+        /// Only list displays of this driver (repeatable), e.g. `--driver d92`
+        #[arg(long = "driver", value_name = "ID")]
+        drivers: Vec<String>,
     },
     /// Show the daemon's state and frame counters
     Status,
-    /// Check that connected displays work, without the daemon (stop it first)
+    /// Check that connected displays work (displays the daemon may use are skipped)
     Selftest {
+        /// Only test displays of this driver (repeatable); also enables experimental drivers
+        #[arg(long = "driver", value_name = "ID")]
+        drivers: Vec<String>,
         /// Frames to send in the streaming check
         #[arg(long, default_value_t = 180)]
         frames: u32,
@@ -186,6 +195,7 @@ fn run(cli: Cli) -> Result<()> {
             listen,
             log_file,
             detach,
+            drivers,
         } => {
             if detach {
                 return detach_daemon();
@@ -194,16 +204,29 @@ fn run(cli: Cli) -> Result<()> {
             if let Some(listen) = listen {
                 config.listen = listen;
             }
+            if !drivers.is_empty() {
+                config.drivers.enable = drivers;
+            }
             init_logging(log_file.as_deref())?;
             tracing::info!(config = %config_path.display(), "starting sub-screen-player {}", env!("CARGO_PKG_VERSION"));
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(ssp_server::serve(config, shutdown_signal()))
         }
-        Cmd::Devices { json } => devices(&cli_client(&cli.url, &cli.token, &config_path)?, json),
+        Cmd::Devices { json, drivers } => devices(
+            &cli_client(&cli.url, &cli.token, &config_path)?,
+            json,
+            &drivers,
+        ),
         Cmd::Status => status(&cli_client(&cli.url, &cli.token, &config_path)?),
-        Cmd::Selftest { frames, hold, json } => {
+        Cmd::Selftest {
+            drivers,
+            frames,
+            hold,
+            json,
+        } => {
             let options = selftest::Options {
                 display: cli.display.clone(),
+                drivers,
                 frames,
                 hold: std::time::Duration::from_secs(hold),
                 json,
@@ -310,12 +333,20 @@ fn cli_client(url: &Option<String>, token: &Option<String>, config_path: &Path) 
     Ok(Client::new(&url, token.clone().or(config.token)))
 }
 
-fn devices(client: &Client, json: bool) -> Result<()> {
-    let displays = match client.displays() {
+fn devices(client: &Client, json: bool, drivers: &[String]) -> Result<()> {
+    // Rejects driver ids that do not exist.
+    ssp_server::drivers::registry(&ssp_core::DriverSelection {
+        only: drivers.to_vec(),
+        exclude: Vec::new(),
+    })?;
+    let mut displays = match client.displays() {
         Ok(displays) => displays,
-        Err(err) if client::is_unreachable(&err) => return local_scan(client),
+        Err(err) if client::is_unreachable(&err) => return local_scan(client, drivers),
         Err(err) => return Err(err),
     };
+    if !drivers.is_empty() {
+        displays.retain(|d| drivers.contains(&d.driver));
+    }
     if json {
         println!("{}", serde_json::to_string_pretty(&displays)?);
         return Ok(());
@@ -366,12 +397,16 @@ fn print_table(displays: &[DisplayView]) {
 }
 
 /// Without a daemon, at least show which devices are plugged in.
-fn local_scan(client: &Client) -> Result<()> {
+fn local_scan(client: &Client, drivers: &[String]) -> Result<()> {
     println!(
         "The daemon is not running at {} (start it with `ssp serve`).",
         client.base()
     );
-    let registry = ssp_server::drivers::registry();
+    let selection = ssp_core::DriverSelection {
+        only: drivers.to_vec(),
+        exclude: Vec::new(),
+    };
+    let registry = ssp_server::drivers::registry(&selection)?;
     let found = registry.scan().context("cannot list USB devices")?;
     if found.is_empty() {
         println!("No supported displays are plugged in.");

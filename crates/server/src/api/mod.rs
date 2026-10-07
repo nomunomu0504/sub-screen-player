@@ -173,10 +173,17 @@ fn view(state: DisplayState) -> DisplayView {
     }
 }
 
-async fn health() -> Json<Health> {
+async fn health(State(app): State<AppState>) -> Json<Health> {
     Json(Health {
         status: "ok".into(),
         version: env!("CARGO_PKG_VERSION").into(),
+        drivers: Some(
+            app.manager
+                .drivers()
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        ),
     })
 }
 

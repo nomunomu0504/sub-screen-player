@@ -1,0 +1,54 @@
+name: Device support / 機種対応のリクエスト
+description: Ask for, or help with, support for another display. / ほかのディスプレイへの対応を依頼する・手伝う。
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Information about the device helps a lot, even if you cannot write the driver yourself.
+        See [Adding a device](https://github.com/nomunomu0504/sub-screen-player/blob/main/docs/adding-a-device.md).
+
+        ドライバを書けなくても、デバイスの情報があるだけで大きな助けになります。
+        [機種の追加方法](https://github.com/nomunomu0504/sub-screen-player/blob/main/docs/adding-a-device.ja.md)も参照してください。
+  - type: input
+    id: model
+    attributes:
+      label: Display model / 機種名
+      placeholder: Vendor, model, screen size / メーカー・型番・画面サイズ
+    validations:
+      required: true
+  - type: input
+    id: usb-id
+    attributes:
+      label: USB vendor:product id / USB ID
+      description: |
+        macOS: `ioreg -p IOUSB -l` / Linux: `lsusb` / Windows: Device Manager → Details → Hardware Ids
+        Windows ではデバイスマネージャー →「詳細」→「ハードウェア ID」
+      placeholder: "2100:0006"
+    validations:
+      required: true
+  - type: input
+    id: resolution
+    attributes:
+      label: Panel resolution / 解像度
+      placeholder: 1920x462
+  - type: input
+    id: vendor-software
+    attributes:
+      label: Vendor software / メーカー製ソフト
+      placeholder: Name, version, OS / 名前・バージョン・OS
+  - type: textarea
+    id: protocol
+    attributes:
+      label: What is known about the protocol / プロトコルについて分かっていること
+      description: |
+        Links, trimmed captures, related open-source projects. Do not attach vendor binaries.
+        参考リンク、必要な部分だけに絞ったキャプチャ、関連する OSS など。メーカーのバイナリは添付しないでください。
+  - type: checkboxes
+    id: help
+    attributes:
+      label: How can you help? / 協力できること
+      options:
+        - label: I can test on the device / 実機でテストできる
+        - label: I can capture USB traffic / USB 通信をキャプチャできる
+        - label: I can write the driver / ドライバを書ける

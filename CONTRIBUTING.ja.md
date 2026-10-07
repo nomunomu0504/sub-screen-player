@@ -7,8 +7,9 @@
 
 ## 貢献の方法
 
-- **不具合を報告する**: OS、ディスプレイの機種、`ssp devices` と `ssp status` の出力、デーモンのログ
-  （`SSP_LOG=debug ssp serve` で詳細が出ます）を添えてください。
+- **不具合を報告する**: Issue のフォームから、OS、ディスプレイの機種、`ssp devices` と `ssp status` の出力、
+  デーモンのログ（`SSP_LOG=debug ssp serve` で詳細が出ます）を添えて報告してください。
+- **脆弱性を報告する**: 公開の Issue ではなく、[SECURITY.ja.md](SECURITY.ja.md) の手順に従って非公開で報告してください。
 - **ディスプレイを追加する**: [docs/adding-a-device.ja.md](docs/adding-a-device.ja.md) の手順に従ってください。
   キャプチャやメモしかない場合でも、Issue に共有してもらえれば、ほかの人がドライバを書けるかもしれません。
 - **機能やドキュメントを改善する**: 小さな修正より大きい変更は、まず Issue を立てて進め方を相談してください。

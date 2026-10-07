@@ -1,5 +1,7 @@
 # sub-screen-player
 
+[![CI](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml/badge.svg)](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml)
+
 [日本語](README.ja.md)
 
 Drive small USB "sub screens" (the long bar displays that sit under a monitor or inside a PC

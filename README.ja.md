@@ -1,5 +1,7 @@
 # sub-screen-player
 
+[![CI](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml/badge.svg)](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml)
+
 [English](README.md)
 
 USB 接続の小型サブディスプレイ（モニター下や PC ケース内に置く横長のバー型ディスプレイ）を、

@@ -1,0 +1,68 @@
+name: Bug report / 不具合の報告
+description: Something does not work as expected. / 期待どおりに動かない。
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! English or Japanese is fine.
+        報告ありがとうございます。英語・日本語のどちらでも構いません。
+
+        Security problems: please report them privately instead (see SECURITY.md).
+        脆弱性は公開の Issue ではなく、非公開で報告してください（SECURITY.ja.md を参照）。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / 何が起きましたか？
+      description: Also describe what you expected. / 期待していた動作も書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 再現手順
+      placeholder: |
+        1. ssp serve
+        2. ssp show photo.png --fit cover
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: ssp version / ssp のバージョン
+      description: Output of `ssp --version`, or the commit you built. / `ssp --version` の出力、またはビルドしたコミット。
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other / その他
+    validations:
+      required: true
+  - type: input
+    id: os-details
+    attributes:
+      label: OS version and CPU / OS のバージョンと CPU
+      placeholder: macOS 26.1 (Apple M1), Ubuntu 24.04 (x86_64), Windows 11 (ARM64), ...
+  - type: input
+    id: display
+    attributes:
+      label: Display model / ディスプレイの機種
+      placeholder: upHere D92
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of `ssp devices` and `ssp status` / `ssp devices` と `ssp status` の出力
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon log / デーモンのログ
+      description: |
+        Start the daemon with `SSP_LOG=debug ssp serve` and paste the relevant part.
+        `SSP_LOG=debug ssp serve` で起動し、関係する部分を貼り付けてください。
+      render: text

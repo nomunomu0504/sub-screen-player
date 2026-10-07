@@ -8,8 +8,10 @@ request needs.
 
 ## Ways to contribute
 
-- **Report a bug.** Include your OS, the display model, the output of `ssp devices` and
-  `ssp status`, and the daemon's log (run `SSP_LOG=debug ssp serve`).
+- **Report a bug** with the issue form. Include your OS, the display model, the output of
+  `ssp devices` and `ssp status`, and the daemon's log (run `SSP_LOG=debug ssp serve`).
+- **Report a security problem** privately as described in [SECURITY.md](SECURITY.md), not in
+  a public issue.
 - **Add a display.** Follow [docs/adding-a-device.md](docs/adding-a-device.md). If you only
   have captures or notes, open an issue with them; someone else may write the driver.
 - **Improve features or docs.** For anything larger than a small fix, open an issue first so

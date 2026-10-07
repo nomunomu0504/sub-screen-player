@@ -1,6 +1,8 @@
 # sub-screen-player
 
 [![CI](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml/badge.svg)](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nomunomu0504/sub-screen-player)](https://github.com/nomunomu0504/sub-screen-player/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
 [日本語](README.ja.md)
 
@@ -37,6 +39,26 @@ device-specific protocol has to be written; everything else is shared.
 
 ## Install
 
+### Prebuilt binaries
+
+Download the archive for your platform from the
+[latest release](https://github.com/nomunomu0504/sub-screen-player/releases/latest), extract it
+and put `ssp` (`ssp.exe` on Windows) somewhere on your `PATH`.
+
+| Platform | Archive |
+|---|---|
+| macOS (Apple Silicon and Intel) | `ssp-<version>-universal-apple-darwin.tar.gz` |
+| Linux x86_64 / arm64 (static, any distribution) | `ssp-<version>-x86_64-unknown-linux-musl.tar.gz` / `...-aarch64-unknown-linux-musl.tar.gz` |
+| Windows x64 / ARM64 | `ssp-<version>-x86_64-pc-windows-msvc.zip` / `...-aarch64-pc-windows-msvc.zip` |
+
+`SHA256SUMS.txt` lists the checksums. The binaries are not code-signed yet:
+
+- **macOS** may refuse to run a downloaded `ssp`. Remove the quarantine flag once:
+  `xattr -d com.apple.quarantine ssp`
+- **Windows** SmartScreen may warn on first start: choose "More info" → "Run anyway".
+
+### From source
+
 Build from source. [mise](https://mise.jdx.dev) installs the pinned Rust toolchain. On macOS
 you also need the Xcode Command Line Tools (`xcode-select --install`), and on Windows the
 Visual Studio C++ build tools that Rust uses anyway; they compile the bundled hidapi library.
@@ -51,7 +73,10 @@ mise run build          # produces target/release/ssp
 Alternatively, with an existing Rust toolchain:
 `cargo install --path crates/cli --locked`.
 
-**Linux:** allow your user to access the display, then replug it:
+### Linux permissions
+
+Allow your user to access the display, then replug it. The rule file is in the Linux archives
+and in `contrib/linux/` of the source:
 
 ```sh
 sudo cp contrib/linux/70-sub-screen-player.rules /etc/udev/rules.d/

@@ -1,6 +1,8 @@
 # sub-screen-player
 
 [![CI](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml/badge.svg)](https://github.com/nomunomu0504/sub-screen-player/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nomunomu0504/sub-screen-player)](https://github.com/nomunomu0504/sub-screen-player/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#ライセンス)
 
 [English](README.md)
 
@@ -36,6 +38,25 @@ API を通して、他のプログラムからも自由に描画できます。
 
 ## インストール
 
+### ビルド済みバイナリ
+
+[最新のリリース](https://github.com/nomunomu0504/sub-screen-player/releases/latest)から使っている環境のアーカイブを
+ダウンロードして展開し、`ssp`（Windows では `ssp.exe`）を `PATH` の通った場所に置いてください。
+
+| 環境 | アーカイブ |
+|---|---|
+| macOS（Apple Silicon・Intel 共通） | `ssp-<version>-universal-apple-darwin.tar.gz` |
+| Linux x86_64 / arm64（静的リンク。ディストリビューションを問いません） | `ssp-<version>-x86_64-unknown-linux-musl.tar.gz` / `...-aarch64-unknown-linux-musl.tar.gz` |
+| Windows x64 / ARM64 | `ssp-<version>-x86_64-pc-windows-msvc.zip` / `...-aarch64-pc-windows-msvc.zip` |
+
+チェックサムは `SHA256SUMS.txt` にあります。バイナリはまだコード署名をしていないため、次の対応が必要な場合があります。
+
+- **macOS**: ダウンロードした `ssp` の実行が拒否されることがあります。一度だけ隔離属性を外してください:
+  `xattr -d com.apple.quarantine ssp`
+- **Windows**: 初回起動時に SmartScreen の警告が出ることがあります。「詳細情報」→「実行」を選んでください。
+
+### ソースからビルドする
+
 ソースからビルドします。Rust のバージョンは [mise](https://mise.jdx.dev) で固定しています。macOS では
 Xcode Command Line Tools（`xcode-select --install`）、Windows では Rust がもともと使う Visual Studio の C++ ビルドツールも
 必要です（同梱の hidapi ライブラリのコンパイルに使います）。
@@ -49,7 +70,10 @@ mise run build          # target/release/ssp ができます
 
 Rust がすでに入っている場合は `cargo install --path crates/cli --locked` でも構いません。
 
-**Linux の場合**は、一般ユーザーがディスプレイにアクセスできるよう udev ルールを入れてから挿し直してください。
+### Linux のアクセス権
+
+一般ユーザーがディスプレイにアクセスできるよう udev ルールを入れてから、ディスプレイを挿し直してください。ルールファイルは
+Linux 向けアーカイブと、ソースの `contrib/linux/` に入っています。
 
 ```sh
 sudo cp contrib/linux/70-sub-screen-player.rules /etc/udev/rules.d/

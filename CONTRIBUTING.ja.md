@@ -109,6 +109,18 @@ docs: explain the stream format
 - コマンドによっては、デバイスが応答しなくなったり、保存された画像を上書きしたりします。そうした発見は書き残し、
   ドライバがうっかり危険なコマンドを送らないようにしてください。
 
+## リリース手順（メンテナー向け）
+
+1. ルートの `Cargo.toml` の `[workspace.package]`（とワークスペース内クレートの `[workspace.dependencies]`）に新しい
+   バージョンを書き、`cargo build` で `Cargo.lock` を更新して、`chore: release vX.Y.Z` としてコミットします。
+2. タグを付けてプッシュします: `git tag -a vX.Y.Z -m "sub-screen-player vX.Y.Z" && git push origin vX.Y.Z`
+3. [Release ワークフロー](.github/workflows/release.yml)が、タグとバージョンが一致しているかを確認したうえで、macOS
+   （ユニバーサル）、Linux（x86_64 / arm64、静的リンク）、Windows（x64 / ARM64）向けの `ssp` をビルドし、アーカイブと
+   `SHA256SUMS.txt` をリリースに添付します。リリースがまだない場合は、自動生成のノート付きで下書きとして作成します。
+4. リリースノートを英語と日本語で書いてから、リリースを公開します。
+
+既存のタグにバイナリを添付したい場合は、Actions → Release → Run workflow からタグ名を指定して手動で実行してください。
+
 ## ライセンス
 
 明示的に別の意思表示をしない限り、あなたが本プロジェクトへの取り込みを意図して提出したコントリビューション

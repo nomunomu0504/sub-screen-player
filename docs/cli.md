@@ -76,7 +76,7 @@ Start something again with `ssp clock` or `ssp show ...`.
 
 Schedule `ssp brightness`. With cron (macOS and Linux, `crontab -e`):
 
-```cron
+```text
 0 22 * * * /usr/local/bin/ssp brightness 20
 0 7  * * * /usr/local/bin/ssp brightness 100
 ```

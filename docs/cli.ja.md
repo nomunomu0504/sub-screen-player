@@ -74,7 +74,7 @@ on_exit = "save-last"
 
 `ssp brightness` を定期実行します。cron の場合（macOS・Linux、`crontab -e`）:
 
-```cron
+```text
 0 22 * * * /usr/local/bin/ssp brightness 20
 0 7  * * * /usr/local/bin/ssp brightness 100
 ```

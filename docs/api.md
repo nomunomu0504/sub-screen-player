@@ -39,8 +39,11 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ### `GET /health`
 
 ```json
-{"status": "ok", "version": "0.1.0"}
+{"status": "ok", "version": "0.1.1", "drivers": ["d92"]}
 ```
+
+`drivers` lists the driver ids the daemon uses; it only touches displays of these drivers
+(see `--driver` in the [command line guide](cli.md)). Daemons before 0.1.1 omit it.
 
 ### `GET /displays`
 

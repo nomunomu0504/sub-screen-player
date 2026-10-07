@@ -39,8 +39,11 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ### `GET /health`
 
 ```json
-{"status": "ok", "version": "0.1.0"}
+{"status": "ok", "version": "0.1.1", "drivers": ["d92"]}
 ```
+
+`drivers` は、デーモンが使うドライバの ID の一覧です。デーモンはこれらのドライバのディスプレイにしか触りません
+（[コマンドラインガイド](cli.ja.md)の `--driver` を参照）。0.1.1 より前のデーモンは返しません。
 
 ### `GET /displays`
 

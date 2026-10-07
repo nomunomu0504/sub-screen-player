@@ -64,7 +64,9 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
 - **`Capabilities`** (core): what a display supports, its frame-rate limit, keep-alive interval
   and largest accepted image. The rest of the system reads these instead of checking models.
 - **`Driver`** (core trait): the USB interfaces a driver handles (`UsbMatch`) and `open`.
-  The daemon's driver list is `crates/server/src/drivers.rs`.
+  The daemon's driver list is `crates/server/src/drivers.rs`. Which drivers are in use is a
+  `DriverSelection` (`--driver` options, `[drivers]` in the config) applied with
+  `Registry::select`; drivers marked `experimental` are only used when named.
 - **`Content`** (server): what a display is told to show: nothing, an image, the clock or a
   stream. It is kept per display id, so a replugged display carries on.
 - **`Source`** (server trait): something that draws frames and says when the picture changes

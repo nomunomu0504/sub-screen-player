@@ -143,6 +143,21 @@ the example in the [README](../README.md#drawing-from-your-own-program) and the
 [API reference](api.md#websocket-stream). While a stream runs, `ssp devices` shows `stream` as
 the content. `ssp clock` or `ssp show` takes the display back.
 
+### Develop support for a new display while another one keeps running
+
+Say a D92 shows your clock and you are writing a driver `dxxxx` for another display. Run the
+daemon with only the drivers it should use, and test the new display next to it:
+
+```sh
+ssp serve --driver d92            # the daemon leaves every other display alone
+ssp selftest --driver dxxxx       # in another terminal, as often as you like
+ssp devices --driver dxxxx        # is the new display recognized?
+```
+
+A driver that is still being developed can be marked experimental (see
+[Adding a device](adding-a-device.md)); it is then only used when named with `--driver` or in
+`[drivers] enable`, so it never takes over a display by accident.
+
 ### Run the daemon by hand
 
 ```sh
@@ -177,6 +192,7 @@ These work with every command.
 | `ssp serve` | Run the daemon in the foreground. Stops on Ctrl-C (or SIGTERM), then applies `on_exit` from the config. |
 | `  --listen <ADDR>` | Address to listen on, e.g. `127.0.0.1:8000`. Overrides `listen` in the config. |
 | `  --log-file <FILE>` | Append logs to a file instead of printing them. |
+| `  --driver <ID>` | Use only this driver (repeatable), e.g. `--driver d92`. Overrides `enable` in the `[drivers]` section of the config. The daemon leaves displays of other drivers alone. |
 
 ### Displays
 
@@ -184,8 +200,10 @@ These work with every command.
 |---|---|
 | `ssp devices` | List displays: id, model, size, what they show and whether they are connected. If the daemon is not running, lists the supported displays plugged into this computer instead. |
 | `  --json` | Print the full details as JSON (same as `GET /api/v1/displays`). |
+| `  --driver <ID>` | Only list displays of this driver (repeatable). |
 | `ssp status` | Daemon version and, per display, firmware and frame counters: frames shown, dropped (replaced by newer ones), unchanged (skipped) and received, plus the last encode time, send time and size. |
-| `ssp selftest` | Check every connected display without the daemon (stop the daemon first). Runs about 25 s and reports PASS / WARN / FAIL per check: open (and firmware), commands (wake, brightness 100%), still image, streaming (frames per second), keep-alive (still connected after being idle) and power (off and on). Exits with 1 if a check fails. Use `--display` to test one display. |
+| `ssp selftest` | Check connected displays directly, without the daemon. Runs about 25 s per display and reports PASS / WARN / FAIL per check: open (and firmware), commands (wake, brightness 100%), still image, streaming (frames per second), keep-alive (still connected after being idle) and power (off and on). Several displays are all opened first and tested one after another. If the daemon is running, displays of the drivers it uses are skipped (it could take them at any moment): stop it, or run it with `--driver` for other drivers only. Exits with 1 if a check fails or nothing could be tested. Use `--display` to test one display. |
+| `  --driver <ID>` | Only test displays of this driver (repeatable). Also enables experimental drivers. |
 | `  --frames <N>` | Frames sent in the streaming check (default 180). |
 | `  --hold <SECONDS>` | How long to stay idle in the keep-alive check (default 15). |
 | `  --json` | Print the report as JSON. |

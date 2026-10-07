@@ -127,6 +127,16 @@ impl Driver for MyDriver {
 Match as narrowly as you can (add the usage page if the device has several HID interfaces),
 so the driver never claims somebody's keyboard.
 
+While the driver is being developed, mark it experimental. It is then only used when it is
+named (`--driver mymodel`, or `enable` in the `[drivers]` section of the config), so a
+half-finished driver never takes over a display on its own, not even if it gets released:
+
+```rust
+    fn experimental(&self) -> bool {
+        true // remove once it is verified on hardware
+    }
+```
+
 ## 6. Register it
 
 1. Root `Cargo.toml`: add the crate to `members` and to `[workspace.dependencies]`.
@@ -142,8 +152,11 @@ so the driver never claims somebody's keyboard.
 into your pull request:
 
 ```sh
-ssp selftest                   # with the daemon stopped; every check should PASS
+ssp selftest --driver mymodel  # every check should PASS
 ```
+
+A running daemon only blocks the test if it uses your driver. To keep another display running
+meanwhile, start the daemon with just its driver, e.g. `ssp serve --driver d92`.
 
 Then try it by hand and look at the screen:
 

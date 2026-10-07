@@ -19,7 +19,7 @@ program can do.
 ## Display ids
 
 Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed by
-`GET /displays`. `default` means the first connected display.
+`GET /displays`. `default` means the first connected display in id order.
 
 ## Endpoints
 

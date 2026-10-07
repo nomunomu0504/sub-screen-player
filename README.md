@@ -75,6 +75,8 @@ ssp service install            # start the daemon automatically at login
 ```
 
 With several displays, pick one with `--display <id>` (ids are shown by `ssp devices`).
+The [command line guide](docs/cli.md) has every option and recipes such as dimming at night
+or controlling the display from another computer.
 
 ## Configuration
 
@@ -140,6 +142,7 @@ See [docs/api.md](docs/api.md) for all endpoints.
 
 Every document is available in English and Japanese (switch with the link at the top of each page).
 
+- [Command line guide](docs/cli.md): use cases and every command
 - [Architecture](docs/architecture.md): how the pieces fit together and where code belongs
 - [Adding a device](docs/adding-a-device.md)
 - [HTTP / WebSocket API](docs/api.md)

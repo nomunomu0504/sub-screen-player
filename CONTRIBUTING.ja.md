@@ -47,7 +47,7 @@ mise run ci         # CI と同じチェック: フォーマット確認、clipp
 | 組み込みの画面（時計のようなもの）を追加する | `crates/server/src/sources/` |
 | API のエンドポイントを追加・変更する | `crates/server/src/api/`（＋ `docs/api.md` / `docs/api.ja.md`） |
 | 設定項目を追加する | `crates/server/src/config.rs`（同じファイルの `TEMPLATE` も） |
-| CLI のコマンドを追加する | `crates/cli/src/main.rs` |
+| CLI のコマンドを追加する | `crates/cli/src/main.rs`（＋ `docs/cli.md` / `docs/cli.ja.md`） |
 | OS ごとの自動起動を変える | `crates/cli/src/service.rs` |
 | Linux でのデバイスのアクセス権 | `contrib/linux/70-sub-screen-player.rules` |
 

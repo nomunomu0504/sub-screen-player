@@ -50,7 +50,7 @@ exactly one driver crate; nothing else knows about them.**
 | Add a built-in screen (like the clock) | `crates/server/src/sources/` |
 | Add or change an API endpoint | `crates/server/src/api/` (+ `docs/api.md`) |
 | Add a config option | `crates/server/src/config.rs` (+ `TEMPLATE` there) |
-| Add a CLI command | `crates/cli/src/main.rs` |
+| Add a CLI command | `crates/cli/src/main.rs` (+ `docs/cli.md` / `docs/cli.ja.md`) |
 | Change autostart for an OS | `crates/cli/src/service.rs` |
 | Linux permissions for a device | `contrib/linux/70-sub-screen-player.rules` |
 

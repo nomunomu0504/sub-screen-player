@@ -73,6 +73,7 @@ ssp service install            # ログイン時にデーモンを自動起動
 ```
 
 ディスプレイが複数ある場合は `--display <id>` で選びます（ID は `ssp devices` で確認できます）。
+すべてのオプションや、夜間に暗くする・別の PC から操作するといった使い方は [コマンドラインガイド](docs/cli.ja.md) にまとめています。
 
 ## 設定
 
@@ -136,6 +137,7 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 
 どのドキュメントも日本語版と英語版があります（各ページ冒頭のリンクで切り替えられます）。
 
+- [コマンドラインガイド](docs/cli.ja.md): ユースケースと全コマンドの説明
 - [アーキテクチャ](docs/architecture.ja.md): 全体の構成と、どこに何を書くか
 - [機種の追加方法](docs/adding-a-device.ja.md)
 - [HTTP / WebSocket API](docs/api.ja.md)

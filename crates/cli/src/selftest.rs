@@ -1,20 +1,32 @@
-//! `ssp selftest`: drives every connected display through a fixed sequence and reports what
-//! worked. It talks to the hardware directly, so the daemon must not be running.
+//! `ssp selftest`: drives connected displays through a fixed sequence and reports what worked.
+//! It talks to the hardware directly. Displays whose driver a running daemon uses are skipped,
+//! because the daemon may open them at any moment; stop the daemon, or start it with `--driver`
+//! for other drivers only, to test them.
 
+use std::collections::HashMap;
+use std::ffi::CString;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use image::{Rgb, RgbImage};
 use serde::Serialize;
-use ssp_core::{Found, Frame, Presenter, PresenterOptions, StopAction, hid};
+use ssp_core::{
+    DisplayInfo, DriverSelection, Found, Frame, Presenter, PresenterOptions, Registry, StopAction,
+    hid,
+};
 use ssp_server::text::{TextStyle, builtin_font};
 
 use crate::client::{self, Client};
+
+/// How long to keep trying to open a display that is restarting.
+const OPEN_RETRY: Duration = Duration::from_secs(15);
 
 /// Settings of one run.
 pub struct Options {
     /// Only test the display with this id (`default`: all of them).
     pub display: String,
+    /// Only test displays of these drivers (empty: all non-experimental drivers).
+    pub drivers: Vec<String>,
     /// Frames sent in the streaming check.
     pub frames: u32,
     /// How long to stay idle in the keep-alive check.
@@ -30,6 +42,7 @@ struct Report {
     arch: &'static str,
     passed: bool,
     displays: Vec<DisplayReport>,
+    skipped: Vec<Skipped>,
 }
 
 #[derive(Serialize)]
@@ -40,6 +53,12 @@ struct DisplayReport {
     serial: String,
     firmware: Option<String>,
     checks: Vec<Check>,
+}
+
+#[derive(Serialize)]
+struct Skipped {
+    id: String,
+    reason: String,
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq)]
@@ -68,22 +87,27 @@ impl Check {
     }
 }
 
-pub fn run(client: &Client, options: &Options) -> Result<bool> {
-    match client.health() {
-        Err(err) if client::is_unreachable(&err) => {}
-        _ => bail!(
-            "the daemon is running at {} and holds the displays.\n\
-             Stop it first (Ctrl-C, or `ssp service uninstall`), then run the selftest again.",
-            client.base()
-        ),
-    }
+/// A display found on USB, with an id numbered the way the daemon numbers them.
+struct Target<'a> {
+    id: String,
+    found: Found<'a>,
+}
 
-    let registry = ssp_server::drivers::registry();
-    let found: Vec<Found<'_>> = registry
-        .scan()?
-        .into_iter()
-        .filter(|f| options.display == "default" || candidate_id(f) == options.display)
-        .collect();
+/// An opened display, kept alive by its presenter until the run ends.
+struct Opened {
+    presenter: Presenter,
+    info: DisplayInfo,
+    path: CString,
+    took: Duration,
+}
+
+pub fn run(client: &Client, options: &Options) -> Result<bool> {
+    let selection = DriverSelection {
+        only: options.drivers.clone(),
+        exclude: Vec::new(),
+    };
+    let registry = ssp_server::drivers::registry(&selection)?;
+    let daemon = daemon_drivers(client)?;
 
     let mut report = Report {
         version: env!("CARGO_PKG_VERSION"),
@@ -91,21 +115,72 @@ pub fn run(client: &Client, options: &Options) -> Result<bool> {
         arch: std::env::consts::ARCH,
         passed: false,
         displays: Vec::new(),
+        skipped: Vec::new(),
     };
-    if found.is_empty() {
+    let mut targets = Vec::new();
+    for target in number(registry.scan()?) {
+        if options.display != "default" && target.id != options.display {
+            continue;
+        }
+        let driver = target.found.driver.id();
+        if daemon
+            .as_ref()
+            .is_some_and(|used| used.iter().any(|d| d == driver))
+        {
+            report.skipped.push(Skipped {
+                reason: format!("the running daemon uses the {driver} driver"),
+                id: target.id,
+            });
+        } else {
+            targets.push(target);
+        }
+    }
+
+    if targets.is_empty() {
         if !options.json {
-            println!("No supported display found.");
-            println!("{}", no_display_hint());
+            if report.skipped.is_empty() {
+                println!("No supported display found.");
+                println!("{}", no_display_hint());
+            } else {
+                println!(
+                    "The running daemon may use every matching display. Stop it, or run it \
+                     with only the drivers it should keep (`ssp serve --driver <id>`)."
+                );
+            }
         }
         print_report(&report, options.json)?;
         return Ok(false);
     }
-    for f in &found {
+
+    // Open every display before testing the first one. Displays such as the D92 restart a few
+    // seconds after keep-alives stop (e.g. right after the daemon was stopped); an opened
+    // display gets keep-alives while it waits for its turn.
+    let opened: Vec<(Target<'_>, Result<Opened, String>)> = targets
+        .into_iter()
+        .map(|target| {
+            let opened = open(&registry, &target);
+            (target, opened)
+        })
+        .collect();
+    let on_usb = |path: &CString| {
+        hid::enumerate()
+            .map(|list| list.iter().any(|c| &c.path == path))
+            .unwrap_or(false)
+    };
+    for (target, opened) in &opened {
         if !options.json {
-            println!("Testing {} ({}) ...", f.driver.name(), candidate_id(f));
+            println!("Testing {} ({}) ...", target.found.driver.name(), target.id);
         }
-        report.displays.push(test_display(f, options));
+        report
+            .displays
+            .push(test_display(target, opened, options, &on_usb));
     }
+    for (_, opened) in opened {
+        if let Ok(opened) = opened {
+            let _ = opened.presenter.stop(StopAction::Leave);
+        }
+    }
+
     report.passed = report
         .displays
         .iter()
@@ -114,11 +189,46 @@ pub fn run(client: &Client, options: &Options) -> Result<bool> {
     Ok(report.passed)
 }
 
-fn candidate_id(found: &Found<'_>) -> String {
+/// Drivers a running daemon uses, or `None` if no daemon is running.
+fn daemon_drivers(client: &Client) -> Result<Option<Vec<String>>> {
+    match client.health() {
+        Err(err) if client::is_unreachable(&err) => Ok(None),
+        Err(err) => Err(err.context("cannot ask the running daemon which displays it uses")),
+        Ok(health) => match health.drivers {
+            Some(drivers) => Ok(Some(drivers)),
+            None => bail!(
+                "the daemon at {} is too old to say which displays it uses.\n\
+                 Stop it (Ctrl-C, or `ssp service uninstall`), then run the selftest again.",
+                client.base()
+            ),
+        },
+    }
+}
+
+fn base_id(found: &Found<'_>) -> String {
     match found.candidate.serial.as_str() {
         "" => found.driver.id().to_string(),
         serial => format!("{}-{serial}", found.driver.id()),
     }
+}
+
+/// Gives displays that would share an id the suffixes `-2`, `-3`, ... like the daemon does.
+fn number(found: Vec<Found<'_>>) -> Vec<Target<'_>> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    found
+        .into_iter()
+        .map(|found| {
+            let base = base_id(&found);
+            let count = seen.entry(base.clone()).or_insert(0);
+            *count += 1;
+            let id = if *count == 1 {
+                base
+            } else {
+                format!("{base}-{count}")
+            };
+            Target { id, found }
+        })
+        .collect()
 }
 
 fn no_display_hint() -> &'static str {
@@ -129,30 +239,79 @@ fn no_display_hint() -> &'static str {
     }
 }
 
-fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
+/// Opens a display and starts its presenter. A display that is restarting shows up again under
+/// a new path, so failures are retried for a while, looking the display up by its serial number.
+fn open(registry: &Registry, target: &Target<'_>) -> Result<Opened, String> {
+    let driver = target.found.driver;
+    let mut candidate = target.found.candidate.clone();
+    let started = Instant::now();
+    loop {
+        match driver.open(&candidate) {
+            Ok(display) => {
+                let info = display.info().clone();
+                let presenter = Presenter::spawn(
+                    display,
+                    PresenterOptions {
+                        max_fps: info.capabilities.max_fps,
+                        skip_duplicates: false,
+                        ..Default::default()
+                    },
+                );
+                return Ok(Opened {
+                    presenter,
+                    info,
+                    path: candidate.path,
+                    took: started.elapsed(),
+                });
+            }
+            Err(err) => {
+                let mut detail = err.to_string();
+                let permission = detail.to_lowercase().contains("permission");
+                if permission || candidate.serial.is_empty() || started.elapsed() > OPEN_RETRY {
+                    if cfg!(target_os = "linux") && permission {
+                        detail.push_str(" (install the udev rule from contrib/linux and replug)");
+                    }
+                    return Err(detail);
+                }
+                std::thread::sleep(Duration::from_secs(1));
+                let again = registry.scan().ok().and_then(|found| {
+                    found.into_iter().find(|f| {
+                        f.driver.id() == driver.id() && f.candidate.serial == candidate.serial
+                    })
+                });
+                if let Some(again) = again {
+                    candidate = again.candidate;
+                }
+            }
+        }
+    }
+}
+
+/// Runs the checks on one opened display. `on_usb` tells whether a device path still exists.
+fn test_display(
+    target: &Target<'_>,
+    opened: &Result<Opened, String>,
+    options: &Options,
+    on_usb: &dyn Fn(&CString) -> bool,
+) -> DisplayReport {
     let mut report = DisplayReport {
-        id: candidate_id(found),
-        driver: found.driver.id(),
-        model: found.driver.name().to_string(),
-        serial: found.candidate.serial.clone(),
+        id: target.id.clone(),
+        driver: target.found.driver.id(),
+        model: target.found.driver.name().to_string(),
+        serial: target.found.candidate.serial.clone(),
         firmware: None,
         checks: Vec::new(),
     };
-
-    // Open.
-    let started = Instant::now();
-    let display = match found.driver.open(&found.candidate) {
-        Ok(display) => display,
-        Err(err) => {
-            let mut detail = err.to_string();
-            if cfg!(target_os = "linux") && detail.to_lowercase().contains("permission") {
-                detail.push_str(" (install the udev rule from contrib/linux and replug)");
-            }
-            report.checks.push(Check::new("open", Status::Fail, detail));
+    let opened = match opened {
+        Ok(opened) => opened,
+        Err(detail) => {
+            report
+                .checks
+                .push(Check::new("open", Status::Fail, detail.clone()));
             return report;
         }
     };
-    let info = display.info().clone();
+    let info = &opened.info;
     report.model = info.model.clone();
     report.firmware = info.firmware.clone();
     report.checks.push(Check::new(
@@ -160,21 +319,14 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
         Status::Pass,
         format!(
             "{} ms, firmware {}",
-            started.elapsed().as_millis(),
+            opened.took.as_millis(),
             info.firmware.as_deref().unwrap_or("not reported")
         ),
     ));
 
+    let presenter = &opened.presenter;
     let caps = info.capabilities.clone();
     let (width, height) = (info.panel.width, info.panel.height);
-    let presenter = Presenter::spawn(
-        display,
-        PresenterOptions {
-            max_fps: caps.max_fps,
-            skip_duplicates: false,
-            ..Default::default()
-        },
-    );
     let checks = &mut report.checks;
     let step =
         |n: u32, label: &str| test_pattern(width, height, &format!("ssp selftest {n}/5: {label}"));
@@ -218,7 +370,7 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
 
     // Streaming.
     checks.push(stream(
-        &presenter,
+        presenter,
         width,
         height,
         options.frames,
@@ -232,9 +384,7 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
         &format!("ssp selftest 3/5: idle for {} s", options.hold.as_secs()),
     ));
     std::thread::sleep(options.hold);
-    let still_there = hid::enumerate()
-        .map(|list| list.iter().any(|c| c.path == found.candidate.path))
-        .unwrap_or(false);
+    let still_there = on_usb(&opened.path);
     checks.push(match (presenter.is_running(), still_there) {
         (true, true) => Check::new(
             "keep-alive",
@@ -254,7 +404,15 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
     });
 
     // Power.
-    if caps.power && presenter.is_running() {
+    if !caps.power {
+        checks.push(Check::new("power", Status::Skip, "not supported"));
+    } else if !presenter.is_running() {
+        checks.push(Check::new(
+            "power",
+            Status::Skip,
+            "not run: the display was lost",
+        ));
+    } else {
         let _ = presenter.submit(step(4, "screen off for 2 s"));
         std::thread::sleep(Duration::from_millis(500));
         let result = presenter.sleep().and_then(|()| {
@@ -265,8 +423,6 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
             Ok(()) => Check::new("power", Status::Pass, "off and on again"),
             Err(err) => Check::new("power", Status::Fail, err.to_string()),
         });
-    } else {
-        checks.push(Check::new("power", Status::Skip, "not supported"));
     }
 
     // Leave the result on the screen.
@@ -281,7 +437,6 @@ fn test_display(found: &Found<'_>, options: &Options) -> DisplayReport {
         || presenter.stats().submitted == presenter.stats().shown,
         Duration::from_secs(3),
     );
-    let _ = presenter.stop(StopAction::Leave);
     report
 }
 
@@ -406,6 +561,9 @@ fn print_report(report: &Report, json: bool) -> Result<()> {
             println!("  {status}  {:<12} {}", c.name, c.detail);
         }
     }
+    for skipped in &report.skipped {
+        println!("\nSkipped {}: {}", skipped.id, skipped.reason);
+    }
     println!("\nResult: {}", if report.passed { "PASS" } else { "FAIL" });
     Ok(())
 }
@@ -424,5 +582,148 @@ mod tests {
             band.into_iter()
                 .any(|(x, y)| frame.image().get_pixel(x, y).0 == [255, 255, 255])
         );
+    }
+
+    use ssp_core::testing::FakeDisplay;
+    use ssp_core::{Candidate, Display, Driver, ImageFormat, PanelSpec, Rotation, UsbMatch};
+
+    /// A small panel keeps the tests fast in debug builds.
+    fn fake() -> FakeDisplay {
+        FakeDisplay::with_panel(PanelSpec {
+            width: 192,
+            height: 46,
+            rotation: Rotation::Clockwise90,
+            format: ImageFormat::Jpeg,
+        })
+        .0
+    }
+
+    struct Dummy;
+
+    impl Driver for Dummy {
+        fn id(&self) -> &'static str {
+            "dummy"
+        }
+        fn name(&self) -> &'static str {
+            "Dummy"
+        }
+        fn usb_matches(&self) -> &'static [UsbMatch] {
+            &[]
+        }
+        fn open(&self, _: &Candidate) -> ssp_core::Result<Box<dyn Display>> {
+            Err(ssp_core::Error::Unsupported("open"))
+        }
+    }
+
+    fn found(serial: &str) -> Found<'static> {
+        Found {
+            driver: &Dummy,
+            candidate: Candidate {
+                path: CString::new(format!("path-{serial}")).unwrap(),
+                vendor_id: 1,
+                product_id: 2,
+                usage_page: 0,
+                serial: serial.into(),
+                product: String::new(),
+            },
+        }
+    }
+
+    fn options() -> Options {
+        Options {
+            display: "default".into(),
+            drivers: Vec::new(),
+            frames: 5,
+            hold: Duration::ZERO,
+            json: true,
+        }
+    }
+
+    fn opened(display: FakeDisplay) -> Opened {
+        let info = display.info().clone();
+        Opened {
+            presenter: Presenter::spawn(Box::new(display), PresenterOptions::default()),
+            info,
+            path: CString::new("fake").unwrap(),
+            took: Duration::ZERO,
+        }
+    }
+
+    fn statuses(report: &DisplayReport) -> Vec<(&'static str, &'static str)> {
+        report
+            .checks
+            .iter()
+            .map(|c| {
+                let status = match c.status {
+                    Status::Pass => "pass",
+                    Status::Warn => "warn",
+                    Status::Fail => "fail",
+                    Status::Skip => "skip",
+                };
+                (c.name, status)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn displays_sharing_an_id_are_numbered() {
+        let ids: Vec<String> = number(vec![found(""), found("A1"), found("")])
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, ["dummy", "dummy-A1", "dummy-2"]);
+    }
+
+    #[test]
+    fn a_working_display_passes_every_check() {
+        let target = Target {
+            id: "dummy".into(),
+            found: found(""),
+        };
+        let opened = Ok(opened(fake()));
+        let report = test_display(&target, &opened, &options(), &|_| true);
+        let mut checks = statuses(&report);
+        // The frame rate depends on the machine; only a failure would be wrong.
+        assert_ne!(checks[3], ("streaming", "fail"));
+        checks.remove(3);
+        assert_eq!(
+            checks,
+            [
+                ("open", "pass"),
+                ("commands", "pass"),
+                ("still image", "pass"),
+                ("keep-alive", "pass"),
+                ("power", "pass"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_lost_display_fails_and_skips_power() {
+        let display = fake();
+        let unplug = display.unplug_handle();
+        let target = Target {
+            id: "dummy".into(),
+            found: found(""),
+        };
+        let opened = Ok(opened(display));
+        unplug.unplug();
+        let report = test_display(&target, &opened, &options(), &|_| false);
+        let checks = statuses(&report);
+        assert_eq!(checks[1], ("commands", "fail"));
+        assert_eq!(checks[4], ("keep-alive", "fail"));
+        assert_eq!(checks[5], ("power", "skip"));
+        assert_eq!(report.checks[5].detail, "not run: the display was lost");
+    }
+
+    #[test]
+    fn a_display_that_cannot_be_opened_reports_why() {
+        let target = Target {
+            id: "dummy".into(),
+            found: found(""),
+        };
+        let report = test_display(&target, &Err("busy".into()), &options(), &|_| true);
+        assert_eq!(statuses(&report), [("open", "fail")]);
+        assert_eq!(report.checks[0].detail, "busy");
     }
 }

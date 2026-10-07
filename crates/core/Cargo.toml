@@ -1,0 +1,18 @@
+[package]
+name = "ssp-core"
+description = "Device-independent core of sub-screen-player: the Display trait, USB transport, frame encoding and pacing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+hidapi.workspace = true
+image.workspace = true
+jpeg-encoder.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

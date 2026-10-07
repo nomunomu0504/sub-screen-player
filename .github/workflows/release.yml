@@ -97,7 +97,9 @@ jobs:
           esac
           cd dist
           case "${{ matrix.target }}" in
-            *windows*) powershell -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$name.zip'" ;;
+            # Windows' own bsdtar writes standard zips (Compress-Archive in Windows PowerShell
+            # uses backslashes in entry names, which other tools reject).
+            *windows*) /c/Windows/System32/tar.exe -a -c -f "$name.zip" "$name" ;;
             *) tar -czf "$name.tar.gz" "$name" ;;
           esac
           rm -r "$name"

@@ -1,0 +1,16 @@
+{
+  "name": "sub-screen-player-site",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "sync": "bun scripts/sync-docs.ts",
+    "dev": "bun scripts/sync-docs.ts && astro dev",
+    "build": "bun scripts/sync-docs.ts && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.5",
+    "astro": "^7.3.6",
+    "sharp": "^0.35.5"
+  }
+}

@@ -1,0 +1,36 @@
+---
+title: Download
+description: Prebuilt ssp binaries for macOS, Linux and Windows.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import Download from '../../components/Download.astro';
+import InstallCommand from '../../components/InstallCommand.astro';
+
+The quickest way is the installer, which picks the right file for you:
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+		<InstallCommand os="unix" />
+	</TabItem>
+	<TabItem label="Windows">
+		<InstallCommand os="windows" />
+	</TabItem>
+</Tabs>
+
+Or download an archive, extract it and put `ssp` (`ssp.exe` on Windows) somewhere on your
+`PATH`:
+
+<Download lang="en" />
+
+<Aside type="caution" title="The binaries are not code-signed yet">
+- **macOS** may refuse to run a downloaded `ssp`. Remove the quarantine flag once:
+  `xattr -d com.apple.quarantine ssp` (the installer does not need this).
+- **Windows** SmartScreen may warn on first start: choose "More info" → "Run anyway".
+</Aside>
+
+To check a download yourself, compare its SHA-256 with `SHA256SUMS.txt`:
+`shasum -a 256 <file>` on macOS, `sha256sum <file>` on Linux, `Get-FileHash <file>` on
+Windows.
+
+On Linux, also install the udev rule; see [Getting started](../getting-started/).

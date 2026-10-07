@@ -1,0 +1,17 @@
+---
+// The one-line installer for an OS family. The URL follows wherever the site is deployed
+// (github.io or a custom domain), so pages never hard-code it.
+import { Code } from '@astrojs/starlight/components';
+
+interface Props {
+	os: 'unix' | 'windows';
+}
+
+const { os } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const url = (file: string) => `${Astro.site?.origin ?? ''}${base}/${file}`;
+const command =
+	os === 'windows' ? `irm ${url('install.ps1')} | iex` : `curl -fsSL ${url('install.sh')} | sh`;
+---
+
+<Code code={command} lang={os === 'windows' ? 'powershell' : 'sh'} />

@@ -1,0 +1,69 @@
+---
+title: Getting started
+description: Install ssp, show the clock on your display and start it at login.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import InstallCommand from '../../components/InstallCommand.astro';
+
+<Steps>
+
+1. **Install `ssp`.** The installer downloads the latest release for your system, checks its
+   SHA-256 checksum and puts `ssp` on your `PATH`.
+
+   <Tabs syncKey="os">
+   	<TabItem label="macOS / Linux">
+   		<InstallCommand os="unix" />
+   		It installs to `~/.local/bin` (change with `SSP_INSTALL_DIR`).
+   	</TabItem>
+   	<TabItem label="Windows">
+   		<InstallCommand os="windows" />
+   		It installs to `%LOCALAPPDATA%\Programs\sub-screen-player` and adds it to your `PATH`.
+   	</TabItem>
+   </Tabs>
+
+   You can also [download the archive](../download/) yourself or
+   [build from source](https://github.com/nomunomu0504/sub-screen-player#install).
+
+2. **Linux only: allow access to the display.** Install the udev rule, then replug the display.
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/nomunomu0504/sub-screen-player/main/contrib/linux/70-sub-screen-player.rules \
+     | sudo tee /etc/udev/rules.d/70-sub-screen-player.rules > /dev/null
+   sudo udevadm control --reload-rules
+   ```
+
+3. **Plug in the display and start the daemon.** The clock appears.
+
+   ```sh
+   ssp serve
+   ```
+
+4. **Try a few commands** in another terminal.
+
+   ```sh
+   ssp devices                    # list displays
+   ssp show photo.jpg --fit cover # show an image
+   ssp clock --no-seconds         # back to the clock, without seconds
+   ssp brightness 60              # backlight in percent
+   ```
+
+5. **Start it at login.** Stop `ssp serve` with Ctrl-C, then:
+
+   ```sh
+   ssp service install
+   ```
+
+</Steps>
+
+<Aside type="tip" title="Something does not work?">
+Stop the daemon and run `ssp selftest`. It checks the whole path from USB to the screen and
+tells you which part fails. See [Troubleshooting](../cli/#troubleshooting).
+</Aside>
+
+## Next steps
+
+- [Command line guide](../cli/): every command, and recipes such as dimming at night or using
+  several displays
+- [HTTP / WebSocket API](../api/): draw your own content
+- [D92 notes](../devices/d92/): what the display can do and how it was tested

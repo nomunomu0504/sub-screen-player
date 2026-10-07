@@ -1,0 +1,161 @@
+---
+// Download table for the latest release, read from the GitHub API when the site is built
+// (the deploy workflow also runs when a release is published). A small script highlights the
+// visitor's platform.
+interface Props {
+	lang?: 'en' | 'ja';
+}
+
+const { lang = 'en' } = Astro.props;
+const repo = 'nomunomu0504/sub-screen-player';
+
+type Asset = { name: string; browser_download_url: string; size: number };
+type Release = { tag_name: string; html_url: string; published_at: string; assets: Asset[] };
+
+let release: Release | undefined;
+try {
+	const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
+	if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
+	if (response.ok) release = await response.json();
+} catch {
+	// Offline builds still work; the page then links to the releases page.
+}
+
+const text = {
+	en: {
+		version: 'Latest version',
+		released: 'released',
+		platform: 'Platform',
+		file: 'File',
+		yours: 'your system',
+		checksums: 'SHA-256 checksums',
+		all: 'All releases',
+		unavailable: 'The release list could not be loaded.',
+	},
+	ja: {
+		version: '最新バージョン',
+		released: 'リリース日',
+		platform: '環境',
+		file: 'ファイル',
+		yours: 'お使いの環境',
+		checksums: 'SHA-256 チェックサム',
+		all: 'すべてのリリース',
+		unavailable: 'リリース一覧を読み込めませんでした。',
+	},
+}[lang];
+
+const platforms = [
+	{ os: 'macos', arch: 'any', target: 'universal-apple-darwin', label: { en: 'macOS (Apple Silicon and Intel)', ja: 'macOS（Apple Silicon・Intel）' } },
+	{ os: 'windows', arch: 'x86', target: 'x86_64-pc-windows-msvc', label: { en: 'Windows x64', ja: 'Windows x64' } },
+	{ os: 'windows', arch: 'arm', target: 'aarch64-pc-windows-msvc', label: { en: 'Windows ARM64', ja: 'Windows ARM64' } },
+	{ os: 'linux', arch: 'x86', target: 'x86_64-unknown-linux-musl', label: { en: 'Linux x86_64 (static, any distribution)', ja: 'Linux x86_64（静的リンク、ディストリビューション不問）' } },
+	{ os: 'linux', arch: 'arm', target: 'aarch64-unknown-linux-musl', label: { en: 'Linux arm64 (static, any distribution)', ja: 'Linux arm64（静的リンク、ディストリビューション不問）' } },
+];
+
+const rows = platforms.map((p) => ({
+	...p,
+	asset: release?.assets.find((a) => a.name.includes(p.target)),
+}));
+const checksums = release?.assets.find((a) => a.name === 'SHA256SUMS.txt');
+const date = release ? new Date(release.published_at).toISOString().slice(0, 10) : '';
+const megabytes = (size: number) => `${(size / 1024 / 1024).toFixed(1)} MB`;
+---
+
+{
+	release ? (
+		<div class="ssp-download">
+			<p>
+				{text.version}: <a href={release.html_url}><strong>{release.tag_name}</strong></a>
+				{lang === 'ja' ? `（${text.released} ${date}）` : ` (${text.released} ${date})`}
+			</p>
+			<table>
+				<thead>
+					<tr>
+						<th>{text.platform}</th>
+						<th>{text.file}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr data-os={row.os} data-arch={row.arch}>
+							<td>
+								{row.label[lang]} <span class="ssp-yours">{text.yours}</span>
+							</td>
+							<td>
+								{row.asset ? (
+									<a href={row.asset.browser_download_url}>
+										{row.asset.name}
+									</a>
+								) : (
+									'—'
+								)}
+								{row.asset && <span class="ssp-size">{megabytes(row.asset.size)}</span>}
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+			<p>
+				{checksums && <a href={checksums.browser_download_url}>{text.checksums}</a>}
+				{' · '}
+				<a href={`https://github.com/${repo}/releases`}>{text.all}</a>
+			</p>
+		</div>
+	) : (
+		<p>
+			{text.unavailable} <a href={`https://github.com/${repo}/releases`}>{text.all}</a>
+		</p>
+	)
+}
+
+<script>
+	// Highlight the visitor's platform. The CPU is only known in some browsers; without it,
+	// every build for the OS is highlighted.
+	async function detect() {
+		const nav = navigator as Navigator & {
+			userAgentData?: {
+				platform: string;
+				getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string }>;
+			};
+		};
+		const platform = (nav.userAgentData?.platform || navigator.userAgent).toLowerCase();
+		const os = platform.includes('mac') ? 'macos' : platform.includes('win') ? 'windows' : platform.includes('linux') ? 'linux' : '';
+		let arch = '';
+		try {
+			const hints = await nav.userAgentData?.getHighEntropyValues?.(['architecture']);
+			arch = hints?.architecture ?? '';
+		} catch {}
+		document.querySelectorAll<HTMLTableRowElement>('.ssp-download tr[data-os]').forEach((row) => {
+			const matches = row.dataset.os === os && (!arch || row.dataset.arch === 'any' || row.dataset.arch === arch);
+			row.classList.toggle('ssp-match', matches);
+		});
+	}
+	detect();
+</script>
+
+<style>
+	.ssp-download table {
+		width: 100%;
+	}
+	.ssp-yours {
+		display: none;
+		margin-inline-start: 0.5rem;
+		padding: 0.1rem 0.5rem;
+		border-radius: 1rem;
+		font-size: var(--sl-text-xs);
+		background: var(--sl-color-accent);
+		color: var(--sl-color-black);
+	}
+	tr.ssp-match .ssp-yours {
+		display: inline-block;
+	}
+	tr.ssp-match td {
+		font-weight: 600;
+	}
+	.ssp-size {
+		margin-inline-start: 0.5rem;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+	}
+</style>

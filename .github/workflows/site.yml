@@ -1,0 +1,100 @@
+name: Site
+
+# Builds the website (site/) and publishes it on GitHub Pages. Runs when the site or the docs it
+# includes change, and when a release is published (the download page lists the latest release).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "CONTRIBUTING*.md"
+      - "SECURITY*.md"
+      - "mise.toml"
+      - ".github/workflows/site.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "CONTRIBUTING*.md"
+      - "SECURITY*.md"
+      - "mise.toml"
+      - ".github/workflows/site.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: bun
+
+      - name: Build
+        env:
+          # With a custom domain (repository variable SITE_DOMAIN) the site is served from the
+          # root; otherwise from https://<owner>.github.io/<repository>/.
+          SITE_URL: ${{ vars.SITE_DOMAIN && format('https://{0}', vars.SITE_DOMAIN) || format('https://{0}.github.io', github.repository_owner) }}
+          SITE_BASE: ${{ vars.SITE_DOMAIN && '/' || format('/{0}', github.event.repository.name) }}
+          # Used to read the latest release for the download page.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mise run site:build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5
+
+  installers:
+    name: Installer on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install.sh
+        if: runner.os != 'Windows'
+        env:
+          SSP_INSTALL_DIR: ${{ runner.temp }}/ssp-bin
+        run: |
+          sh site/public/install.sh
+          "$SSP_INSTALL_DIR/ssp" --version
+
+      - name: install.ps1
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          SSP_INSTALL_DIR: ${{ runner.temp }}\ssp-bin
+        run: |
+          Get-Content site/public/install.ps1 -Raw | Invoke-Expression
+          & "$env:SSP_INSTALL_DIR\ssp.exe" --version

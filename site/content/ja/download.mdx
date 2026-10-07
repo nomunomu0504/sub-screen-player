@@ -1,0 +1,34 @@
+---
+title: ダウンロード
+description: macOS・Linux・Windows 向けのビルド済み ssp。
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import Download from '../../../components/Download.astro';
+import InstallCommand from '../../../components/InstallCommand.astro';
+
+いちばん手早いのはインストーラーです。お使いの環境に合ったファイルを自動で選びます。
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+		<InstallCommand os="unix" />
+	</TabItem>
+	<TabItem label="Windows">
+		<InstallCommand os="windows" />
+	</TabItem>
+</Tabs>
+
+アーカイブをダウンロードする場合は、展開して `ssp`（Windows では `ssp.exe`）を `PATH` の通った場所に置いてください。
+
+<Download lang="ja" />
+
+<Aside type="caution" title="バイナリはまだコード署名をしていません">
+- **macOS**: ダウンロードした `ssp` の実行が拒否されることがあります。一度だけ隔離属性を外してください:
+  `xattr -d com.apple.quarantine ssp`（インストーラーを使った場合は不要です）
+- **Windows**: 初回起動時に SmartScreen の警告が出ることがあります。「詳細情報」→「実行」を選んでください。
+</Aside>
+
+ダウンロードしたファイルを自分で確かめるには、SHA-256 を `SHA256SUMS.txt` と比べてください。
+macOS は `shasum -a 256 <ファイル>`、Linux は `sha256sum <ファイル>`、Windows は `Get-FileHash <ファイル>` です。
+
+Linux では udev ルールも入れてください。[はじめに](../getting-started/)を参照してください。

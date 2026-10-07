@@ -1,0 +1,68 @@
+---
+title: はじめに
+description: ssp をインストールして、ディスプレイに時計を表示し、ログイン時に自動で起動するまで。
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import InstallCommand from '../../../components/InstallCommand.astro';
+
+<Steps>
+
+1. **`ssp` をインストールします。** インストーラーが、お使いの環境向けの最新リリースをダウンロードし、SHA-256
+   チェックサムを確認してから、`ssp` を `PATH` の通った場所に置きます。
+
+   <Tabs syncKey="os">
+   	<TabItem label="macOS / Linux">
+   		<InstallCommand os="unix" />
+   		`~/.local/bin` にインストールします（`SSP_INSTALL_DIR` で変更できます）。
+   	</TabItem>
+   	<TabItem label="Windows">
+   		<InstallCommand os="windows" />
+   		`%LOCALAPPDATA%\Programs\sub-screen-player` にインストールし、`PATH` に追加します。
+   	</TabItem>
+   </Tabs>
+
+   [アーカイブを自分でダウンロード](../download/)したり、
+   [ソースからビルド](https://github.com/nomunomu0504/sub-screen-player/blob/main/README.ja.md#インストール)したりもできます。
+
+2. **Linux の場合のみ: ディスプレイへのアクセスを許可します。** udev ルールを入れてから、ディスプレイを挿し直してください。
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/nomunomu0504/sub-screen-player/main/contrib/linux/70-sub-screen-player.rules \
+     | sudo tee /etc/udev/rules.d/70-sub-screen-player.rules > /dev/null
+   sudo udevadm control --reload-rules
+   ```
+
+3. **ディスプレイをつないで、デーモンを起動します。** 時計が表示されます。
+
+   ```sh
+   ssp serve
+   ```
+
+4. **別のターミナルで、いくつかコマンドを試します。**
+
+   ```sh
+   ssp devices                    # ディスプレイ一覧
+   ssp show photo.jpg --fit cover # 画像を表示
+   ssp clock --no-seconds         # 秒なしの時計に戻す
+   ssp brightness 60              # 明るさ（%）
+   ```
+
+5. **ログイン時に自動で起動するようにします。** `ssp serve` を Ctrl-C で止めてから実行します。
+
+   ```sh
+   ssp service install
+   ```
+
+</Steps>
+
+<Aside type="tip" title="うまく動かないときは">
+デーモンを止めて `ssp selftest` を実行してください。USB から画面表示までをひととおり検査し、どこで失敗しているかを
+教えてくれます。[トラブルシューティング](../cli/#トラブルシューティング)も参照してください。
+</Aside>
+
+## 次に読むもの
+
+- [コマンドラインガイド](../cli/): すべてのコマンドと、夜間に暗くする・複数台を使うといった使い方
+- [HTTP / WebSocket API](../api/): 自作のコンテンツを表示する
+- [D92 のメモ](../devices/d92/): ディスプレイでできることと、確認済みの環境

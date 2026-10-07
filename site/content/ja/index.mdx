@@ -1,0 +1,73 @@
+---
+title: sub-screen-player
+description: USB 接続の小型サブディスプレイを macOS・Linux・Windows から操作。時計や画像、自作のコンテンツを最大 60fps で表示します。
+template: splash
+hero:
+  tagline: USB 接続の小型サブディスプレイを macOS・Linux・Windows から操作。時計や画像、自作のコンテンツを最大 60fps で表示します。
+  actions:
+    - text: はじめる
+      link: getting-started/
+      icon: right-arrow
+    - text: ダウンロード
+      link: download/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/nomunomu0504/sub-screen-player
+      icon: external
+      variant: minimal
+---
+
+import { Image } from 'astro:assets';
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import clock from '../../../assets/clock.png';
+import InstallCommand from '../../../components/InstallCommand.astro';
+
+<Image
+	src={clock}
+	alt="1920x462 のバー型ディスプレイに表示した内蔵時計"
+	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
+/>
+
+## インストール
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+		<InstallCommand os="unix" />
+	</TabItem>
+	<TabItem label="Windows">
+		<InstallCommand os="windows" />
+	</TabItem>
+</Tabs>
+
+あとは `ssp serve` を実行すると、ディスプレイに時計が表示されます。詳しくは[はじめに](getting-started/)を参照してください。
+
+## できること
+
+<CardGrid>
+	<Card title="最大 60fps のライブ表示" icon="rocket">
+		エンコードと送信を並行して行い、ディスプレイが受け取れる速さを超えてフレームが届いたときは最新のものだけを送ります。
+	</Card>
+	<Card title="時計と画像" icon="seti:image">
+		書式や色を変えられる時計を内蔵。PNG・JPEG・GIF・WebP の画像をパネルに合わせて表示します。
+	</Card>
+	<Card title="どんなプログラムからでも描画" icon="puzzle">
+		HTTP と WebSocket の API で、スクリプトやダッシュボード、ゲームからフレームを送れます。
+	</Card>
+	<Card title="入れたら放っておける" icon="laptop">
+		ログイン時に自動で起動し、ディスプレイを挿し直しても表示を続けます。
+	</Card>
+	<Card title="安全な初期設定" icon="approve-check">
+		localhost でのみ待ち受け、Web ページからのリクエストは拒否します。ネットワークに公開するにはトークンが必要です。
+	</Card>
+	<Card title="拡張しやすい作り" icon="open-book">
+		機種ごとのプロトコルは小さなドライバに分かれています。新しい機種への対応は、そのプロトコルを書くだけです。
+	</Card>
+</CardGrid>
+
+## 対応ディスプレイ
+
+| ディスプレイ | パネル | 確認済みの環境 |
+|---|---|---|
+| upHere D92 / MiraBox D92 (9.2 インチ) | 1920x462 | macOS・Linux・Windows（[詳細](devices/d92/#確認済みの環境)） |
+
+ほかの機種を使いたい場合は[機種の追加方法](adding-a-device/)を参照してください。

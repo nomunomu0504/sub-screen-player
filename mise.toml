@@ -4,6 +4,7 @@ min_version = "2026.8.0"
 
 [tools]
 rust = { version = "1.99.0", components = "rustfmt,clippy", profile = "minimal" }
+bun = "1.4.2" # only for the website in site/
 
 [tasks.fmt]
 description = "Format all Rust code"
@@ -32,3 +33,20 @@ run = "cargo run -p sub-screen-player -- serve"
 [tasks.ci]
 description = "Everything CI checks"
 depends = ["fmt:check", "lint", "test"]
+
+[tasks."site:install"]
+description = "Install the website's dependencies"
+dir = "site"
+run = "bun install --frozen-lockfile"
+
+[tasks."site:dev"]
+description = "Run the website locally with live reload (http://localhost:4321)"
+dir = "site"
+depends = ["site:install"]
+run = "bun --bun run dev"
+
+[tasks."site:build"]
+description = "Build the website into site/dist"
+dir = "site"
+depends = ["site:install"]
+run = "bun --bun run build"

@@ -9,7 +9,8 @@ request needs.
 ## Ways to contribute
 
 - **Report a bug** with the issue form. Include your OS, the display model, the output of
-  `ssp devices` and `ssp status`, and the daemon's log (run `SSP_LOG=debug ssp serve`).
+  `ssp selftest` (run it with the daemon stopped), `ssp devices` and `ssp status`, and the
+  daemon's log (run `SSP_LOG=debug ssp serve`).
 - **Report a security problem** privately as described in [SECURITY.md](SECURITY.md), not in
   a public issue.
 - **Add a display.** Follow [docs/adding-a-device.md](docs/adding-a-device.md). If you only
@@ -83,7 +84,7 @@ Everything is testable without hardware:
 
 Driver tests should compare against bytes captured from the vendor software whenever
 possible. If you also tested on real hardware, say what you checked in the pull request
-(model, OS, what was shown).
+(model, OS, what was shown), and paste the output of `ssp selftest`.
 
 ## Commits and pull requests
 
@@ -129,7 +130,9 @@ Many displays have no public documentation, so drivers are often built from USB 
 4. Write the release notes in English and Japanese, then publish the release.
 
 To attach binaries to an existing tag, run the workflow by hand (Actions → Release → Run
-workflow) with the tag name.
+workflow) with the tag name. With the tag left empty, it makes a test build of the given
+branch or commit instead: nothing is published, and the archives can be downloaded from the
+workflow run (`gh run download`), e.g. to try a change on another OS.
 
 ## License
 

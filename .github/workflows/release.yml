@@ -1,15 +1,21 @@
 name: Release
 
 # Builds `ssp` for every supported platform and attaches the archives to the GitHub release.
-# Runs when a version tag is pushed; can also be started by hand for an existing tag.
+# Runs when a version tag is pushed. Started by hand, it either does the same for an existing
+# tag, or (with no tag) makes a test build of any branch or commit that is only kept as
+# workflow artifacts, e.g. for trying a change on real hardware.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build and attach binaries to, e.g. v0.1.0
-        required: true
+        description: Existing tag to build and attach binaries to, e.g. v0.1.0. Leave empty for a test build.
+        required: false
+      ref:
+        description: Branch or commit for a test build (used when no tag is given)
+        required: false
+        default: main
 
 permissions:
   contents: read
@@ -17,16 +23,19 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
-  TAG: ${{ inputs.tag || github.ref_name }}
+  # Empty for test builds.
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  REF: ${{ github.event_name == 'push' && github.ref_name || inputs.tag || inputs.ref }}
 
 jobs:
   check-version:
     name: Check version
+    if: github.event_name == 'push' || inputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - name: Tag matches the version in Cargo.toml
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
@@ -38,6 +47,8 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: check-version
+    # Also runs when check-version was skipped (test builds).
+    if: ${{ !failure() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
 
       - uses: jdx/mise-action@v5
 
@@ -83,7 +94,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name="ssp-$TAG-${{ matrix.target }}"
+          name="ssp-${TAG:-$(git rev-parse --short HEAD)}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           case "${{ matrix.target }}" in
             *windows*) exe=ssp.exe ;;
@@ -114,6 +125,7 @@ jobs:
   publish:
     name: Publish
     needs: build
+    if: github.event_name == 'push' || inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write

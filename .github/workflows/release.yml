@@ -1,0 +1,140 @@
+name: Release
+
+# Builds `ssp` for every supported platform and attaches the archives to the GitHub release.
+# Runs when a version tag is pushed; can also be started by hand for an existing tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach binaries to, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  check-version:
+    name: Check version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Tag matches the version in Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match version $version in Cargo.toml"
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: check-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds are static (musl), so they run on any distribution.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          # One binary for Apple Silicon and Intel Macs.
+          - os: macos-latest
+            target: universal-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: jdx/mise-action@v5
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = universal-apple-darwin ]; then
+            targets="aarch64-apple-darwin x86_64-apple-darwin"
+          else
+            targets="${{ matrix.target }}"
+          fi
+          for t in $targets; do
+            mise exec -- rustup target add "$t"
+            mise exec -- cargo build --release --locked -p sub-screen-player --target "$t"
+          done
+          if [ "${{ matrix.target }}" = universal-apple-darwin ]; then
+            mkdir -p target/universal-apple-darwin/release
+            lipo -create -output target/universal-apple-darwin/release/ssp \
+              target/aarch64-apple-darwin/release/ssp target/x86_64-apple-darwin/release/ssp
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          name="ssp-$TAG-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          case "${{ matrix.target }}" in
+            *windows*) exe=ssp.exe ;;
+            *) exe=ssp ;;
+          esac
+          cp "target/${{ matrix.target }}/release/$exe" "dist/$name/"
+          cp README.md README.ja.md LICENSE-MIT LICENSE-APACHE \
+            crates/server/assets/fonts/LICENSE-Go-fonts.txt "dist/$name/"
+          case "${{ matrix.target }}" in
+            *linux*) cp contrib/linux/70-sub-screen-player.rules "dist/$name/" ;;
+          esac
+          cd dist
+          case "${{ matrix.target }}" in
+            *windows*) powershell -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$name.zip'" ;;
+            *) tar -czf "$name.tar.gz" "$name" ;;
+          esac
+          rm -r "$name"
+          ls -l
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release that does not exist yet is created as a draft with generated notes, so the
+          # notes can be written before publishing.
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+              --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber

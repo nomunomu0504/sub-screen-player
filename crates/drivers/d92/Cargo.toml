@@ -1,0 +1,15 @@
+[package]
+name = "ssp-driver-d92"
+description = "sub-screen-player driver for the upHere / MiraBox D92 9.2-inch USB display"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+ssp-core.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -13,7 +13,7 @@ on:
         description: Existing tag to build and attach binaries to, e.g. v0.1.0. Leave empty for a test build.
         required: false
       ref:
-        description: Branch or commit for a test build (used when no tag is given)
+        description: Branch or full commit SHA for a test build (used when no tag is given)
         required: false
         default: main
 

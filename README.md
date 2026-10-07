@@ -98,6 +98,7 @@ ssp clock --no-seconds         # back to the clock, without seconds
 ssp brightness 60              # backlight in percent
 ssp off                        # screen off (`ssp on` turns it back on)
 ssp status                     # frame counters and timings
+ssp selftest                   # check a display (with the daemon stopped)
 ssp service install            # start the daemon automatically at login
 ```
 

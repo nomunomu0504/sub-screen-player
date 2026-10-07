@@ -11,8 +11,8 @@
 ## Hardware testing / 実機での確認
 
 <!--
-Display model, OS, and what you checked — or "not tested".
-ディスプレイの機種・OS・確認した内容。確認していなければ「未確認」と書いてください。
+Display model, OS, what you checked and the output of `ssp selftest` — or "not tested".
+ディスプレイの機種・OS・確認した内容と `ssp selftest` の出力。確認していなければ「未確認」と書いてください。
 -->
 
 ## Checklist / チェックリスト

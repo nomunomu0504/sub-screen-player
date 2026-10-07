@@ -95,6 +95,7 @@ ssp clock --no-seconds         # 秒なしの時計に戻す
 ssp brightness 60              # 明るさ（%）
 ssp off                        # 画面を消す（`ssp on` で点灯）
 ssp status                     # フレーム数や処理時間
+ssp selftest                   # ディスプレイを検査（デーモンを止めて実行）
 ssp service install            # ログイン時にデーモンを自動起動
 ```
 

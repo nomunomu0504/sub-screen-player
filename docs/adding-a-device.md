@@ -138,8 +138,14 @@ so the driver never claims somebody's keyboard.
 
 ## 7. Test on hardware
 
-`mise run ci` must pass. Then try it on the device and note the results in your pull
-request:
+`mise run ci` must pass. Then run the automatic check on the device and paste its output
+into your pull request:
+
+```sh
+ssp selftest                   # with the daemon stopped; every check should PASS
+```
+
+Then try it by hand and look at the screen:
 
 ```sh
 mise run serve                 # the clock should appear

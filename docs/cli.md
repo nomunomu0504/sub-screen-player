@@ -185,6 +185,10 @@ These work with every command.
 | `ssp devices` | List displays: id, model, size, what they show and whether they are connected. If the daemon is not running, lists the supported displays plugged into this computer instead. |
 | `  --json` | Print the full details as JSON (same as `GET /api/v1/displays`). |
 | `ssp status` | Daemon version and, per display, firmware and frame counters: frames shown, dropped (replaced by newer ones), unchanged (skipped) and received, plus the last encode time, send time and size. |
+| `ssp selftest` | Check every connected display without the daemon (stop the daemon first). Runs about 25 s and reports PASS / WARN / FAIL per check: open (and firmware), commands (wake, brightness 100%), still image, streaming (frames per second), keep-alive (still connected after being idle) and power (off and on). Exits with 1 if a check fails. Use `--display` to test one display. |
+| `  --frames <N>` | Frames sent in the streaming check (default 180). |
+| `  --hold <SECONDS>` | How long to stay idle in the keep-alive check (default 15). |
+| `  --json` | Print the report as JSON. |
 
 ### What to show
 
@@ -253,23 +257,25 @@ with a comment. The daemon reads the file when it starts.
 
 ## Troubleshooting
 
-1. **`ssp devices`**
+1. **`ssp selftest`** checks the whole path from USB to the screen without the daemon. Stop the
+   daemon, run it, and include its output when you [report a problem](../CONTRIBUTING.md).
+2. **`ssp devices`**
    - "The daemon is not running" and your display is listed as plugged in: start the daemon
      with `ssp serve` or `ssp service install`.
    - Your display is not listed at all: check the cable. On Linux, install the udev rule (see
      the [README](../README.md#install)) and replug the display.
-2. **The daemon log says "cannot open ... display"**: another program is using the display,
+3. **The daemon log says "cannot open ... display"**: another program is using the display,
    for example the vendor's app or a second `ssp serve`. Close it; the daemon retries every
    10 seconds.
-3. **"cannot listen on 127.0.0.1:7920 (is the daemon already running?)"**: a daemon is already
+4. **"cannot listen on 127.0.0.1:7920 (is the daemon already running?)"**: a daemon is already
    running (`ssp service status`), or another program uses the port. Use `--listen` with
    another port, and `--url` for the other commands.
-4. **`ssp status`** shows whether frames reach the display. A growing `shown` count means
+5. **`ssp status`** shows whether frames reach the display. A growing `shown` count means
    they do. Many `dropped` frames are normal when a program streams faster than the display
    can take.
-5. **More detail**: run `SSP_LOG=debug ssp serve` and watch the log.
-6. **The D92 shows an old picture after the daemon stopped**: the D92 restarts about 8 seconds
+6. **More detail**: run `SSP_LOG=debug ssp serve` and watch the log.
+7. **The D92 shows an old picture after the daemon stopped**: the D92 restarts about 8 seconds
    after the daemon stops talking to it and then shows the last *stored* image. Store the one
    you want with `ssp show --persist`, or set `on_exit = "save-last"`.
-7. **The display does not react to anything**: unplug it and plug it in again. The daemon
+8. **The display does not react to anything**: unplug it and plug it in again. The daemon
    picks it up again on its own.

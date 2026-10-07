@@ -54,6 +54,14 @@ body:
       label: Display model / ディスプレイの機種
       placeholder: upHere D92
   - type: textarea
+    id: selftest
+    attributes:
+      label: Output of `ssp selftest` / `ssp selftest` の出力
+      description: |
+        Stop the daemon first, then run `ssp selftest`.
+        デーモンを止めてから `ssp selftest` を実行してください。
+      render: text
+  - type: textarea
     id: status
     attributes:
       label: Output of `ssp devices` and `ssp status` / `ssp devices` と `ssp status` の出力

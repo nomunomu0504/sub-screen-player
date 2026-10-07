@@ -1,0 +1,150 @@
+# sub-screen-player
+
+[English](README.md)
+
+USB 接続の小型サブディスプレイ（モニター下や PC ケース内に置く横長のバー型ディスプレイ）を、
+macOS・Linux・Windows から操作するためのツールです。単一バイナリの `ssp` が常駐デーモンとして
+ディスプレイとの接続を保ち、時計・画像・最大 60fps のライブ映像を表示します。HTTP / WebSocket
+API を通して、他のプログラムからも自由に描画できます。
+
+> **ステータス: 初期段階 (v0.1)**。コア・デーモン・D92 ドライバは macOS 上で動作確認済みです。
+> Linux と Windows は CI でビルドを確認していますが、実機ではまだ試していません。報告を歓迎します。
+
+## 対応ディスプレイ
+
+| ディスプレイ | パネル | USB ID | 状況 |
+|---|---|---|---|
+| upHere D92 / MiraBox D92 (9.2 インチ) | 1920x462 | `2100:0006` (HID) | macOS で確認済み: 60fps のライブ表示、保存画像、明るさ、電源 |
+
+ほかの機種を使いたい場合は [機種の追加方法](docs/adding-a-device.ja.md) を参照してください。
+書く必要があるのは機種固有のプロトコル部分だけで、それ以外は共通です。
+
+## 主な機能
+
+- **最大 60fps のライブ表示**: エンコードと送信を別スレッドで並行して行います。デバイスが受け取れる
+  速さを超えてフレームが届いた場合は、最新のものだけを送ります。
+- **時計を内蔵**: 表示形式と色を設定できます。
+- **画像表示**: PNG・JPEG・GIF・WebP に対応し、`contain` / `cover` / `stretch` でパネルに合わせます。
+  電源を切っても残るようにデバイスへ保存することもできます。
+- **HTTP + WebSocket API**: どの言語のスクリプトやアプリからでも描画できます。
+- **抜き差しに追従**: 挿し直すと、それまでの表示内容を再開します。
+- **ログイン時の自動起動**: launchd / systemd ユーザーユニット / Windows の `Run` キー
+- **安全な初期設定**: API は既定で localhost のみ待ち受け、Web ページからのリクエストは拒否します。
+  ネットワークに公開する場合はトークンが必須です。
+
+## インストール
+
+ソースからビルドします。Rust のバージョンは [mise](https://mise.jdx.dev) で固定しています。
+
+```sh
+git clone https://github.com/nomunomu0504/sub-screen-player.git
+cd sub-screen-player
+mise install            # mise.toml に書かれた Rust を導入
+mise run build          # target/release/ssp ができます
+```
+
+Rust がすでに入っている場合は `cargo install --path crates/cli --locked` でも構いません。
+
+**Linux の場合**は、一般ユーザーがディスプレイにアクセスできるよう udev ルールを入れてから挿し直してください。
+
+```sh
+sudo cp contrib/linux/70-sub-screen-player.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+```
+
+## 使い方
+
+```sh
+ssp serve                      # デーモンを起動（Ctrl-C で終了）。時計が表示されます
+```
+
+別のターミナルで:
+
+```sh
+ssp devices                    # ディスプレイ一覧
+ssp show photo.jpg --fit cover # 画像を表示
+ssp clock --no-seconds         # 秒なしの時計に戻す
+ssp brightness 60              # 明るさ（%）
+ssp off                        # 画面を消す（`ssp on` で点灯）
+ssp status                     # フレーム数や処理時間
+ssp service install            # ログイン時にデーモンを自動起動
+```
+
+ディスプレイが複数ある場合は `--display <id>` で選びます（ID は `ssp devices` で確認できます）。
+
+## 設定
+
+`ssp config init` でコメント付きの設定ファイルを作成できます。場所は `ssp config path` で確認できます。
+どの項目も省略可能です。
+
+```toml
+listen = "127.0.0.1:7920"
+
+[display]
+brightness = 80          # 接続時に設定する明るさ
+on_exit = "leave"        # 終了時: "leave" / "save-last" / "clear" / "sleep"
+
+[startup]
+show = "clock"           # 接続時の表示: "clock" / "image" / "nothing"
+
+[clock]
+seconds = true
+date_format = "%Y-%m-%d %a"
+```
+
+## 自作プログラムから描画する
+
+WebSocket でフレームを送ります。バイナリメッセージ1つが1フレーム（PNG や JPEG などの画像、または生ピクセル）です。
+
+```python
+import asyncio, io, websockets
+from PIL import Image, ImageDraw
+
+async def main():
+    url = "ws://127.0.0.1:7920/api/v1/displays/default/stream"
+    async with websockets.connect(url) as ws:
+        for n in range(600):
+            img = Image.new("RGB", (1920, 462))
+            ImageDraw.Draw(img).text((40, 200), f"frame {n}", fill="white")
+            buf = io.BytesIO()
+            img.save(buf, "JPEG")
+            await ws.send(buf.getvalue())
+            await asyncio.sleep(1 / 30)
+
+asyncio.run(main())
+```
+
+画像を1枚送るだけなら HTTP でも送れます。
+
+```sh
+curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"
+```
+
+すべてのエンドポイントは [docs/api.ja.md](docs/api.ja.md) にまとめています。
+
+## 注意点
+
+- `ssp show --persist` と `on_exit = "save-last"` は、画像をデバイスのフラッシュメモリに書き込みます。
+  たまに使う分には問題ありませんが、毎フレーム使うのは避けてください。
+- D92 は、デーモンからのキープアライブが止まると約 8 秒後に自動で再起動し、最後に保存された画像を表示します。
+- D92 の公式アプリにある「拡張スクリーン」モード（`SCREEN` コマンド）を送ると、抜き差しするまで操作を
+  受け付けなくなります。このプロジェクトでは送信しません。
+
+## ドキュメント
+
+どのドキュメントも日本語版と英語版があります（各ページ冒頭のリンクで切り替えられます）。
+
+- [アーキテクチャ](docs/architecture.ja.md): 全体の構成と、どこに何を書くか
+- [機種の追加方法](docs/adding-a-device.ja.md)
+- [HTTP / WebSocket API](docs/api.ja.md)
+- [D92 プロトコルメモ](docs/devices/d92.ja.md)
+- [コントリビュートの手引き](CONTRIBUTING.ja.md)
+
+## ライセンス
+
+[Apache License 2.0](LICENSE-APACHE) と [MIT License](LICENSE-MIT) のデュアルライセンスで、
+どちらかを選んで利用できます。同梱の Go フォントは独自の BSD 系ライセンスです
+（[crates/server/assets/fonts/LICENSE-Go-fonts.txt](crates/server/assets/fonts/LICENSE-Go-fonts.txt)）。
+
+本プロジェクトは upHere・MiraBox などのディスプレイメーカーとは関係がなく、承認も受けていません。
+各機種のプロトコルは相互運用のために調べたものです。

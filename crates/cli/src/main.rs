@@ -2,6 +2,7 @@
 //! commands talk to it over its HTTP API.
 
 mod client;
+mod selftest;
 mod service;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -64,6 +65,18 @@ enum Cmd {
     },
     /// Show the daemon's state and frame counters
     Status,
+    /// Check that connected displays work, without the daemon (stop it first)
+    Selftest {
+        /// Frames to send in the streaming check
+        #[arg(long, default_value_t = 180)]
+        frames: u32,
+        /// Seconds to stay idle in the keep-alive check
+        #[arg(long, default_value_t = 15)]
+        hold: u64,
+        /// Print the report as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Show an image file (PNG, JPEG, GIF or WebP)
     Show {
         /// The image
@@ -188,6 +201,18 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Devices { json } => devices(&cli_client(&cli.url, &cli.token, &config_path)?, json),
         Cmd::Status => status(&cli_client(&cli.url, &cli.token, &config_path)?),
+        Cmd::Selftest { frames, hold, json } => {
+            let options = selftest::Options {
+                display: cli.display.clone(),
+                frames,
+                hold: std::time::Duration::from_secs(hold),
+                json,
+            };
+            if !selftest::run(&cli_client(&cli.url, &cli.token, &config_path)?, &options)? {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Cmd::Show { path, fit, persist } => {
             let bytes = client::read_file(&path)?;
             let query = format!("?fit={}&persist={persist}", fit.name());

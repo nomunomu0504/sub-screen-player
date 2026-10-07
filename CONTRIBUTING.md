@@ -35,6 +35,11 @@ mise run ci         # what CI runs: format check, clippy, tests
 | `mise run build` | Release build (`target/release/ssp`) |
 | `mise run serve` | Run the daemon from source |
 
+The website (`site/`, built with [Astro Starlight](https://starlight.astro.build) and
+[bun](https://bun.sh), both installed by mise) shows the documents in `docs/`, `CONTRIBUTING`
+and `SECURITY`: edit those files, not copies. `mise run site:dev` serves it locally with live
+reload; `mise run site:build` builds it into `site/dist`.
+
 Besides Rust, macOS and Windows need a C compiler to build the bundled hidapi library: the
 Xcode Command Line Tools on macOS (`xcode-select --install`), and on Windows the MSVC build
 tools that Rust requires anyway. On Linux the HID backend talks to `hidraw` directly, so
@@ -56,6 +61,8 @@ exactly one driver crate; nothing else knows about them.**
 | Add a CLI command | `crates/cli/src/main.rs` (+ `docs/cli.md` / `docs/cli.ja.md`) |
 | Change autostart for an OS | `crates/cli/src/service.rs` |
 | Linux permissions for a device | `contrib/linux/70-sub-screen-player.rules` |
+| Website-only pages (home, getting started, download) | `site/content/` (and `site/content/ja/`) |
+| Publish another document on the website | `site/scripts/sync-docs.ts` and the sidebar in `site/astro.config.mjs` |
 
 Dependencies point one way only: `cli` → `server` → `drivers/*` → `core`. A driver never
 depends on another driver or on the server. [docs/architecture.md](docs/architecture.md)

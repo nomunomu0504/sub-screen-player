@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/nomunomu0504/sub-screen-player)](https://github.com/nomunomu0504/sub-screen-player/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
-[日本語](README.ja.md)
+[日本語](README.ja.md) · **Website: [nomunomu0504.github.io/sub-screen-player](https://nomunomu0504.github.io/sub-screen-player/)** (downloads, one-line installer, docs)
 
 Drive small USB "sub screens" (the long bar displays that sit under a monitor or inside a PC
 case) from macOS, Linux and Windows. A single binary, `ssp`, runs a small daemon that keeps
@@ -38,6 +38,16 @@ device-specific protocol has to be written; everything else is shared.
   pages. Exposing it on the network requires a token.
 
 ## Install
+
+### One-line installer
+
+```sh
+curl -fsSL https://nomunomu0504.github.io/sub-screen-player/install.sh | sh   # macOS, Linux
+irm https://nomunomu0504.github.io/sub-screen-player/install.ps1 | iex       # Windows (PowerShell)
+```
+
+It downloads the latest release for your system, checks its SHA-256 checksum and puts `ssp` on
+your `PATH`.
 
 ### Prebuilt binaries
 

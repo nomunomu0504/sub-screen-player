@@ -32,6 +32,11 @@ mise run ci         # CI と同じチェック: フォーマット確認、clipp
 | `mise run build` | リリースビルド（`target/release/ssp`） |
 | `mise run serve` | ソースからデーモンを起動 |
 
+Web サイト（`site/`。[Astro Starlight](https://starlight.astro.build) と [bun](https://bun.sh) で作っており、
+どちらも mise が入れます）は、`docs/`・`CONTRIBUTING`・`SECURITY` のドキュメントをそのまま表示しています。
+内容を直すときは、コピーではなく元のファイルを編集してください。`mise run site:dev` でライブリロード付きのローカル表示、
+`mise run site:build` で `site/dist` へのビルドができます。
+
 Rust のほかに、macOS と Windows では同梱の hidapi ライブラリをビルドするための C コンパイラが必要です。macOS では
 Xcode Command Line Tools（`xcode-select --install`）、Windows では Rust がもともと必要とする MSVC のビルドツールです。
 Linux の HID バックエンドは `hidraw` を直接扱うため、ほかに必要なものはありません。
@@ -52,6 +57,8 @@ Linux の HID バックエンドは `hidraw` を直接扱うため、ほかに�
 | CLI のコマンドを追加する | `crates/cli/src/main.rs`（＋ `docs/cli.md` / `docs/cli.ja.md`） |
 | OS ごとの自動起動を変える | `crates/cli/src/service.rs` |
 | Linux でのデバイスのアクセス権 | `contrib/linux/70-sub-screen-player.rules` |
+| Web サイト専用のページ（トップ、はじめに、ダウンロード） | `site/content/`（と `site/content/ja/`） |
+| Web サイトに載せるドキュメントを増やす | `site/scripts/sync-docs.ts` と `site/astro.config.mjs` のサイドバー |
 
 依存の向きは一方向だけです: `cli` → `server` → `drivers/*` → `core`。ドライバがほかのドライバやサーバに
 依存することはありません。各層の詳細は [docs/architecture.ja.md](docs/architecture.ja.md) を参照してください。

@@ -75,7 +75,6 @@ impl Transport for HidTransport {
         Ok(())
     }
 
-    #[cfg(not(windows))]
     fn get_input_report(&mut self, report_id: u8, buf: &mut [u8]) -> Result<usize> {
         let mut data = vec![0u8; buf.len() + 1];
         data[0] = report_id;
@@ -83,11 +82,5 @@ impl Transport for HidTransport {
         let n = n.saturating_sub(1).min(buf.len());
         buf[..n].copy_from_slice(&data[1..=n]);
         Ok(n)
-    }
-
-    #[cfg(windows)]
-    fn get_input_report(&mut self, _report_id: u8, _buf: &mut [u8]) -> Result<usize> {
-        // hidapi's native Windows backend does not offer GET_REPORT for input reports.
-        Err(Error::Unsupported("reading input reports"))
     }
 }

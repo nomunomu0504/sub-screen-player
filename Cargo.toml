@@ -21,7 +21,9 @@ ssp-driver-d92 = { path = "crates/drivers/d92", version = "0.1.0" }
 ssp-server = { path = "crates/server", version = "0.1.0" }
 
 # Devices and images
-hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev", "windows-native"] }
+# Linux uses the pure-Rust hidraw backend; macOS and Windows build the C hidapi library, whose
+# Windows backend (unlike `windows-native`) can read input reports.
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 jpeg-encoder = { version = "0.7.1", features = ["simd"] }
 ab_glyph = "0.2.32"

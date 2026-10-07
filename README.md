@@ -37,7 +37,9 @@ device-specific protocol has to be written; everything else is shared.
 
 ## Install
 
-Build from source. [mise](https://mise.jdx.dev) installs the pinned Rust toolchain.
+Build from source. [mise](https://mise.jdx.dev) installs the pinned Rust toolchain. On macOS
+you also need the Xcode Command Line Tools (`xcode-select --install`), and on Windows the
+Visual Studio C++ build tools that Rust uses anyway; they compile the bundled hidapi library.
 
 ```sh
 git clone https://github.com/nomunomu0504/sub-screen-player.git

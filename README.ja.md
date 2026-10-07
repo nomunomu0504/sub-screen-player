@@ -36,7 +36,9 @@ API を通して、他のプログラムからも自由に描画できます。
 
 ## インストール
 
-ソースからビルドします。Rust のバージョンは [mise](https://mise.jdx.dev) で固定しています。
+ソースからビルドします。Rust のバージョンは [mise](https://mise.jdx.dev) で固定しています。macOS では
+Xcode Command Line Tools（`xcode-select --install`）、Windows では Rust がもともと使う Visual Studio の C++ ビルドツールも
+必要です（同梱の hidapi ライブラリのコンパイルに使います）。
 
 ```sh
 git clone https://github.com/nomunomu0504/sub-screen-player.git

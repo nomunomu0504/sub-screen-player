@@ -32,7 +32,9 @@ mise run ci         # CI と同じチェック: フォーマット確認、clipp
 | `mise run build` | リリースビルド（`target/release/ssp`） |
 | `mise run serve` | ソースからデーモンを起動 |
 
-必要なのは Rust だけです。Linux の HID バックエンドは `hidraw` を直接扱うため、システムライブラリは不要です。
+Rust のほかに、macOS と Windows では同梱の hidapi ライブラリをビルドするための C コンパイラが必要です。macOS では
+Xcode Command Line Tools（`xcode-select --install`）、Windows では Rust がもともと必要とする MSVC のビルドツールです。
+Linux の HID バックエンドは `hidraw` を直接扱うため、ほかに必要なものはありません。
 
 ## どこに何を書くか
 

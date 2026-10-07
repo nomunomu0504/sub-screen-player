@@ -34,8 +34,10 @@ mise run ci         # what CI runs: format check, clippy, tests
 | `mise run build` | Release build (`target/release/ssp`) |
 | `mise run serve` | Run the daemon from source |
 
-Rust is the only dependency. On Linux the HID backend talks to `hidraw` directly, so no
-system libraries are required.
+Besides Rust, macOS and Windows need a C compiler to build the bundled hidapi library: the
+Xcode Command Line Tools on macOS (`xcode-select --install`), and on Windows the MSVC build
+tools that Rust requires anyway. On Linux the HID backend talks to `hidraw` directly, so
+nothing else is needed.
 
 ## Where code belongs
 

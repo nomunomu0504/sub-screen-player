@@ -31,6 +31,8 @@ jobs:
 
       # Installs the Rust toolchain pinned in mise.toml, so CI matches local builds.
       - uses: jdx/mise-action@v5
+        with:
+          install_args: rust
 
       - uses: Swatinem/rust-cache@v2
 

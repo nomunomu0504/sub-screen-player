@@ -375,14 +375,15 @@ impl Worker {
                         }
                     };
                     let fatal = result.as_ref().is_err_and(Error::is_fatal);
-                    let failure = result.as_ref().err().map(ToString::to_string);
-                    let _ = reply.send(result);
+                    // Close before replying, so a caller that gets the error already sees the
+                    // presenter as stopped.
                     if stop {
                         self.close(None);
-                        return;
+                    } else if fatal {
+                        self.close(result.as_ref().err().map(ToString::to_string));
                     }
-                    if fatal {
-                        self.close(failure);
+                    let _ = reply.send(result);
+                    if stop || fatal {
                         return;
                     }
                     continue;

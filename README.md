@@ -11,15 +11,15 @@ case) from macOS, Linux and Windows. A single binary, `ssp`, runs a small daemon
 the display alive and shows a clock, images or live frames at up to 60 fps. Anything else can
 draw on the screen through the daemon's HTTP and WebSocket API.
 
-> **Status: early (v0.1).** The core, the daemon and the D92 driver work on macOS. Linux and
-> Windows builds are checked in CI but have not been tried on hardware yet. Reports are
-> welcome.
+> **Status: early (v0.1).** The D92 works on macOS (Apple Silicon), and on Linux
+> (Ubuntu 24.04) and Windows 11 on ARM64, checked with `ssp selftest`. The x86_64 builds for
+> Linux and Windows pass CI but have not been tried with a display yet. Reports are welcome.
 
 ## Supported displays
 
 | Display | Panel | USB id | Status |
 |---|---|---|---|
-| upHere D92 / MiraBox D92 (9.2") | 1920x462 | `2100:0006` (HID) | Tested on macOS: live frames at 60 fps, saved images, brightness, power |
+| upHere D92 / MiraBox D92 (9.2") | 1920x462 | `2100:0006` (HID) | Tested on macOS, Linux and Windows (ARM64): live frames at up to 60 fps, saved images, brightness, power ([details](docs/devices/d92.md#tested-platforms)) |
 
 Have another display? See [Adding a device](docs/adding-a-device.md). Only the
 device-specific protocol has to be written; everything else is shared.

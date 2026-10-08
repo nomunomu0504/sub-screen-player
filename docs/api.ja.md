@@ -104,7 +104,8 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 ```
 
 書式は strftime 形式です（[リファレンス](https://docs.rs/jiff/latest/jiff/fmt/strtime/)）。
-`date_format` を空にすると日付を表示しません。
+`date_format` を空にすると日付を表示しません。`weekdays`（日曜日から順に7つの名前）を指定すると、`%a` と `%A` が
+その名前になります（例: `["日", "月", "火", "水", "木", "金", "土"]`）。
 
 ## WebSocket ストリーム
 

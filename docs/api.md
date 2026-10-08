@@ -105,7 +105,8 @@ All fields are optional; missing ones come from the `[clock]` section of the con
 ```
 
 Formats use strftime syntax ([reference](https://docs.rs/jiff/latest/jiff/fmt/strtime/)).
-An empty `date_format` hides the date.
+An empty `date_format` hides the date. `weekdays` (7 names, from Sunday) replaces what `%a` and
+`%A` print, e.g. `["日", "月", "火", "水", "木", "金", "土"]`.
 
 ## WebSocket stream
 

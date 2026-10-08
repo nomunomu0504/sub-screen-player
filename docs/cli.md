@@ -33,7 +33,17 @@ color = "#FFD080"
 ```
 
 Then [restart the daemon](#autostart) so it reads the file.
-The built-in font only has Latin characters, so other scripts (e.g. Japanese) cannot be shown.
+
+For dates in another language, list the weekday names from Sunday in `weekdays`; `%a` (and `%A`)
+then print those names. Characters the built-in font lacks (e.g. Japanese) are drawn with a font
+installed on the system (Hiragino on macOS, Yu Gothic or Meiryo on Windows, Noto Sans CJK and similar
+on Linux). If Japanese does not show on Linux, install a package such as `fonts-noto-cjk`.
+
+```toml
+[clock]
+date_format = "%Y年%m月%d日（%a）"     # e.g. "2026年10月08日（木）"
+weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+```
 
 To change the clock just for now, use options instead:
 
@@ -221,6 +231,7 @@ These work with every command.
 | `  --no-seconds` | Hide the seconds. |
 | `  --format <FMT>` | Format of the time, e.g. `"%H:%M"` or `"%I:%M %p"` ([strftime syntax](https://docs.rs/jiff/latest/jiff/fmt/strtime/)). |
 | `  --date-format <FMT>` | Format of the date line, e.g. `"%Y-%m-%d %a"`. `""` hides it. |
+| `  --weekdays <NAMES>` | Names printed by `%a` and `%A`: seven, comma-separated, from Sunday, e.g. `日,月,火,水,木,金,土`. |
 | `ssp stop` | Stop the clock, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, image or stream and blank the screen. |
 

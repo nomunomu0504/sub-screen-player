@@ -33,11 +33,26 @@ impl Clock {
 
     /// Checks that the formats can be used, so errors surface before anything is drawn.
     pub fn validate(config: &ClockConfig) -> Result<(), String> {
+        if !matches!(config.weekdays.len(), 0 | 7) {
+            return Err("weekdays needs 7 names, from Sunday".into());
+        }
         let now = Zoned::now();
         for format in [config.time_format(), config.date_format.as_str()] {
-            strtime::format(format, &now).map_err(|e| format!("bad format {format:?}: {e}"))?;
+            format_time(format, &now, &config.weekdays)
+                .map_err(|e| format!("bad format {format:?}: {e}"))?;
         }
         Ok(())
+    }
+
+    /// The big line (the time) for `now`.
+    pub fn time_text(&self, now: &Zoned) -> String {
+        format_time(self.config.time_format(), now, &self.config.weekdays)
+            .unwrap_or_else(|e| e.to_string())
+    }
+
+    /// The small line (the date) for `now`; empty if hidden.
+    pub fn date_text(&self, now: &Zoned) -> String {
+        format_time(&self.config.date_format, now, &self.config.weekdays).unwrap_or_default()
     }
 
     /// Draws the clock for `now`.
@@ -45,9 +60,8 @@ impl Clock {
         let image = frame.image_mut();
         image.pixels_mut().for_each(|p| p.0 = self.background);
         let (width, height) = (image.width() as f32, image.height() as f32);
-        let time =
-            strtime::format(self.config.time_format(), now).unwrap_or_else(|e| e.to_string());
-        let date = strtime::format(&self.config.date_format, now).unwrap_or_default();
+        let time = self.time_text(now);
+        let date = self.date_text(now);
 
         // Size the time to the panel, leaving room for the date.
         let font = builtin_font();
@@ -95,6 +109,32 @@ impl Clock {
     }
 }
 
+/// Formats `now` with a strftime-style `format`. With 7 `weekdays` (from Sunday), `%a` and `%A`
+/// are replaced by the day's name, e.g. for Japanese.
+pub fn format_time(format: &str, now: &Zoned, weekdays: &[String]) -> Result<String, jiff::Error> {
+    let [_, _, _, _, _, _, _] = weekdays else {
+        return strtime::format(format, now);
+    };
+    let name = &weekdays[now.weekday().to_sunday_zero_offset() as usize];
+    let mut localized = String::with_capacity(format.len());
+    let mut chars = format.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            localized.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('a' | 'A') => localized.push_str(&name.replace('%', "%%")),
+            Some(next) => {
+                localized.push('%');
+                localized.push(next);
+            }
+            None => localized.push('%'),
+        }
+    }
+    strtime::format(localized.as_str(), now)
+}
+
 impl Source for Clock {
     fn render(&mut self, frame: &mut Frame) {
         self.draw(frame, &Zoned::now());
@@ -136,6 +176,25 @@ mod tests {
         };
         assert!(Clock::validate(&config).is_err());
         assert!(Clock::validate(&ClockConfig::default()).is_ok());
+    }
+
+    #[test]
+    fn uses_weekday_names() {
+        let weekdays: Vec<String> = ["日", "月", "火", "水", "木", "金", "土"]
+            .map(String::from)
+            .into();
+        // 2026-10-08 is a Thursday.
+        let now = at("2026-10-08T09:00:00+09:00[Asia/Tokyo]");
+        assert_eq!(
+            format_time("%m月%d日(%a) %A 100%%", &now, &weekdays).unwrap(),
+            "10月08日(木) 木 100%"
+        );
+        assert_eq!(format_time("%a", &now, &[]).unwrap(), "Thu");
+        let config = ClockConfig {
+            weekdays: vec!["x".into()],
+            ..ClockConfig::default()
+        };
+        assert!(Clock::validate(&config).is_err());
     }
 
     #[test]

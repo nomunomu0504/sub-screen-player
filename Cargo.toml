@@ -27,6 +27,8 @@ hidapi = { version = "2.6.7", default-features = false, features = ["linux-nativ
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 jpeg-encoder = { version = "0.7.1", features = ["simd"] }
 ab_glyph = "0.2.32"
+# System fonts for characters the built-in font lacks (e.g. Japanese)
+fontdb = "0.24.0"
 jiff = "0.2.38"
 
 # Errors and logging

@@ -107,6 +107,9 @@ pub struct ClockRequest {
     /// strftime-style format of the small line; empty hides it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_format: Option<String>,
+    /// Names for `%a` and `%A`, from Sunday (7 names); empty keeps English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weekdays: Option<Vec<String>>,
     /// Text color, `#RRGGBB`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,

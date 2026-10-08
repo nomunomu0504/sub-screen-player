@@ -35,6 +35,7 @@ fit = "contain"          # "contain", "cover" or "stretch"
 seconds = true
 # time_format = "%H:%M"  # strftime; overrides `seconds`
 date_format = "%Y-%m-%d %a"   # "" hides the date
+# weekdays = ["日", "月", "火", "水", "木", "金", "土"]   # names for %a and %A, from Sunday
 color = "#F0F2F8"
 background = "#000000"
 
@@ -217,6 +218,9 @@ pub struct ClockConfig {
     pub time_format: Option<String>,
     /// strftime-style format of the small line. Empty hides it.
     pub date_format: String,
+    /// Names used for `%a` and `%A`, from Sunday, e.g. `["日", "月", ...]`. Empty keeps English.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub weekdays: Vec<String>,
     /// Text color, `#RRGGBB`.
     pub color: String,
     /// Background color, `#RRGGBB`.
@@ -229,6 +233,7 @@ impl Default for ClockConfig {
             seconds: true,
             time_format: None,
             date_format: "%Y-%m-%d %a".into(),
+            weekdays: Vec::new(),
             color: "#F0F2F8".into(),
             background: "#000000".into(),
         }
@@ -323,6 +328,9 @@ impl Config {
                 return invalid(format!("{color:?} is not a #RRGGBB color"));
             }
         }
+        if !matches!(self.clock.weekdays.len(), 0 | 7) {
+            return invalid("clock.weekdays needs 7 names, from Sunday".into());
+        }
         Ok(())
     }
 }
@@ -378,6 +386,7 @@ mod tests {
             [clock]
             seconds = false
             date_format = ""
+            weekdays = ["日", "月", "火", "水", "木", "金", "土"]
             color = "#ff8800"
             [drivers]
             enable = ["d92", "dnext"]

@@ -282,6 +282,7 @@ async fn clock(
     }
     config.time_format = request.time_format.or(config.time_format);
     config.date_format = request.date_format.unwrap_or(config.date_format);
+    config.weekdays = request.weekdays.unwrap_or(config.weekdays);
     config.color = request.color.unwrap_or(config.color);
     config.background = request.background.unwrap_or(config.background);
     for color in [&config.color, &config.background] {

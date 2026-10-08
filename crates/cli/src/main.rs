@@ -108,6 +108,9 @@ enum Cmd {
         /// strftime-style format of the date line ("" hides it)
         #[arg(long)]
         date_format: Option<String>,
+        /// Names for %a and %A, from Sunday, e.g. "日,月,火,水,木,金,土"
+        #[arg(long, value_delimiter = ',')]
+        weekdays: Option<Vec<String>>,
     },
     /// Set the backlight
     Brightness {
@@ -246,11 +249,13 @@ fn run(cli: Cli) -> Result<()> {
             no_seconds,
             format,
             date_format,
+            weekdays,
         } => {
             let request = ClockRequest {
                 seconds: no_seconds.then_some(false),
                 time_format: format,
                 date_format,
+                weekdays,
                 ..ClockRequest::default()
             };
             cli_client(&cli.url, &cli.token, &config_path)?

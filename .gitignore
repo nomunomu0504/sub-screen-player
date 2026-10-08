@@ -7,3 +7,5 @@
 /.private/
 *.pcap
 *.usbio.log*
+# work trees of coding agents (Claude Code)
+/.claude/worktrees/

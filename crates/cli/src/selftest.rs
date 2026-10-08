@@ -139,10 +139,10 @@ pub fn run(client: &Client, options: &Options) -> Result<bool> {
     if targets.is_empty() {
         if !options.json {
             if report.skipped.is_empty() {
-                println!("No supported display found.");
-                println!("{}", no_display_hint());
+                say!("No supported display found.");
+                say!("{}", no_display_hint());
             } else {
-                println!(
+                say!(
                     "The running daemon may use every matching display. Stop it, or run it \
                      with only the drivers it should keep (`ssp serve --driver <id>`)."
                 );
@@ -169,7 +169,7 @@ pub fn run(client: &Client, options: &Options) -> Result<bool> {
     };
     for (target, opened) in &opened {
         if !options.json {
-            println!("Testing {} ({}) ...", target.found.driver.name(), target.id);
+            say!("Testing {} ({}) ...", target.found.driver.name(), target.id);
         }
         report
             .displays
@@ -537,15 +537,17 @@ fn test_pattern(width: u32, height: u32, label: &str) -> Frame {
 
 fn print_report(report: &Report, json: bool) -> Result<()> {
     if json {
-        println!("{}", serde_json::to_string_pretty(report)?);
+        say!("{}", serde_json::to_string_pretty(report)?);
         return Ok(());
     }
-    println!(
+    say!(
         "\nssp selftest {} ({} {})",
-        report.version, report.os, report.arch
+        report.version,
+        report.os,
+        report.arch
     );
     for d in &report.displays {
-        println!(
+        say!(
             "\n{}  {}  firmware {}",
             d.id,
             d.model,
@@ -558,13 +560,13 @@ fn print_report(report: &Report, json: bool) -> Result<()> {
                 Status::Fail => "FAIL",
                 Status::Skip => "SKIP",
             };
-            println!("  {status}  {:<12} {}", c.name, c.detail);
+            say!("  {status}  {:<12} {}", c.name, c.detail);
         }
     }
     for skipped in &report.skipped {
-        println!("\nSkipped {}: {}", skipped.id, skipped.reason);
+        say!("\nSkipped {}: {}", skipped.id, skipped.reason);
     }
-    println!("\nResult: {}", if report.passed { "PASS" } else { "FAIL" });
+    say!("\nResult: {}", if report.passed { "PASS" } else { "FAIL" });
     Ok(())
 }
 

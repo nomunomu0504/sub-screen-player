@@ -1,6 +1,14 @@
 //! `ssp`: the sub-screen-player command line. `ssp serve` runs the daemon; the other
 //! commands talk to it over its HTTP API.
 
+/// `println!` for what a command prints: when standard output is closed early
+/// (`ssp devices | head -1`), the program ends quietly instead of panicking.
+macro_rules! say {
+    ($($arg:tt)*) => {
+        $crate::write_stdout(format_args!("{}\n", format_args!($($arg)*)))
+    };
+}
+
 mod client;
 mod selftest;
 mod service;
@@ -254,6 +262,17 @@ impl FitArg {
     }
 }
 
+/// Writes to standard output; see [`say!`].
+fn write_stdout(text: std::fmt::Arguments<'_>) {
+    use std::io::Write;
+    if let Err(err) = std::io::stdout().lock().write_fmt(text) {
+        if err.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        panic!("failed printing to stdout: {err}");
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
@@ -386,17 +405,20 @@ fn run(cli: Cli) -> Result<()> {
                 ServiceCmd::Uninstall => service::uninstall()?,
                 ServiceCmd::Status => service::status()?,
             };
-            println!("{message}");
+            say!("{message}");
             Ok(())
         }
         Cmd::Config { action } => match action {
             ConfigCmd::Path => {
-                println!("{}", config_path.display());
+                say!("{}", config_path.display());
                 Ok(())
             }
             ConfigCmd::Init { force } => init_config(&config_path, force),
             ConfigCmd::Show => {
-                print!("{}", toml::to_string_pretty(&Config::load(&config_path)?)?);
+                say!(
+                    "{}",
+                    toml::to_string_pretty(&Config::load(&config_path)?)?.trim_end()
+                );
                 Ok(())
             }
         },
@@ -421,7 +443,7 @@ fn init_config(path: &Path, force: bool) -> Result<()> {
     }
     std::fs::write(path, ssp_server::config::TEMPLATE)
         .with_context(|| format!("cannot write {}", path.display()))?;
-    println!("Wrote {}", path.display());
+    say!("Wrote {}", path.display());
     Ok(())
 }
 
@@ -456,11 +478,11 @@ fn devices(client: &Client, json: bool, drivers: &[String]) -> Result<()> {
         displays.retain(|d| drivers.contains(&d.driver));
     }
     if json {
-        println!("{}", serde_json::to_string_pretty(&displays)?);
+        say!("{}", serde_json::to_string_pretty(&displays)?);
         return Ok(());
     }
     if displays.is_empty() {
-        println!("No displays found.");
+        say!("No displays found.");
         return Ok(());
     }
     print_table(&displays);
@@ -500,13 +522,13 @@ fn print_table(displays: &[DisplayView]) {
             .zip(&widths)
             .map(|(c, w)| format!("{c:<w$}"))
             .collect();
-        println!("{}", line.join("  ").trim_end());
+        say!("{}", line.join("  ").trim_end());
     }
 }
 
 /// Without a daemon, at least show which devices are plugged in.
 fn local_scan(client: &Client, drivers: &[String]) -> Result<()> {
-    println!(
+    say!(
         "The daemon is not running at {} (start it with `ssp serve`).",
         client.base()
     );
@@ -517,11 +539,11 @@ fn local_scan(client: &Client, drivers: &[String]) -> Result<()> {
     let registry = ssp_server::drivers::registry(&selection)?;
     let found = registry.scan().context("cannot list USB devices")?;
     if found.is_empty() {
-        println!("No supported displays are plugged in.");
+        say!("No supported displays are plugged in.");
     }
     for f in found {
         let c = &f.candidate;
-        println!(
+        say!(
             "Plugged in: {} ({:04x}:{:04x}, serial {:?})",
             f.driver.name(),
             c.vendor_id,
@@ -534,25 +556,31 @@ fn local_scan(client: &Client, drivers: &[String]) -> Result<()> {
 
 fn status(client: &Client) -> Result<()> {
     let health = client.health()?;
-    println!("Daemon {} at {}", health.version, client.base());
+    say!("Daemon {} at {}", health.version, client.base());
     for d in client.displays()? {
         let state = if d.connected {
             "connected"
         } else {
             "unplugged"
         };
-        println!("\n{}  {} ({state}, showing {})", d.id, d.model, d.content);
+        say!("\n{}  {} ({state}, showing {})", d.id, d.model, d.content);
         if let Some(fw) = &d.firmware {
-            println!("  firmware  {fw}");
+            say!("  firmware  {fw}");
         }
         if let Some(s) = &d.stats {
-            println!(
+            say!(
                 "  frames    {} shown, {} dropped, {} unchanged, {} received",
-                s.shown, s.dropped, s.duplicates, s.submitted
+                s.shown,
+                s.dropped,
+                s.duplicates,
+                s.submitted
             );
-            println!(
+            say!(
                 "  last      {:.1} ms encode, {:.1} ms send, {} bytes, quality {}",
-                s.last_encode_ms, s.last_send_ms, s.last_bytes, s.quality
+                s.last_encode_ms,
+                s.last_send_ms,
+                s.last_bytes,
+                s.quality
             );
         }
     }
@@ -653,9 +681,9 @@ fn metric(client: &Client, action: MetricCmd) -> Result<()> {
         MetricCmd::List { json } => {
             let metrics = client.metrics()?;
             if json {
-                println!("{}", serde_json::to_string_pretty(&metrics)?);
+                say!("{}", serde_json::to_string_pretty(&metrics)?);
             } else if metrics.is_empty() {
-                println!("No metrics yet. Send one with `ssp metric set <id> --value <n>`.");
+                say!("No metrics yet. Send one with `ssp metric set <id> --value <n>`.");
             } else {
                 print_metrics(&metrics);
             }
@@ -716,7 +744,7 @@ fn print_metrics(metrics: &[MetricView]) {
             .zip(&widths)
             .map(|(c, w)| format!("{c:<w$}"))
             .collect();
-        println!("{}", line.join("  ").trim_end());
+        say!("{}", line.join("  ").trim_end());
     }
 }
 

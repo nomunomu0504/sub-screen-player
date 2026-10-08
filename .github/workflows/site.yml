@@ -115,3 +115,14 @@ jobs:
         run: |
           Get-Content site/public/install.ps1 -Raw | Invoke-Expression
           & "$env:SSP_INSTALL_DIR\ssp.exe" --version
+
+      # The command the website shows, run from the Command Prompt against the published script.
+      - name: One-line command from cmd
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          SSP_INSTALL_DIR: ${{ runner.temp }}\ssp-one-line
+          SCRIPT_URL: ${{ vars.SITE_DOMAIN && format('https://{0}', vars.SITE_DOMAIN) || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}/install.ps1
+        run: |
+          powershell -c "irm %SCRIPT_URL% | iex"
+          "%SSP_INSTALL_DIR%\ssp.exe" --version

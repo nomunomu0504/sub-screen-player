@@ -10,8 +10,11 @@ interface Props {
 const { os } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const url = (file: string) => `${Astro.site?.origin ?? ''}${base}/${file}`;
+// Through `powershell -c`, the Windows command runs from PowerShell and the Command Prompt alike.
 const command =
-	os === 'windows' ? `irm ${url('install.ps1')} | iex` : `curl -fsSL ${url('install.sh')} | sh`;
+	os === 'windows'
+		? `powershell -c "irm ${url('install.ps1')} | iex"`
+		: `curl -fsSL ${url('install.sh')} | sh`;
 ---
 
 <Code code={command} lang={os === 'windows' ? 'powershell' : 'sh'} />

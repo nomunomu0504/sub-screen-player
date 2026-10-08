@@ -1,6 +1,8 @@
 # Installs ssp (sub-screen-player) from the latest GitHub release on Windows.
 #
-#   irm https://subscreen.dev/install.ps1 | iex
+#   powershell -c "irm https://subscreen.dev/install.ps1 | iex"
+#
+# (from PowerShell or the Command Prompt; inside PowerShell, `irm ... | iex` alone works too)
 #
 # Environment:
 #   SSP_VERSION      release to install, e.g. v0.1.0 (default: the latest)

@@ -98,8 +98,8 @@ background = "#0B1220"
 ### 1行インストール
 
 ```sh
-curl -fsSL https://subscreen.dev/install.sh | sh   # macOS・Linux
-irm https://subscreen.dev/install.ps1 | iex       # Windows（PowerShell）
+curl -fsSL https://subscreen.dev/install.sh | sh              # macOS・Linux
+powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 ```
 
 お使いの環境向けの最新リリースをダウンロードし、SHA-256 チェックサムを確認してから `ssp` を `PATH` の通った場所に置きます。

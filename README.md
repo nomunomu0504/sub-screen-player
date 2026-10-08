@@ -99,8 +99,8 @@ Anything else is up to you: show a picture with `ssp show`, or send frames from 
 ### One-line installer
 
 ```sh
-curl -fsSL https://subscreen.dev/install.sh | sh   # macOS, Linux
-irm https://subscreen.dev/install.ps1 | iex       # Windows (PowerShell)
+curl -fsSL https://subscreen.dev/install.sh | sh              # macOS, Linux
+powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 ```
 
 It downloads the latest release for your system, checks its SHA-256 checksum and puts `ssp` on

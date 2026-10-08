@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT OR Apache-2.0"
@@ -16,9 +16,9 @@ authors = ["sub-screen-player contributors"]
 
 [workspace.dependencies]
 # Crates of this workspace
-ssp-core = { path = "crates/core", version = "0.3.1" }
-ssp-driver-d92 = { path = "crates/drivers/d92", version = "0.3.1" }
-ssp-server = { path = "crates/server", version = "0.3.1" }
+ssp-core = { path = "crates/core", version = "0.4.0" }
+ssp-driver-d92 = { path = "crates/drivers/d92", version = "0.4.0" }
+ssp-server = { path = "crates/server", version = "0.4.0" }
 
 # Devices and images
 # Linux uses the pure-Rust hidraw backend; macOS and Windows build the C hidapi library, whose

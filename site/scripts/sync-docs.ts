@@ -6,6 +6,8 @@
 // Repository docs get a frontmatter title from their first heading, lose the language switch
 // line (the site has its own), and have their links rewritten: links between published docs
 // point to site pages, everything else to the file on GitHub.
+// The pictures of the screens in docs/images/ (also shown in the READMEs) are copied to
+// src/assets/screens/ so pages can import them.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 
@@ -13,6 +15,7 @@ const repoUrl = 'https://github.com/nomunomu0504/sub-screen-player';
 const siteDir = join(import.meta.dir, '..');
 const root = join(siteDir, '..');
 const out = join(siteDir, 'src/content/docs');
+const screens = join(siteDir, 'src/assets/screens');
 
 /** Repository docs published on the site: source (English) -> page slug. */
 const published: Record<string, string> = {
@@ -84,3 +87,7 @@ for (const [source, slug] of slugs) {
 	writeFileSync(file, convert(source, slug));
 }
 console.log(`synced ${slugs.size} documents into src/content/docs`);
+
+rmSync(screens, { recursive: true, force: true });
+cpSync(join(root, 'docs/images'), screens, { recursive: true });
+console.log('copied docs/images into src/assets/screens');

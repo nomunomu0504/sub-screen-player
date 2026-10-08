@@ -17,17 +17,15 @@ hero:
       variant: minimal
 ---
 
-import { Image } from 'astro:assets';
 import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
-import clock from '../../../assets/clock.png';
-import dashboard from '../../../assets/dashboard.png';
 import InstallCommand from '../../../components/InstallCommand.astro';
+import ScreenGallery from '../../../components/ScreenGallery.astro';
 
-<Image
-	src={clock}
-	alt="1920x462 のバー型ディスプレイに表示した内蔵時計"
-	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
-/>
+## 表示のパターン
+
+<ScreenGallery lang="ja" />
+
+`[clock]` や `[dashboard]` は設定ファイルの項目です（`ssp config init` で作成できます）。それぞれの設定例は [README](https://github.com/nomunomu0504/sub-screen-player/blob/main/README.ja.md#表示のパターン) と[コマンドラインガイド](cli/)にあります。
 
 ## インストール
 
@@ -43,12 +41,6 @@ import InstallCommand from '../../../components/InstallCommand.astro';
 あとは `ssp serve` を実行すると、ディスプレイに時計が表示されます。詳しくは[はじめに](getting-started/)を参照してください。
 
 ## できること
-
-<Image
-	src={dashboard}
-	alt="組み込みのダッシュボード: 時刻と CPU・メモリ・ネットワーク・ディスクの使用状況"
-	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
-/>
 
 <CardGrid>
 	<Card title="最大 60fps のライブ表示" icon="rocket">

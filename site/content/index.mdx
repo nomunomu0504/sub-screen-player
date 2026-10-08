@@ -17,17 +17,15 @@ hero:
       variant: minimal
 ---
 
-import { Image } from 'astro:assets';
 import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
-import clock from '../../assets/clock.png';
-import dashboard from '../../assets/dashboard.png';
 import InstallCommand from '../../components/InstallCommand.astro';
+import ScreenGallery from '../../components/ScreenGallery.astro';
 
-<Image
-	src={clock}
-	alt="The built-in clock on a 1920x462 bar display"
-	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
-/>
+## What it can show
+
+<ScreenGallery lang="en" />
+
+`[clock]` and `[dashboard]` are sections of the config file (`ssp config init` creates it). The full settings for each picture are in the [README](https://github.com/nomunomu0504/sub-screen-player#what-it-can-show) and the [command line guide](cli/).
 
 ## Install
 
@@ -43,12 +41,6 @@ import InstallCommand from '../../components/InstallCommand.astro';
 Then run `ssp serve`: the clock appears on your display. More in [Getting started](getting-started/).
 
 ## What it does
-
-<Image
-	src={dashboard}
-	alt="The built-in dashboard: the time with CPU, memory, network and disk use"
-	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
-/>
 
 <CardGrid>
 	<Card title="Live frames at 60 fps" icon="rocket">

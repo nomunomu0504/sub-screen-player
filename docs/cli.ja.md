@@ -146,6 +146,27 @@ ssp show wallpaper.png --fit cover --persist
 on_exit = "save-last"
 ```
 
+### 動画を再生する
+
+```sh
+ssp show clip.mp4 --fit cover
+```
+
+動画は、ファイルのフレームレート（最大 60fps）で繰り返し再生します。デコードには PC に入っている
+[ffmpeg](https://ffmpeg.org/) を使います（`ssp` 自体は動画のデコーダを持ちません）。`brew install ffmpeg`（macOS）、
+`sudo apt install ffmpeg`（Debian・Ubuntu）、`winget install ffmpeg`（Windows）で入れてください。デーモンが ffmpeg を
+見つけられないとき（ログイン時に起動したサービスには、シェルの `PATH` が渡らないことがあります）は、設定ファイルで場所を
+指定します。
+
+```toml
+[video]
+ffmpeg = "/opt/homebrew/bin/ffmpeg"
+```
+
+音声は無視します。720p・30fps の動画のデコードに、ffmpeg は Apple Silicon の Mac で CPU 1コアの5分の1ほどを使います。どれだけ滑らかに見えるかは
+ディスプレイ次第で、D92 は毎秒約 2.2 MB しか受け取れないため、細かい絵柄の全画面の動画は約 40fps、落ち着いた絵柄なら 60fps
+になります。デーモンの起動時に動画を再生するには、`[startup]` に `show = "image"` と `image = "/path/to/clip.mp4"` を設定します。
+
 ### 表示を止める・消す・画面を消灯する
 
 | コマンド | 画面の絵 | 画面 | 時計・ダッシュボード・画像・ストリーム |
@@ -304,7 +325,7 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 
 | コマンド | 説明 |
 |---|---|
-| `ssp show <FILE>` | PNG・JPEG・GIF・WebP の画像を表示します。アニメーション GIF・APNG・WebP は、ファイルに書かれた速さで繰り返し再生します。 |
+| `ssp show <FILE>` | PNG・JPEG・GIF・WebP の画像を表示します。アニメーション GIF・APNG・WebP は、ファイルに書かれた速さで繰り返し再生します。動画（MP4・MOV・WebM・MKV など）は、ffmpeg が入っていれば繰り返し再生します。 |
 | `  --fit contain` | （既定）画像全体を収め、余白は黒にします。 |
 | `  --fit cover` | 画面全体を埋め、はみ出した部分は切り取ります。 |
 | `  --fit stretch` | 画面全体を埋めます。必要なら画像を引き伸ばします。 |

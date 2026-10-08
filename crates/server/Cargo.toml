@@ -12,6 +12,7 @@ ssp-core.workspace = true
 ssp-driver-d92.workspace = true
 ab_glyph.workspace = true
 fontdb.workspace = true
+futures-util.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 image.workspace = true

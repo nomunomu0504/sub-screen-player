@@ -90,14 +90,14 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Show an image file (PNG, JPEG, GIF or WebP); animations play in a loop
+    /// Show an image (PNG, JPEG, GIF, WebP) or a video (with ffmpeg); both loop if they move
     Show {
-        /// The image
+        /// The image or video file
         path: PathBuf,
         /// How to fit an image whose aspect ratio differs from the panel
         #[arg(long, value_enum, default_value_t = FitArg::Contain)]
         fit: FitArg,
-        /// Also store it on the device so it stays after power loss (writes flash memory)
+        /// Also store the image on the device so it stays after power loss (writes flash memory)
         #[arg(long)]
         persist: bool,
     },
@@ -300,10 +300,12 @@ fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Cmd::Show { path, fit, persist } => {
-            let bytes = client::read_file(&path)?;
+            if persist && looks_like_a_video(&path) {
+                anyhow::bail!("--persist stores a picture on the display; it does not take videos");
+            }
             let query = format!("?fit={}&persist={persist}", fit.name());
             cli_client(&cli.url, &cli.token, &config_path)?
-                .post_bytes(&format!("{display}/image{query}"), &bytes)
+                .post_file(&format!("{display}/image{query}"), &path)
         }
         Cmd::Clock {
             no_seconds,
@@ -523,6 +525,17 @@ fn status(client: &Client) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether the file starts like a video (the daemon decides for good).
+fn looks_like_a_video(path: &Path) -> bool {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(256).read_to_end(&mut head))
+        .is_ok_and(|_| {
+            ssp_server::sources::video::is_video(&head) && image::guess_format(&head).is_err()
+        })
 }
 
 fn metric(client: &Client, action: MetricCmd) -> Result<()> {

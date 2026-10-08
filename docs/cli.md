@@ -154,6 +154,28 @@ config file:
 on_exit = "save-last"
 ```
 
+### Play a video
+
+```sh
+ssp show clip.mp4 --fit cover
+```
+
+Videos play in a loop, at their own frame rate up to 60 fps, through the
+[ffmpeg](https://ffmpeg.org/) installed on your computer (`ssp` has no video decoder of its
+own). Install it with `brew install ffmpeg` (macOS), `sudo apt install ffmpeg` (Debian, Ubuntu)
+or `winget install ffmpeg` (Windows); if the daemon cannot find it (a service started at login
+may not see your `PATH`), set its path in the config:
+
+```toml
+[video]
+ffmpeg = "/opt/homebrew/bin/ffmpeg"
+```
+
+Sound is ignored. Decoding a 720p video at 30 fps costs ffmpeg about a fifth of a CPU core on an Apple Silicon Mac.
+How smooth it looks depends on the display: the D92 takes about 2.2 MB/s, so a detailed
+full-screen video runs at about 40 fps, a calmer one at 60. To play a video whenever the daemon
+starts, set `show = "image"` and `image = "/path/to/clip.mp4"` in `[startup]`.
+
 ### Stop, blank or turn off the screen
 
 | Command | What happens to the picture | The screen | The clock / dashboard / image / stream |
@@ -318,7 +340,7 @@ These work with every command.
 
 | Command | Description |
 |---|---|
-| `ssp show <FILE>` | Show a PNG, JPEG, GIF or WebP image. Animated GIF, APNG and WebP play in a loop at their own speed. |
+| `ssp show <FILE>` | Show a PNG, JPEG, GIF or WebP image. Animated GIF, APNG and WebP play in a loop at their own speed. A video (MP4, MOV, WebM, MKV, ...) plays in a loop when ffmpeg is installed. |
 | `  --fit contain` | (default) Fit the whole image and fill the rest with black. |
 | `  --fit cover` | Fill the screen and cut off what sticks out. |
 | `  --fit stretch` | Fill the screen, distorting the image if needed. |

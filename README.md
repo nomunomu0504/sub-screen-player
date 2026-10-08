@@ -38,6 +38,8 @@ device-specific protocol has to be written; everything else is shared.
 - **Images and animations**: PNG, JPEG, GIF and WebP, fitted to the panel (`contain`, `cover` or
   `stretch`). Animated GIF, APNG and WebP play in a loop.
   An image can optionally be stored on the device so it survives power loss.
+- **Videos**: MP4, MOV, WebM, MKV and anything else ffmpeg reads, played in a loop at up to
+  60 fps when [ffmpeg](https://ffmpeg.org/) is installed.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.
 - **Autostart** at login (launchd, systemd user unit or the Windows `Run` key).

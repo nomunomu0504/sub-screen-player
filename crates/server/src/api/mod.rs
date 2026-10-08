@@ -7,18 +7,21 @@ pub mod types;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::body::{Body, BodyDataStream};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, middleware};
-use ssp_core::Frame;
+use futures_util::StreamExt;
+use ssp_core::{Fit, Frame};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
 use crate::config::{ClockConfig, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
+use crate::sources::video::{self, MAX_VIDEO_BYTES, VideoFile, Videos};
 use crate::sources::{Clock, Content, Picture};
 use types::{
     BrightnessRequest, CapabilitiesView, ClockRequest, DashboardRequest, DisplayView, ErrorBody,
@@ -36,6 +39,7 @@ pub struct AppState {
     clock: ClockConfig,
     dashboard: DashboardConfig,
     metrics: Metrics,
+    videos: Arc<Videos>,
     shutdown: watch::Receiver<bool>,
 }
 
@@ -47,6 +51,7 @@ impl AppState {
         clock: ClockConfig,
         dashboard: DashboardConfig,
         metrics: Metrics,
+        videos: Videos,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         Self {
@@ -55,6 +60,7 @@ impl AppState {
             clock,
             dashboard,
             metrics,
+            videos: Arc::new(videos),
             shutdown,
         }
     }
@@ -66,10 +72,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/displays", get(list))
         .route("/displays/{id}", get(one))
-        .route(
-            "/displays/{id}/image",
-            post(show_image).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
-        )
+        .route("/displays/{id}/image", post(show_image))
         .route("/displays/{id}/brightness", post(brightness))
         .route("/displays/{id}/power", post(power))
         .route("/displays/{id}/clear", post(clear))
@@ -220,11 +223,30 @@ async fn show_image(
     State(app): State<AppState>,
     Path(id): Path<String>,
     Query(query): Query<ImageQuery>,
-    body: Bytes,
+    body: Body,
 ) -> Result<StatusCode, ApiError> {
     let fit = query.fit.unwrap_or_default().into();
+    // The first bytes tell images from videos; videos go to a file instead of memory.
+    let mut chunks = body.into_data_stream();
+    let mut bytes = Vec::new();
+    while bytes.len() < 256 {
+        match chunks.next().await {
+            Some(chunk) => bytes.extend_from_slice(&chunk.map_err(unreadable)?),
+            None => break,
+        }
+    }
+    if video::is_video(&bytes) && image::guess_format(&bytes).is_err() {
+        return show_video(app, id, query, fit, bytes, chunks).await;
+    }
+    while let Some(chunk) = chunks.next().await {
+        let chunk = chunk.map_err(unreadable)?;
+        if bytes.len() + chunk.len() > MAX_IMAGE_BYTES {
+            return Err(too_large(MAX_IMAGE_BYTES as u64, "an image"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     blocking(move || {
-        let picture = Picture::decode(&body).map_err(ApiError::bad_request)?;
+        let picture = Picture::decode(&bytes).map_err(ApiError::bad_request)?;
         if query.persist {
             // The device holds one picture: an animation stores its first frame.
             let device = app.manager.device(&id)?;
@@ -238,6 +260,87 @@ async fn show_image(
         Ok(StatusCode::NO_CONTENT)
     })
     .await
+}
+
+/// Receives a video whose first bytes are `head` into a file and plays it.
+async fn show_video(
+    app: AppState,
+    id: String,
+    query: ImageQuery,
+    fit: Fit,
+    head: Vec<u8>,
+    mut chunks: BodyDataStream,
+) -> Result<StatusCode, ApiError> {
+    let refused = if query.persist {
+        Some(ApiError::bad_request(
+            "a video cannot be stored on the display (persist); store a picture instead",
+        ))
+    } else {
+        app.videos
+            .ffmpeg()
+            .map_err(|e| ApiError::new(StatusCode::NOT_IMPLEMENTED, e))
+            .err()
+    };
+    if let Some(err) = refused {
+        // Read the rest first: a client still sending would see a broken connection instead.
+        while let Some(Ok(_)) = chunks.next().await {}
+        return Err(err);
+    }
+    let ffmpeg = app.videos.ffmpeg().map_err(ApiError::bad_request)?;
+    let path = app.videos.file();
+    if let Err(err) = receive(&path, head, &mut chunks).await {
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(err);
+    }
+    blocking(move || {
+        let video = VideoFile::open(path, ffmpeg, true).map_err(ApiError::bad_request)?;
+        app.manager.set_content(
+            &id,
+            Content::Video {
+                video: Arc::new(video),
+                fit,
+            },
+        )?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+/// Writes `head` and the rest of the body to `path`.
+async fn receive(
+    path: &std::path::Path,
+    head: Vec<u8>,
+    chunks: &mut BodyDataStream,
+) -> Result<(), ApiError> {
+    let failed = |e: std::io::Error| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("cannot store the video: {e}"),
+        )
+    };
+    let mut file = tokio::fs::File::create(path).await.map_err(failed)?;
+    let mut size = head.len() as u64;
+    file.write_all(&head).await.map_err(failed)?;
+    while let Some(chunk) = chunks.next().await {
+        let chunk = chunk.map_err(unreadable)?;
+        size += chunk.len() as u64;
+        if size > MAX_VIDEO_BYTES {
+            return Err(too_large(MAX_VIDEO_BYTES, "a video"));
+        }
+        file.write_all(&chunk).await.map_err(failed)?;
+    }
+    file.flush().await.map_err(failed)
+}
+
+fn unreadable(err: axum::Error) -> ApiError {
+    ApiError::bad_request(format!("cannot read the request body: {err}"))
+}
+
+fn too_large(limit: u64, what: &str) -> ApiError {
+    ApiError::new(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        format!("{what} may be at most {} MiB", limit >> 20),
+    )
 }
 
 async fn brightness(

@@ -77,7 +77,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `animation`, `clock`, `dashboard` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `animation`, `video`, `clock`, `dashboard` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed.
@@ -98,6 +98,14 @@ Query parameters:
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"
 ```
+
+The body can also be a video (MP4, QuickTime, WebM, Matroska, AVI or MPEG-TS, up to 4 GiB),
+played in a loop by the [ffmpeg](https://ffmpeg.org/) installed on the computer (`content` is
+then `video`). The daemon keeps the file in a temporary folder while it plays and checks that
+ffmpeg can decode it before answering: a file it cannot play gets `400` with ffmpeg's message,
+and a missing ffmpeg `501` with how to install it. `persist` is refused for videos. ffmpeg is
+looked up in `[video] ffmpeg` of the config, then on `PATH`, then in `/opt/homebrew/bin`,
+`/usr/local/bin`, `/usr/bin` and `/snap/bin`.
 
 ### `POST /displays/{id}/clock`
 

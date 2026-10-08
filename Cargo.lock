@@ -1450,6 +1450,7 @@ dependencies = [
  "anyhow",
  "axum",
  "fontdb",
+ "futures-util",
  "image",
  "jiff",
  "memchr",

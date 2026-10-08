@@ -38,6 +38,8 @@ API を通して、他のプログラムからも自由に描画できます。
 - **画像・アニメーションの表示**: PNG・JPEG・GIF・WebP に対応し、`contain` / `cover` / `stretch` でパネルに合わせます。
   アニメーション GIF・APNG・WebP は繰り返し再生します。
   電源を切っても残るようにデバイスへ保存することもできます。
+- **動画の再生**: [ffmpeg](https://ffmpeg.org/) が入っていれば、MP4・MOV・WebM・MKV など ffmpeg が読める動画を、
+  最大 60fps で繰り返し再生します。
 - **HTTP + WebSocket API**: どの言語のスクリプトやアプリからでも描画できます。
 - **抜き差しに追従**: 挿し直すと、それまでの表示内容を再開します。
 - **ログイン時の自動起動**: launchd / systemd ユーザーユニット / Windows の `Run` キー

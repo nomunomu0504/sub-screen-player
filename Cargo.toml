@@ -42,7 +42,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Daemon
-tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs", "io-util"] }
+futures-util = { version = "0.3.34", default-features = false }
 axum = { version = "0.8.9", features = ["ws"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

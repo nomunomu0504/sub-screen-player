@@ -30,7 +30,7 @@ on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
 show = "clock"           # "clock", "dashboard", "image" or "nothing"
-# image = "/path/to/picture.png"
+# image = "/path/to/picture.png"   # a video works too (needs ffmpeg, see [video])
 fit = "contain"          # "contain", "cover" or "stretch"
 
 [clock]
@@ -50,6 +50,10 @@ widgets = ["clock", "cpu", "memory", "network", "disk"]
 color = "#F0F2F8"        # text
 accent = "#6EE7B7"       # graphs
 background = "#000000"
+
+[video]
+# Videos are played by ffmpeg, found on PATH or where it is usually installed.
+# ffmpeg = "/opt/homebrew/bin/ffmpeg"
 
 [claude_code]
 # Claude Code's directory, whose projects/ holds the session logs the "claude-code" panel
@@ -78,6 +82,8 @@ pub struct Config {
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
     pub dashboard: DashboardConfig,
+    /// How videos are played.
+    pub video: VideoConfig,
     /// Where the `claude-code` dashboard panel reads its figures.
     pub claude_code: ClaudeCodeConfig,
     /// Which device drivers the daemon uses.
@@ -93,10 +99,20 @@ impl Default for Config {
             startup: StartupConfig::default(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
+            video: VideoConfig::default(),
             claude_code: ClaudeCodeConfig::default(),
             drivers: DriversConfig::default(),
         }
     }
+}
+
+/// How videos are played.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct VideoConfig {
+    /// The ffmpeg program. Default: found on `PATH` or where it is usually installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ffmpeg: Option<std::path::PathBuf>,
 }
 
 /// Where the `claude-code` dashboard panel reads Claude Code's session logs.
@@ -191,7 +207,7 @@ impl From<OnExit> for StopAction {
 pub struct StartupConfig {
     /// `"clock"`, `"dashboard"`, `"image"` or `"nothing"`.
     pub show: StartupShow,
-    /// Image file for `show = "image"`.
+    /// Image or video file for `show = "image"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<PathBuf>,
     /// How the image is fitted: `"contain"`, `"cover"` or `"stretch"`.

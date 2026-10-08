@@ -93,7 +93,10 @@ impl Client {
         self.check(request.send_empty()).map(drop)
     }
 
-    pub fn post_bytes(&self, path: &str, body: &[u8]) -> Result<()> {
+    /// Sends a file as the body, without reading it into memory first (videos can be large).
+    pub fn post_file(&self, path: &str, file: &std::path::Path) -> Result<()> {
+        let body =
+            std::fs::File::open(file).with_context(|| format!("cannot read {}", file.display()))?;
         let mut request = self
             .agent
             .post(self.url(path))
@@ -151,9 +154,4 @@ impl std::error::Error for Unreachable {}
 
 pub fn is_unreachable(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Unreachable>().is_some()
-}
-
-/// Reads a whole file, with the path in the error.
-pub fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
-    std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))
 }

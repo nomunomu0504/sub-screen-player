@@ -15,7 +15,8 @@ for, and where new code belongs.
 ┌──────────────────────┼──────────────────────────────────────── ssp-server ──┐
 │  api/        routes, auth, WebSocket streams                                 │
 │  manager     finds displays, hotplug, what each display shows (Content)      │
-│  sources/    built-in screens that draw frames (clock, dashboard, image)     │
+│  sources/    built-in screens that draw frames (clock, dashboard, image,     │
+│              animation, video through ffmpeg)                                │
 │  metrics     figures sent by scripts for the dashboard's metric panels       │
 └──────────────────────┼───────────────────────────────────────────────────────┘
                        │ Frame (landscape RGB, panel size)

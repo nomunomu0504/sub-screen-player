@@ -17,6 +17,7 @@ use ssp_core::{
 
 use crate::config::{Config, DisplayConfig, StartupShow};
 use crate::metrics::Metrics;
+use crate::sources::video::{self, VideoFile};
 use crate::sources::{Clock, Content, Picture, Source};
 
 /// How long to wait before retrying a device that failed to open.
@@ -373,13 +374,32 @@ fn startup_content(config: &Config, metrics: Metrics) -> Result<Content, String>
                 .image
                 .as_ref()
                 .ok_or("startup.image is not set")?;
+            let fit = config.startup.fit.into();
+            if starts_like_a_video(path) {
+                let ffmpeg = video::find_ffmpeg(config.video.ffmpeg.as_deref())?;
+                let video = VideoFile::open(path.clone(), ffmpeg, false)
+                    .map_err(|e| format!("startup video {}: {e}", path.display()))?;
+                return Ok(Content::Video {
+                    video: Arc::new(video),
+                    fit,
+                });
+            }
             let bytes = std::fs::read(path)
                 .map_err(|e| format!("cannot read startup image {}: {e}", path.display()))?;
             let picture = Picture::decode(&bytes)
                 .map_err(|e| format!("startup image {}: {e}", path.display()))?;
-            Ok(picture.into_content(config.startup.fit.into()))
+            Ok(picture.into_content(fit))
         }
     }
+}
+
+/// Whether the file at `path` starts like a video (see [`video::is_video`]).
+fn starts_like_a_video(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(256).read_to_end(&mut head))
+        .is_ok_and(|_| video::is_video(&head) && image::guess_format(&head).is_err())
 }
 
 /// The background thread of [`Manager::spawn_scanner`].
@@ -537,5 +557,37 @@ mod tests {
         manager.set_content("default", Content::Nothing).unwrap();
         assert!(!ticket.is_current());
         manager.shutdown();
+    }
+
+    #[test]
+    fn plays_a_startup_video() {
+        let Ok(ffmpeg) = video::find_ffmpeg(None) else {
+            eprintln!("skipped: ffmpeg is not installed");
+            return;
+        };
+        let path = std::env::temp_dir().join(format!("ssp-startup-{}.mp4", std::process::id()));
+        let made = std::process::Command::new(ffmpeg)
+            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi"])
+            .args([
+                "-i",
+                "testsrc2=size=64x36:rate=10",
+                "-t",
+                "1",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let mut config = Config::default();
+        config.startup.show = StartupShow::Image;
+        config.startup.image = Some(path.clone());
+        let content = startup_content(&config, Metrics::default()).unwrap();
+        assert_eq!(content.kind(), "video");
+        drop(content);
+        // A file named in the config is never deleted.
+        assert!(path.exists());
+        let _ = std::fs::remove_file(path);
     }
 }

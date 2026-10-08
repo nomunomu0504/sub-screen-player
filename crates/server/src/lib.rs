@@ -57,12 +57,17 @@ pub async fn serve(
 
     let scanner = manager.spawn_scanner(SCAN_INTERVAL);
     let (stopping, stop_signal) = watch::channel(false);
+    // Videos sent to the API wait in a folder of this daemon's own (one daemon per port).
+    let uploads = std::env::temp_dir().join(format!("sub-screen-player-{}", config.listen.port()));
+    let videos = sources::video::Videos::new(config.video.ffmpeg.clone(), uploads)
+        .context("cannot create the folder for videos")?;
     let state = api::AppState::new(
         manager.clone(),
         config.token.clone(),
         config.clock.clone(),
         config.dashboard.clone(),
         metrics,
+        videos,
         stop_signal,
     );
     let served = axum::serve(listener, api::router(state))

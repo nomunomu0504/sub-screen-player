@@ -9,6 +9,7 @@ mod clock;
 mod dashboard;
 pub(crate) use dashboard::number;
 pub mod stats;
+pub mod video;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +51,13 @@ pub enum Content {
         /// How each frame is fitted to the panel.
         fit: Fit,
     },
+    /// A video file, played in a loop by ffmpeg.
+    Video {
+        /// The file.
+        video: Arc<video::VideoFile>,
+        /// How each frame is fitted to the panel.
+        fit: Fit,
+    },
     /// The built-in clock.
     Clock(ClockConfig),
     /// The built-in dashboard; its clock panel uses the clock settings and its `metric:<id>`
@@ -66,6 +74,7 @@ impl Content {
             Self::Nothing => "nothing",
             Self::Image { .. } => "image",
             Self::Animation { .. } => "animation",
+            Self::Video { .. } => "video",
             Self::Clock(_) => "clock",
             Self::Dashboard(..) => "dashboard",
             Self::Stream => "stream",
@@ -83,6 +92,7 @@ impl Content {
             Self::Animation { animation, fit } => {
                 Some(Box::new(animation::Player::new(animation.clone(), *fit)))
             }
+            Self::Video { video, fit } => Some(Box::new(video::Player::new(video.clone(), *fit))),
             Self::Clock(config) => Some(Box::new(Clock::new(config.clone()))),
             Self::Dashboard(dashboard, clock, metrics) => Some(Box::new(Dashboard::new(
                 dashboard.clone(),

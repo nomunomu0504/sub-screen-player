@@ -77,7 +77,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`animation`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`animation`・`video`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数です。
 
@@ -96,6 +96,12 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"
 ```
+
+ボディには動画（MP4・QuickTime・WebM・Matroska・AVI・MPEG-TS、4 GiB まで）も送れます。PC に入っている
+[ffmpeg](https://ffmpeg.org/) で繰り返し再生します（このとき `content` は `video`）。再生中、デーモンはファイルを一時フォルダに
+置き、応答する前に ffmpeg で読めるかを確かめます。再生できないファイルには ffmpeg のメッセージ付きで `400` を、
+ffmpeg が見つからないときはインストール方法付きで `501` を返します。動画に `persist` は使えません。ffmpeg は、設定ファイルの
+`[video] ffmpeg`、`PATH`、`/opt/homebrew/bin`・`/usr/local/bin`・`/usr/bin`・`/snap/bin` の順に探します。
 
 ### `POST /displays/{id}/clock`
 

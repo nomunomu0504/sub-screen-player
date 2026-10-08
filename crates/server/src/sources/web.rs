@@ -60,6 +60,8 @@ pub struct Page {
     running: Option<Running>,
     shown: u64,
     last: Option<Frame>,
+    /// Why the page stopped, once it has.
+    failure: Option<String>,
     ended: bool,
 }
 
@@ -72,6 +74,7 @@ impl Page {
             running: None,
             shown: 0,
             last: None,
+            failure: None,
             ended: false,
         }
     }
@@ -101,6 +104,7 @@ impl Source for Page {
                 if self.last.is_none() {
                     self.last = Some(message(size, &reason));
                 }
+                self.failure = Some(reason);
             }
         }
         if let Some(last) = &self.last {
@@ -396,11 +400,19 @@ mod tests {
         let mut source = Page::new(WebPage::new(url.as_str(), None).unwrap(), web);
         let mut frame = Frame::blank(320, 80);
         let started = Instant::now();
-        while frame.image().get_pixel(160, 40).0[0] < 200 && started.elapsed().as_secs() < 20 {
+        while frame.image().get_pixel(160, 40).0[0] < 200
+            && source.failure.is_none()
+            && started.elapsed().as_secs() < 90
+        {
             source.render(&mut frame);
         }
+        assert_eq!(source.failure, None);
         let pixel = frame.image().get_pixel(160, 40).0;
-        assert!(pixel[0] > 200 && pixel[1] < 60, "{pixel:?}");
+        assert!(
+            pixel[0] > 200 && pixel[1] < 60,
+            "{pixel:?} after {:?}",
+            started.elapsed()
+        );
         drop(source);
         let _ = std::fs::remove_dir_all(dir);
     }

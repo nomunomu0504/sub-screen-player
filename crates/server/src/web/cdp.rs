@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket};
 
-/// How long the browser may take to start.
-const START_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long the browser may take to start (a first start on Windows, with the virus scanner
+/// checking it, can take well over ten seconds).
+const START_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a command may take.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 

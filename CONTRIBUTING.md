@@ -14,7 +14,7 @@ request needs.
 - **Report a security problem** privately as described in [SECURITY.md](SECURITY.md), not in
   a public issue.
 - **Add a display.** Follow [docs/adding-a-device.md](docs/adding-a-device.md). If you only
-  have captures or notes, open an issue with them; someone else may write the driver.
+  have notes on how a display works, open an issue with them; someone else may write the driver.
 - **Improve features or docs.** For anything larger than a small fix, open an issue first so
   we can agree on the approach before you invest time.
 
@@ -78,7 +78,7 @@ explains the layers in detail.
   request and someone will help with the translation.
 - Public items have doc comments. Explain *why* in comments, not *what*.
 - Keep protocol code pure: functions that build bytes, with no I/O, so they can be tested
-  against captured traffic.
+  byte for byte.
 - Prefer small, focused crates and modules over large ones. New dependencies need a reason
   in the pull request; avoid ones that pull in C libraries.
 
@@ -89,8 +89,8 @@ Everything is testable without hardware:
 - `ssp_core::testing::RecordingTransport` records the reports a driver sends.
 - `ssp_core::testing::FakeDisplay` stands in for a display in presenter and server tests.
 
-Driver tests should compare against bytes captured from the vendor software whenever
-possible. If you also tested on real hardware, say what you checked in the pull request
+Driver tests should compare the reports, byte for byte, with ones known to work on the
+device. If you also tested on real hardware, say what you checked in the pull request
 (model, OS, what was shown), and paste the output of `ssp selftest`.
 
 ## Commits and pull requests
@@ -114,13 +114,14 @@ Before opening a pull request:
 
 ## Etiquette for investigating a device's communication
 
-Many displays have no public documentation, so drivers are often built from USB captures.
+Many displays have no public documentation, so drivers are often built by trying commands on
+the device.
 
 - Work out protocols for interoperability only. Do not copy code, binaries, firmware, images
   or fonts from vendor software into this repository.
-- Document how a fact was found (capture, experiment) in `docs/devices/<model>.md` (and
+- Document how a fact was found (an experiment, a public SDK) in `docs/devices/<model>.md` (and
   `.ja.md`), and mark what is verified and what is a guess.
-- Never commit raw captures that may contain personal data. Trim them to the relevant bytes.
+- Never commit raw logs or dumps that may contain personal data. Keep only the relevant bytes.
 - Some commands can leave a device stuck or overwrite its stored images. Write such findings
   down and make sure the driver never sends dangerous commands by accident.
 

@@ -19,10 +19,9 @@ Collect, and write down in `docs/devices/<model>.md` (and its Japanese version
 - **Commands**: how to show a frame, and if available brightness, power, clear, keep-alive.
 - **Timing**: how fast frames can go, and whether the device needs keep-alives.
 
-If there is no documentation, capture the vendor app's traffic. Wireshark with USBPcap works
-on x86 Windows. On machines where that is not possible (e.g. Apple Silicon), running the
-vendor app in a VMware VM with `usb.analyzer.enable = "TRUE"` logs the USB traffic in
-`vmware.log`. Also read the [etiquette for investigating a device's communication](../CONTRIBUTING.md#etiquette-for-investigating-a-devices-communication).
+If there is no documentation, start from a public SDK or open-source projects for the same
+family of devices, try the commands on the device and write down what each one does. Also read
+the [etiquette for investigating a device's communication](../CONTRIBUTING.md#etiquette-for-investigating-a-devices-communication).
 
 Today `ssp-core` supports **HID** devices. If your display uses USB bulk transfers or a
 serial port, open an issue first: it needs a new `Transport` in `crates/core`, which other

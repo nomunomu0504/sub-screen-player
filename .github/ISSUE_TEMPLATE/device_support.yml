@@ -42,13 +42,12 @@ body:
     attributes:
       label: What is known about the protocol / プロトコルについて分かっていること
       description: |
-        Links, trimmed captures, related open-source projects. Do not attach vendor binaries.
-        参考リンク、必要な部分だけに絞ったキャプチャ、関連する OSS など。メーカーのバイナリは添付しないでください。
+        Links, notes from your own tests, related open-source projects. Do not attach vendor binaries.
+        参考リンク、自分で試したことのメモ、関連する OSS など。メーカーのバイナリは添付しないでください。
   - type: checkboxes
     id: help
     attributes:
       label: How can you help? / 協力できること
       options:
         - label: I can test on the device / 実機でテストできる
-        - label: I can capture USB traffic / USB 通信をキャプチャできる
         - label: I can write the driver / ドライバを書ける

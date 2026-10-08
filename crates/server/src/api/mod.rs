@@ -2,6 +2,8 @@
 
 mod auth;
 mod stream;
+#[cfg(test)]
+mod tests;
 pub mod types;
 
 use std::sync::Arc;

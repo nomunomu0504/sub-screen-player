@@ -31,5 +31,8 @@ tungstenite.workspace = true
 url.workspace = true
 zip.workspace = true
 
+[dev-dependencies]
+tower.workspace = true
+
 [lints]
 workspace = true

@@ -60,6 +60,9 @@ ureq = { version = "3.4.2", default-features = false, features = ["json"] }
 directories = "6.0.0"
 winreg = "0.56.0"
 
+# Tests: driving the API router without a server
+tower = { version = "0.5.3", features = ["util"] }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

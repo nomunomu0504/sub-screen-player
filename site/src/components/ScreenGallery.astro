@@ -11,6 +11,7 @@ import dashboardColors from '../assets/screens/dashboard-colors.png';
 import dashboardCompact from '../assets/screens/dashboard-compact.png';
 import dashboardMetrics from '../assets/screens/dashboard-metrics.png';
 import dashboard from '../assets/screens/dashboard.png';
+import video from '../assets/screens/video.jpg';
 import webDay from '../assets/screens/web-day.png';
 
 interface Props {
@@ -67,6 +68,15 @@ const screens = [
 			ja: 'HTML・CSS・JavaScript で作った画面を、ヘッドレス Chrome で描きます。',
 		},
 		how: 'ssp web contrib/web/day.html',
+	},
+	{
+		image: video,
+		title: { en: 'Video', ja: '動画' },
+		text: {
+			en: 'MP4, MOV, WebM and more, looped at up to 60 fps through ffmpeg.',
+			ja: 'MP4・MOV・WebM などを、ffmpeg で最大 60fps のループ再生。',
+		},
+		how: 'ssp show clip.mp4',
 	},
 	{
 		image: clock,

@@ -107,8 +107,9 @@ played in a loop by the [ffmpeg](https://ffmpeg.org/) installed on the computer 
 then `video`). The daemon keeps the file in a temporary folder while it plays and checks that
 ffmpeg can decode it before answering: a file it cannot play gets `400` with ffmpeg's message,
 and a missing ffmpeg `501` with how to install it. `persist` is refused for videos. ffmpeg is
-looked up in `[video] ffmpeg` of the config, then on `PATH`, then in `/opt/homebrew/bin`,
-`/usr/local/bin`, `/usr/bin` and `/snap/bin`.
+looked up in `[video] ffmpeg` of the config, then on `PATH`, then where it is usually installed:
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/snap/bin`, or on Windows the WinGet,
+Scoop and Chocolatey folders.
 
 ### `POST /displays/{id}/clock`
 

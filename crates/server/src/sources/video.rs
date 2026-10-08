@@ -24,14 +24,33 @@ const MAX_FPS: u32 = 60;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long [`Player::render`] waits for a new frame before showing the last one again.
 const FRAME_WAIT: Duration = Duration::from_millis(500);
-/// Where ffmpeg is usually installed, for when it is not on the daemon's `PATH` (launchd starts
-/// the daemon with a minimal one).
-const USUAL_PLACES: &[&str] = &[
-    "/opt/homebrew/bin/ffmpeg",
-    "/usr/local/bin/ffmpeg",
-    "/usr/bin/ffmpeg",
-    "/snap/bin/ffmpeg",
-];
+/// Where ffmpeg is usually installed, for when it is not on the daemon's `PATH`: launchd starts
+/// the daemon with a minimal one, and on Windows the daemon keeps the `PATH` it had at login,
+/// before a later `winget install ffmpeg`.
+fn usual_places() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        let under =
+            |var: &str, rest: &str| std::env::var_os(var).map(|dir| Path::new(&dir).join(rest));
+        [
+            under("LOCALAPPDATA", r"Microsoft\WinGet\Links\ffmpeg.exe"),
+            under("USERPROFILE", r"scoop\shims\ffmpeg.exe"),
+            under("ProgramData", r"chocolatey\bin\ffmpeg.exe"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    } else {
+        [
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+            "/snap/bin/ffmpeg",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect()
+    }
+}
 /// How to install ffmpeg, shown when it cannot be found.
 pub const INSTALL_HINT: &str = "video playback needs ffmpeg: `brew install ffmpeg` (macOS), \
     `sudo apt install ffmpeg` (Debian, Ubuntu) or `winget install ffmpeg` (Windows), \
@@ -73,7 +92,7 @@ pub fn find_ffmpeg(configured: Option<&Path>) -> Result<PathBuf, String> {
         .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
         .map(|dir| dir.join(name));
     on_path
-        .chain(USUAL_PLACES.iter().map(PathBuf::from))
+        .chain(usual_places())
         .find(|path| path.is_file())
         .ok_or_else(|| INSTALL_HINT.to_owned())
 }

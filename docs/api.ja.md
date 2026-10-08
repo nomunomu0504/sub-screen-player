@@ -104,7 +104,8 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 [ffmpeg](https://ffmpeg.org/) で繰り返し再生します（このとき `content` は `video`）。再生中、デーモンはファイルを一時フォルダに
 置き、応答する前に ffmpeg で読めるかを確かめます。再生できないファイルには ffmpeg のメッセージ付きで `400` を、
 ffmpeg が見つからないときはインストール方法付きで `501` を返します。動画に `persist` は使えません。ffmpeg は、設定ファイルの
-`[video] ffmpeg`、`PATH`、`/opt/homebrew/bin`・`/usr/local/bin`・`/usr/bin`・`/snap/bin` の順に探します。
+`[video] ffmpeg`、`PATH`、よく使われるインストール先（`/opt/homebrew/bin`・`/usr/local/bin`・`/usr/bin`・`/snap/bin`、
+Windows では WinGet・Scoop・Chocolatey のフォルダ）の順に探します。
 
 ### `POST /displays/{id}/clock`
 

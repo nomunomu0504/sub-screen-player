@@ -8,10 +8,11 @@
 
 USB 接続の小型サブディスプレイ（モニター下や PC ケース内に置く横長のバー型ディスプレイ）を、
 macOS・Linux・Windows から操作するためのツールです。単一バイナリの `ssp` が常駐デーモンとして
-ディスプレイとの接続を保ち、時計・画像・最大 60fps のライブ映像を表示します。HTTP / WebSocket
-API を通して、他のプログラムからも自由に描画できます。
+ディスプレイとの接続を保ち、時計、自分の数値も並べられるシステムダッシュボード、画像・アニメーション・
+動画・Web ページ、最大 60fps のライブ映像を表示します。HTTP / WebSocket API を通して、他のプログラムからも
+自由に描画できます。
 
-> **ステータス: 初期段階 (v0.1)**。D92 は macOS（Apple Silicon）と、ARM64 版の Linux（Ubuntu 24.04）・
+> **ステータス: 初期段階**。D92 は macOS（Apple Silicon）と、ARM64 版の Linux（Ubuntu 24.04）・
 > Windows 11 で、`ssp selftest` による動作確認が取れています。x86_64 版の Linux と Windows は CI でビルドを
 > 確認していますが、実機ではまだ試していません。報告を歓迎します。
 
@@ -124,6 +125,15 @@ ssp dashboard --widgets clock,claude-code,cpu,memory
 
 ```sh
 ssp web contrib/web/day.html
+```
+
+**動画**。PC に入っている [ffmpeg](https://ffmpeg.org/) で、最大 60fps でループ再生します
+（[使い方](docs/cli.ja.md#動画を再生する)）。
+
+![マンデルブロ集合を拡大していく動画の1コマ](docs/images/video.jpg)
+
+```sh
+ssp show clip.mp4 --fit cover
 ```
 
 ほかにも、`ssp show` で画像を表示したり、自作のプログラムからフレームを送ったり（[後述](#自作プログラムから描画する)）

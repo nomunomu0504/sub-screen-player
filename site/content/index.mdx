@@ -1,9 +1,9 @@
 ---
 title: sub-screen-player
-description: Drive small USB sub-displays from macOS, Linux and Windows. A clock, a system dashboard, images or your own content at up to 60 fps.
+description: Drive small USB sub-displays from macOS, Linux and Windows. A clock, a system dashboard, images, videos, web pages or your own content at up to 60 fps.
 template: splash
 hero:
-  tagline: Drive small USB sub-displays from macOS, Linux and Windows. Show a clock, a system dashboard, images, or your own content at up to 60 frames per second.
+  tagline: Drive small USB sub-displays from macOS, Linux and Windows. Show a clock, a system dashboard, images, videos, web pages, or your own content at up to 60 frames per second.
   actions:
     - text: Get started
       link: getting-started/
@@ -47,9 +47,17 @@ Then run `ssp serve`: the clock appears on your display. More in [Getting starte
 		Encoding and sending run in parallel. When frames arrive faster than the display takes them,
 		only the newest one is sent.
 	</Card>
-	<Card title="Clock, dashboard and images" icon="seti:image">
-		A built-in clock with your own formats and colors, a dashboard of CPU, memory, network and disk
-		use, and PNG, JPEG, GIF or WebP images fitted to the panel, animations included.
+	<Card title="Clock and dashboard" icon="seti:clock">
+		A built-in clock with your own formats and colors, and a dashboard of CPU, memory, network and
+		disk use.
+	</Card>
+	<Card title="Your own figures" icon="list-format">
+		Scripts send values (a CI status, a queue) that show up as dashboard panels, and a panel shows
+		how much Claude Code you have used.
+	</Card>
+	<Card title="Images, videos and web pages" icon="seti:image">
+		PNG, JPEG, GIF and WebP fitted to the panel, animations included; videos through ffmpeg; any
+		HTML page through headless Chrome.
 	</Card>
 	<Card title="Draw from any program" icon="puzzle">
 		An HTTP and WebSocket API: stream frames from a script, a dashboard or a game.

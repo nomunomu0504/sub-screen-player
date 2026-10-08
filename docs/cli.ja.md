@@ -179,7 +179,8 @@ ssp web https://example.com/status --reload 600
 HTML・CSS・JavaScript で作れるものなら、何でも画面にできます。ページはヘッドレス Chrome がパネルの大きさ
 （D92 では 1920x462）で描き、描き変わるたびにディスプレイへ送ります。CSS アニメーションや自分で更新するページも、
 ブラウザと同じように最大 60fps で動きます。[contrib/web/day.html](../contrib/web/day.html) が、手始めに使える小さな例です。
-自分では更新しないページには、`--reload` で指定した秒数ごとに読み込み直させます。
+自分では更新しないページには、`--reload` で指定した秒数ごとに読み込み直させます。ファイルは `file://` の URL として
+デーモンに渡すので、別の PC のデーモンを使うときは、ファイルもその PC に置いてください。
 
 **ヘッドレス Chrome** は `ssp` に含まれていません。初めて `ssp web` を使うときに、ダウンロードするか（約 100 MB、Google の
 [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) から）を尋ね、

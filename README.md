@@ -8,10 +8,11 @@
 
 Drive small USB "sub screens" (the long bar displays that sit under a monitor or inside a PC
 case) from macOS, Linux and Windows. A single binary, `ssp`, runs a small daemon that keeps
-the display alive and shows a clock, images or live frames at up to 60 fps. Anything else can
-draw on the screen through the daemon's HTTP and WebSocket API.
+the display alive and shows a clock, a system dashboard with your own figures, images,
+animations, videos, web pages or live frames at up to 60 fps. Anything else can draw on the
+screen through the daemon's HTTP and WebSocket API.
 
-> **Status: early (v0.1).** The D92 works on macOS (Apple Silicon), and on Linux
+> **Status: early.** The D92 works on macOS (Apple Silicon), and on Linux
 > (Ubuntu 24.04) and Windows 11 on ARM64, checked with `ssp selftest`. The x86_64 builds for
 > Linux and Windows pass CI but have not been tried with a display yet. Reports are welcome.
 
@@ -126,6 +127,15 @@ ssp dashboard --widgets clock,claude-code,cpu,memory
 
 ```sh
 ssp web contrib/web/day.html
+```
+
+**Videos**, looped at up to 60 fps through the [ffmpeg](https://ffmpeg.org/) installed on your
+computer ([how](docs/cli.md#play-a-video)):
+
+![A frame of a video zooming into the Mandelbrot set](docs/images/video.jpg)
+
+```sh
+ssp show clip.mp4 --fit cover
 ```
 
 Anything else is up to you: show a picture with `ssp show`, or send frames from your own program

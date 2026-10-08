@@ -189,7 +189,8 @@ Anything you can build with HTML, CSS and JavaScript can be a screen: a page is 
 Chrome at the panel's size (1920x462 on the D92) and sent to the display whenever it repaints, so
 CSS animations and pages that update themselves run as they would in a browser, at up to 60 fps.
 [contrib/web/day.html](../contrib/web/day.html) is a small example to start from. `--reload`
-reloads the page every so many seconds, for pages that do not update themselves.
+reloads the page every so many seconds, for pages that do not update themselves. A file is passed
+to the daemon as a `file://` URL, so with a daemon on another computer it has to be there.
 
 **Headless Chrome** is not part of `ssp`. The first `ssp web` asks to download it (about 100 MB,
 from Google's [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/)) into

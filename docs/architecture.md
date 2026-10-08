@@ -8,7 +8,7 @@ for, and where new code belongs.
 ## Overview
 
 ```text
-  ssp CLI        scripts / apps        (future) web screens, plugins
+  ssp CLI        scripts / apps        (future) plugins
      │                 │                          │
      └──── HTTP / WebSocket (127.0.0.1:7920) ─────┘
                        │

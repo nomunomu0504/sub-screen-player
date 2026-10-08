@@ -1,10 +1,10 @@
 //! Wire format of the D92. Pure functions that build output reports; no I/O.
 //!
 //! Every report is 1024 bytes. Commands start with `CRT\0\0` and a command word; image data
-//! follows in raw reports without a prefix. The device never answers. Background and captures
-//! are described in `docs/devices/d92.md`.
+//! follows in raw reports without a prefix. The device never answers. The device's behavior is
+//! described in `docs/devices/d92.md`.
 //!
-//! Never send `CRT\0\0SCREEN\0` (the vendor app's "extended screen" mode): the device then
+//! Never send `CRT\0\0SCREEN\0` (an "extended screen" mode): the device then
 //! ignores all images until it is physically unplugged.
 
 /// USB vendor id.
@@ -22,13 +22,13 @@ pub const HEIGHT: u32 = 462;
 /// Size of every output report, without the report ID.
 pub const REPORT_LEN: usize = 1024;
 
-/// Largest JPEG the vendor app uploads (it warns above 512 KiB).
+/// Largest JPEG the driver sends.
 pub const MAX_JPEG_LEN: usize = 512 << 10;
 
 /// Length of the `DRA` header that precedes a live frame in the same report.
 const LIVE_HEADER_LEN: usize = 32;
 
-/// Byte 12 of every `DRA` header the vendor app sends.
+/// Byte 12 of every `DRA` header.
 const LIVE_FLAG: u8 = 0xB1;
 
 /// Byte 12 of a `LOG` header: what a stored image is used for.
@@ -73,7 +73,7 @@ pub fn keep_alive() -> [u8; REPORT_LEN] {
     command(b"CONNECT", &[])
 }
 
-/// Blanks the screen and ends the session (`CLE` `DC`, sent by the vendor app on exit).
+/// Blanks the screen and ends the session (`CLE` `DC`).
 pub fn clear() -> [u8; REPORT_LEN] {
     command(b"CLE", b"\0\0DC")
 }
@@ -124,7 +124,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn commands_match_the_vendor_app() {
+    fn commands_have_the_expected_bytes() {
         assert_eq!(&wake()[..8], b"CRT\0\0DIS");
         assert_eq!(&sleep()[..8], b"CRT\0\0HAN");
         assert_eq!(&brightness(50)[..11], b"CRT\0\0LIG\0\0\x32");
@@ -138,9 +138,9 @@ mod tests {
         assert_eq!(brightness(250)[10], 100);
     }
 
-    /// Header of a 14547-byte frame captured from MiraBox Craft.
+    /// Header of a known-good 14547-byte frame.
     #[test]
-    fn live_frame_header_matches_capture() {
+    fn live_frame_header_is_exact() {
         let jpeg = vec![0xAB; 14547];
         let out = live_frame(&jpeg);
         assert_eq!(

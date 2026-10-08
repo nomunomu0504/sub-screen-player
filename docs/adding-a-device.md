@@ -63,12 +63,12 @@ workspace = true
 `protocol.rs` holds constants (USB ids, panel size, report length) and functions that turn
 commands and images into bytes. Keep it free of I/O so it can be tested exhaustively.
 
-Test it against captured bytes. For example, the D92 driver checks that a 14547-byte JPEG
-gets exactly the header the vendor app sends:
+Test it against known-good bytes. For example, the D92 driver checks the exact header that a
+14547-byte JPEG gets:
 
 ```rust
 #[test]
-fn live_frame_header_matches_capture() {
+fn live_frame_header_is_exact() {
     let out = live_frame(&vec![0xAB; 14547]);
     assert_eq!(&out[..13], &[0x43, 0x52, 0x54, 0, 0, 0x44, 0x52, 0x41, 0, 0, 0x38, 0xf3, 0xb1]);
 }

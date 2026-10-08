@@ -1,7 +1,7 @@
 //! Driver for the D92 9.2-inch 1920x462 USB display, sold as the upHere D92 and the
 //! MiraBox D92 (USB `2100:0006`).
 //!
-//! - [`protocol`] builds the reports (pure, unit-tested against captures).
+//! - [`protocol`] builds the reports (pure, unit-tested against known-good bytes).
 //! - [`D92`] implements [`ssp_core::Display`] on top of any [`Transport`].
 //! - [`D92Driver`] finds the device and opens it over HID.
 //!

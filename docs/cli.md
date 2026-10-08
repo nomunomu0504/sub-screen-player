@@ -176,6 +176,50 @@ How smooth it looks depends on the display: the D92 takes about 2.2 MB/s, so a d
 full-screen video runs at about 40 fps, a calmer one at 60. To play a video whenever the daemon
 starts, set `show = "image"` and `image = "/path/to/clip.mp4"` in `[startup]`.
 
+### Show a web page
+
+```sh
+ssp web contrib/web/day.html
+ssp web https://example.com/status --reload 600
+```
+
+![A web page showing the time and how much of the day has gone](images/web-day.png)
+
+Anything you can build with HTML, CSS and JavaScript can be a screen: a page is drawn by headless
+Chrome at the panel's size (1920x462 on the D92) and sent to the display whenever it repaints, so
+CSS animations and pages that update themselves run as they would in a browser, at up to 60 fps.
+[contrib/web/day.html](../contrib/web/day.html) is a small example to start from. `--reload`
+reloads the page every so many seconds, for pages that do not update themselves.
+
+**Headless Chrome** is not part of `ssp`. The first `ssp web` asks to download it (about 100 MB,
+from Google's [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/)) into
+`~/Library/Application Support/sub-screen-player/chrome` (macOS),
+`~/.local/share/sub-screen-player/chrome` (Linux) or
+`%LOCALAPPDATA%\sub-screen-player\data\chrome` (Windows). `ssp web --install` downloads it
+without showing anything, and again later to update it; `--yes` skips the question. To use an
+installed Chrome, Chromium or Edge instead, set it in the config:
+
+```toml
+[web]
+chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
+
+The browser runs only while a page is shown and uses a fresh, empty profile each time: no
+cookies, logins or extensions of your own browser. JavaScript is on, and a page can load whatever
+it links to, so show pages you trust. A browser costs 300-400 MB of memory, and about half a CPU
+core while a page animates at 60 fps; a still page costs almost nothing after it is drawn. If a page
+cannot be shown (no network, a missing file, a browser that cannot start), the display says why.
+On Linux, a downloaded Chrome needs the usual browser libraries; if it does not start, install
+`chromium` from your distribution and set `[web] chrome` to it. To show a page whenever the daemon
+starts:
+
+```toml
+[startup]
+show = "web"
+url = "file:///home/me/panel.html"
+reload = 600       # optional
+```
+
 ### Stop, blank or turn off the screen
 
 | Command | What happens to the picture | The screen | The clock / dashboard / image / stream |
@@ -361,6 +405,10 @@ These work with every command.
 | `  --series <LIST>` | Replace the graph with these values, oldest first, comma-separated. |
 | `ssp metric list` | List the metrics, with their age. `--json` prints them as JSON. |
 | `ssp metric rm <ID>` | Remove a metric. |
+| `ssp web <URL or FILE>` | Show a web page or a local HTML file, drawn by headless Chrome. Asks to download headless Chrome the first time. |
+| `  --reload <SECONDS>` | Reload the page every so many seconds. |
+| `  --yes`, `-y` | Download headless Chrome without asking, if needed. |
+| `  --install` | Only download (or update) headless Chrome. |
 | `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
 

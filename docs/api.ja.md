@@ -36,6 +36,9 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `POST` | `/displays/{id}/clear` | | 表示中のコンテンツを止めて、画面を消去 |
 | `POST` | `/displays/{id}/stop` | | 表示中のコンテンツを止める（画面は最後の絵のまま） |
 | `GET` | `/displays/{id}/stream` | | ライブフレーム用の WebSocket（後述） |
+| `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Web ページを表示（後述） |
+| `GET` | `/web/chrome` | | ヘッドレス Chrome の準備ができているか |
+| `POST` | `/web/chrome` | | ヘッドレス Chrome をダウンロード |
 | `PUT` | `/metrics/{id}` | JSON | ダッシュボードの `metric:<id>` パネルに出す値を設定（後述） |
 | `GET` | `/metrics` | | すべてのメトリクス |
 | `GET` | `/metrics/{id}` | | 1つのメトリクス |
@@ -77,7 +80,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`animation`・`video`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数です。
 
@@ -189,6 +192,35 @@ curl -X PUT http://127.0.0.1:7920/api/v1/metrics/ci \
 
 ダッシュボードに `claude-code` パネルを表示している間は、デーモン自身がメトリクス `claude-code` を更新し続けます（今の5時間
 ブロックのトークン数、`detail` にブロックの終わる時刻と今日の合計、`history` に直近1時間の1分ごとのトークン数）。
+
+### `POST /displays/{id}/web`
+
+Web ページを、ヘッドレス Chrome でパネルの大きさに描いて表示します（このとき `content` は `web`）。
+
+```json
+{ "url": "https://example.com/status", "reload": 600 }
+```
+
+`url` は `http`・`https`・`file` の URL です。`reload`（省略可）を指定すると、その秒数ごとにページを読み込み直します。
+ブラウザは応答の後に起動します。読み込めないページは、ディスプレイとデーモンのログに表示されます。ブラウザがない
+ときは `409` を返します（`[web] auto_download = true` なら、先にダウンロードします）。
+
+### `GET /web/chrome`・`POST /web/chrome`
+
+`GET` はブラウザの準備ができているかを返します。`POST` は Chrome for Testing から最新のヘッドレス Chrome を
+ダウンロードします（約 100 MB。終わるまで応答を待ち、失敗したら `502`）。どちらも次の形で返します。
+
+```json
+{
+  "installed": true,
+  "path": "/Users/me/Library/Application Support/sub-screen-player/chrome/155.0.8059.39/chrome-headless-shell-mac-arm64/chrome-headless-shell",
+  "version": "155.0.8059.39",
+  "configured": false,
+  "dir": "/Users/me/Library/Application Support/sub-screen-player/chrome"
+}
+```
+
+ブラウザが `[web] chrome` の指定によるものなら `configured` は `true` で、`version` はありません。
 
 ## WebSocket ストリーム
 

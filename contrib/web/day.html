@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  A sample web screen for `ssp web`: the time, the date and how much of the day has gone.
+  Made for a 1920x462 panel; edit it freely.
+
+    ssp web contrib/web/day.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Day</title>
+<style>
+  :root { --text: #eef2fb; --dim: #8b95ab; --accent: #6ee7b7; --bg: #070b14; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Noto Sans", sans-serif; }
+  main { display: grid; grid-template-columns: auto 1fr; gap: 72px; align-items: center;
+    height: 100%; padding: 0 72px; box-sizing: border-box; }
+  .time { font-size: 168px; font-weight: 600; letter-spacing: -3px; font-variant-numeric: tabular-nums; }
+  .date { font-size: 40px; color: var(--dim); margin-top: -8px; }
+  .label { font-size: 30px; color: var(--dim); display: flex; justify-content: space-between; }
+  .bar { position: relative; height: 56px; margin-top: 18px; border-radius: 28px; overflow: hidden;
+    background: #172033; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 28px;
+    background: linear-gradient(90deg, #22d3ee, var(--accent)); }
+  .fill::after { content: ""; position: absolute; inset: 0; border-radius: 28px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat; animation: shine 3s linear infinite; }
+  @keyframes shine { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+  .percent { font-size: 64px; font-weight: 600; margin-top: 18px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <div class="time" id="time">--:--</div>
+    <div class="date" id="date"></div>
+  </div>
+  <div>
+    <div class="label"><span>Today</span><span id="left"></span></div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="percent" id="percent"></div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  function update() {
+    const now = new Date();
+    const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+    const share = (now - midnight) / 864e5;
+    const left = 24 * 60 - Math.floor(share * 24 * 60);
+    $('time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    $('date').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    $('fill').style.width = (share * 100).toFixed(2) + '%';
+    $('percent').textContent = (share * 100).toFixed(1) + '% of the day';
+    $('left').textContent = `${Math.floor(left / 60)} h ${left % 60} min left`;
+  }
+  update();
+  setInterval(update, 1000);
+</script>
+</body>
+</html>

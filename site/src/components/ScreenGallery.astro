@@ -11,6 +11,7 @@ import dashboardColors from '../assets/screens/dashboard-colors.png';
 import dashboardCompact from '../assets/screens/dashboard-compact.png';
 import dashboardMetrics from '../assets/screens/dashboard-metrics.png';
 import dashboard from '../assets/screens/dashboard.png';
+import webDay from '../assets/screens/web-day.png';
 
 interface Props {
 	lang?: 'en' | 'ja';
@@ -57,6 +58,15 @@ const screens = [
 			ja: '今の5時間ブロックと今日のトークン数を、手元のログから。',
 		},
 		how: 'ssp dashboard --widgets clock,claude-code',
+	},
+	{
+		image: webDay,
+		title: { en: 'Web page', ja: 'Web ページ' },
+		text: {
+			en: 'Any HTML, CSS and JavaScript, drawn by headless Chrome.',
+			ja: 'HTML・CSS・JavaScript で作った画面を、ヘッドレス Chrome で描きます。',
+		},
+		how: 'ssp web contrib/web/day.html',
 	},
 	{
 		image: clock,

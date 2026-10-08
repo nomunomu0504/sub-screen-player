@@ -29,8 +29,10 @@ min_quality = 70         # lowest quality used to keep up with fast animations a
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
-show = "clock"           # "clock", "dashboard", "image" or "nothing"
+show = "clock"           # "clock", "dashboard", "image", "web" or "nothing"
 # image = "/path/to/picture.png"   # a video works too (needs ffmpeg, see [video])
+# url = "https://example.com/panel.html"   # for show = "web" (see [web])
+# reload = 600           # reload the web page every this many seconds
 fit = "contain"          # "contain", "cover" or "stretch"
 
 [clock]
@@ -50,6 +52,12 @@ widgets = ["clock", "cpu", "memory", "network", "disk"]
 color = "#F0F2F8"        # text
 accent = "#6EE7B7"       # graphs
 background = "#000000"
+
+[web]
+# Web pages are drawn by headless Chrome, downloaded on first use with `ssp web --install`
+# (about 100 MB, from Google's Chrome for Testing). Or use an installed Chrome, Chromium or Edge:
+# chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+auto_download = false    # download without asking when a page is shown and none is there
 
 [video]
 # Videos are played by ffmpeg, found on PATH or where it is usually installed.
@@ -82,6 +90,8 @@ pub struct Config {
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
     pub dashboard: DashboardConfig,
+    /// How web pages are drawn.
+    pub web: WebConfig,
     /// How videos are played.
     pub video: VideoConfig,
     /// Where the `claude-code` dashboard panel reads its figures.
@@ -99,11 +109,23 @@ impl Default for Config {
             startup: StartupConfig::default(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
+            web: WebConfig::default(),
             video: VideoConfig::default(),
             claude_code: ClaudeCodeConfig::default(),
             drivers: DriversConfig::default(),
         }
     }
+}
+
+/// How web pages are drawn.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WebConfig {
+    /// A Chrome, Chromium or Edge program to use instead of a downloaded headless Chrome.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chrome: Option<PathBuf>,
+    /// Download headless Chrome when a page is shown and none is installed, without asking.
+    pub auto_download: bool,
 }
 
 /// How videos are played.
@@ -205,11 +227,17 @@ impl From<OnExit> for StopAction {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StartupConfig {
-    /// `"clock"`, `"dashboard"`, `"image"` or `"nothing"`.
+    /// `"clock"`, `"dashboard"`, `"image"`, `"web"` or `"nothing"`.
     pub show: StartupShow,
     /// Image or video file for `show = "image"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<PathBuf>,
+    /// Page for `show = "web"`: an `http`, `https` or `file` URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Reload the page every this many seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reload: Option<u64>,
     /// How the image is fitted: `"contain"`, `"cover"` or `"stretch"`.
     pub fit: FitName,
 }
@@ -219,6 +247,8 @@ impl Default for StartupConfig {
         Self {
             show: StartupShow::Clock,
             image: None,
+            url: None,
+            reload: None,
             fit: FitName::Contain,
         }
     }
@@ -237,6 +267,8 @@ pub enum StartupShow {
     Dashboard,
     /// `startup.image`.
     Image,
+    /// `startup.url`.
+    Web,
 }
 
 /// Serializable [`Fit`].

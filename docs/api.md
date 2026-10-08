@@ -36,6 +36,9 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `POST` | `/displays/{id}/clear` | | Stops the current content and blanks the screen |
 | `POST` | `/displays/{id}/stop` | | Stops the current content; the screen keeps its picture |
 | `GET` | `/displays/{id}/stream` | | WebSocket for live frames (see below) |
+| `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Shows a web page (see below) |
+| `GET` | `/web/chrome` | | Whether headless Chrome is ready |
+| `POST` | `/web/chrome` | | Downloads headless Chrome |
 | `PUT` | `/metrics/{id}` | JSON | Sets a figure for `metric:<id>` dashboard panels (see below) |
 | `GET` | `/metrics` | | All metrics |
 | `GET` | `/metrics/{id}` | | One metric |
@@ -77,7 +80,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `animation`, `video`, `clock`, `dashboard` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed.
@@ -197,6 +200,37 @@ are gone after a restart, so send them again (most senders run on a timer anyway
 While a dashboard shows the `claude-code` panel, the daemon keeps the metric `claude-code` up to
 date itself (tokens in the current 5-hour block, the time it ends and today's total in `detail`,
 and tokens per minute over the last hour in `history`).
+
+### `POST /displays/{id}/web`
+
+Shows a web page, drawn by headless Chrome at the panel's size (`content` is then `web`).
+
+```json
+{ "url": "https://example.com/status", "reload": 600 }
+```
+
+`url` is an `http`, `https` or `file` URL; `reload` (optional) reloads the page every so many
+seconds. The browser starts after the answer: a page that cannot be loaded is reported on the
+display and in the daemon's log. Without a browser the answer is `409`, unless
+`[web] auto_download = true` lets the daemon download one first.
+
+### `GET /web/chrome`, `POST /web/chrome`
+
+`GET` tells whether a browser is ready; `POST` downloads the current headless Chrome from Chrome
+for Testing (about 100 MB; the request lasts until it is done, and answers `502` if the download
+fails), and both return:
+
+```json
+{
+  "installed": true,
+  "path": "/Users/me/Library/Application Support/sub-screen-player/chrome/155.0.8059.39/chrome-headless-shell-mac-arm64/chrome-headless-shell",
+  "version": "155.0.8059.39",
+  "configured": false,
+  "dir": "/Users/me/Library/Application Support/sub-screen-player/chrome"
+}
+```
+
+`configured` is `true` when the browser comes from `[web] chrome` (then there is no `version`).
 
 ## WebSocket stream
 

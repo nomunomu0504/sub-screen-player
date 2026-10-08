@@ -34,6 +34,11 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system", 
 jiff = "0.2.38"
 # Finding replies in Claude Code's logs without parsing every line
 memchr = "2.8.3"
+# Web screens: the DevTools protocol of headless Chrome, and unpacking its download
+tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
+base64 = "0.22.1"
+url = "2.5.8"
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # Errors and logging
 thiserror = "2.0.21"

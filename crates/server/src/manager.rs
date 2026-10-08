@@ -18,7 +18,9 @@ use ssp_core::{
 use crate::config::{Config, DisplayConfig, StartupShow};
 use crate::metrics::Metrics;
 use crate::sources::video::{self, VideoFile};
+use crate::sources::web::WebPage;
 use crate::sources::{Clock, Content, Picture, Source};
+use crate::web::Web;
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
@@ -367,6 +369,19 @@ fn startup_content(config: &Config, metrics: Metrics) -> Result<Content, String>
                 config.clock.clone(),
                 metrics,
             ))
+        }
+        StartupShow::Web => {
+            let url = config
+                .startup
+                .url
+                .as_deref()
+                .ok_or("startup.url is not set")?;
+            let page = WebPage::new(url, config.startup.reload)
+                .map_err(|e| format!("startup.url: {e}"))?;
+            Ok(Content::Web {
+                page,
+                web: Web::new(&config.web),
+            })
         }
         StartupShow::Image => {
             let path = config

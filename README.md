@@ -40,6 +40,8 @@ device-specific protocol has to be written; everything else is shared.
   An image can optionally be stored on the device so it survives power loss.
 - **Videos**: MP4, MOV, WebM, MKV and anything else ffmpeg reads, played in a loop at up to
   60 fps when [ffmpeg](https://ffmpeg.org/) is installed.
+- **Web pages**: any HTML/CSS/JavaScript page or URL, drawn by headless Chrome (downloaded on
+  first use) and sent whenever it repaints.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.
 - **Autostart** at login (launchd, systemd user unit or the Windows `Run` key).
@@ -115,6 +117,15 @@ logs Claude Code keeps on your computer ([details](docs/cli.md#show-how-much-cla
 
 ```sh
 ssp dashboard --widgets clock,claude-code,cpu,memory
+```
+
+**Anything you can build as a web page**, drawn by headless Chrome
+([how](docs/cli.md#show-a-web-page)):
+
+![A web page showing the time and how much of the day has gone](docs/images/web-day.png)
+
+```sh
+ssp web contrib/web/day.html
 ```
 
 Anything else is up to you: show a picture with `ssp show`, or send frames from your own program

@@ -167,6 +167,47 @@ ffmpeg = "/opt/homebrew/bin/ffmpeg"
 ディスプレイ次第で、D92 は毎秒約 2.2 MB しか受け取れないため、細かい絵柄の全画面の動画は約 40fps、落ち着いた絵柄なら 60fps
 になります。デーモンの起動時に動画を再生するには、`[startup]` に `show = "image"` と `image = "/path/to/clip.mp4"` を設定します。
 
+### Web ページを表示する
+
+```sh
+ssp web contrib/web/day.html
+ssp web https://example.com/status --reload 600
+```
+
+![時刻と、1日のうちどれだけ過ぎたかを表示する Web ページ](images/web-day.png)
+
+HTML・CSS・JavaScript で作れるものなら、何でも画面にできます。ページはヘッドレス Chrome がパネルの大きさ
+（D92 では 1920x462）で描き、描き変わるたびにディスプレイへ送ります。CSS アニメーションや自分で更新するページも、
+ブラウザと同じように最大 60fps で動きます。[contrib/web/day.html](../contrib/web/day.html) が、手始めに使える小さな例です。
+自分では更新しないページには、`--reload` で指定した秒数ごとに読み込み直させます。
+
+**ヘッドレス Chrome** は `ssp` に含まれていません。初めて `ssp web` を使うときに、ダウンロードするか（約 100 MB、Google の
+[Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) から）を尋ね、
+`~/Library/Application Support/sub-screen-player/chrome`（macOS）、`~/.local/share/sub-screen-player/chrome`（Linux）、
+`%LOCALAPPDATA%\sub-screen-player\data\chrome`（Windows）に置きます。`ssp web --install` は何も表示せずにダウンロード
+だけを行います（後で実行すると最新版に更新します）。`--yes` を付けると確認を省きます。インストール済みの Chrome・Chromium・
+Edge を使うには、設定ファイルで指定します。
+
+```toml
+[web]
+chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
+
+ブラウザはページを表示している間だけ動き、毎回まっさらなプロファイルを使います。普段使っているブラウザの Cookie・
+ログイン・拡張機能は使われません。JavaScript は有効で、ページはリンク先のものを何でも読み込めるので、信頼できるページを
+表示してください。ブラウザは 300〜400 MB のメモリを使い、ページが 60fps で動いている間は CPU 1コアの半分ほどを使います。
+動かないページなら、描いた後はほとんど負荷がありません。ページを表示できないとき（ネットワークがない、ファイルがない、
+ブラウザが起動しないなど）は、ディスプレイに理由を表示します。Linux では、ダウンロードした Chrome に一般的なブラウザ用の
+ライブラリが必要です。起動しないときは、ディストリビューションの `chromium` を入れて `[web] chrome` に指定してください。
+デーモンの起動時にページを表示するには、次のように設定します。
+
+```toml
+[startup]
+show = "web"
+url = "file:///home/me/panel.html"
+reload = 600       # 省略可
+```
+
 ### 表示を止める・消す・画面を消灯する
 
 | コマンド | 画面の絵 | 画面 | 時計・ダッシュボード・画像・ストリーム |
@@ -346,6 +387,10 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --series <LIST>` | グラフの値を、古い順のカンマ区切りの値で置き換えます。 |
 | `ssp metric list` | メトリクスの一覧を、更新からの経過時間付きで表示します。`--json` で JSON を出力します。 |
 | `ssp metric rm <ID>` | メトリクスを削除します。 |
+| `ssp web <URL か FILE>` | Web ページやローカルの HTML ファイルを、ヘッドレス Chrome で描いて表示します。初回はヘッドレス Chrome をダウンロードするか尋ねます。 |
+| `  --reload <SECONDS>` | 指定した秒数ごとにページを読み込み直します。 |
+| `  --yes`・`-y` | 必要なら、確認せずにヘッドレス Chrome をダウンロードします。 |
+| `  --install` | ヘッドレス Chrome のダウンロード（更新）だけを行います。 |
 | `ssp stop` | 時計・ダッシュボード・画像・ストリームを止めます。画面には最後の絵が残ります。 |
 | `ssp clear` | 時計・ダッシュボード・画像・ストリームを止め、画面を消去します。 |
 

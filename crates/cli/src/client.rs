@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use ssp_server::api::types::{DisplayView, ErrorBody, Health, MetricView};
+use ssp_server::api::types::{ChromeView, DisplayView, ErrorBody, Health, MetricView};
 use ureq::http::Response;
 
 pub struct Client {
@@ -59,6 +59,25 @@ impl Client {
 
     pub fn metrics(&self) -> Result<Vec<MetricView>> {
         self.get("/metrics")
+    }
+
+    pub fn chrome(&self) -> Result<ChromeView> {
+        self.get("/web/chrome")
+    }
+
+    /// Has the daemon download headless Chrome; waits as long as that takes.
+    pub fn install_chrome(&self) -> Result<ChromeView> {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(30 * 60)))
+            .build()
+            .into();
+        let mut request = agent.post(self.url("/web/chrome"));
+        if let Some(auth) = self.auth() {
+            request = request.header("Authorization", auth);
+        }
+        let mut response = self.check(request.send_empty())?;
+        Ok(response.body_mut().read_json()?)
     }
 
     pub fn put_json(&self, path: &str, body: &impl Serialize) -> Result<()> {

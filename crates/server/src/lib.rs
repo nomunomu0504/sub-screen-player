@@ -6,6 +6,7 @@
 //! - [`api`]: the HTTP + WebSocket API that clients (the CLI, scripts, apps) use.
 //! - [`metrics`]: figures sent from outside, shown as dashboard panels.
 //! - [`claude_code`]: the `claude-code` panel's reader of Claude Code's usage logs.
+//! - [`web`]: headless Chrome for web pages (download, DevTools protocol).
 //! - [`config`]: the TOML configuration.
 //! - [`drivers`]: the list of device drivers compiled in.
 #![warn(missing_docs)]
@@ -19,6 +20,7 @@ pub mod manager;
 pub mod metrics;
 pub mod sources;
 pub mod text;
+pub mod web;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -61,15 +63,7 @@ pub async fn serve(
     let uploads = std::env::temp_dir().join(format!("sub-screen-player-{}", config.listen.port()));
     let videos = sources::video::Videos::new(config.video.ffmpeg.clone(), uploads)
         .context("cannot create the folder for videos")?;
-    let state = api::AppState::new(
-        manager.clone(),
-        config.token.clone(),
-        config.clock.clone(),
-        config.dashboard.clone(),
-        metrics,
-        videos,
-        stop_signal,
-    );
+    let state = api::AppState::new(manager.clone(), &config, metrics, videos, stop_signal);
     let served = axum::serve(listener, api::router(state))
         .with_graceful_shutdown(async move {
             shutdown.await;

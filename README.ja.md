@@ -40,6 +40,8 @@ API を通して、他のプログラムからも自由に描画できます。
   電源を切っても残るようにデバイスへ保存することもできます。
 - **動画の再生**: [ffmpeg](https://ffmpeg.org/) が入っていれば、MP4・MOV・WebM・MKV など ffmpeg が読める動画を、
   最大 60fps で繰り返し再生します。
+- **Web ページの表示**: HTML・CSS・JavaScript のページや URL を、ヘッドレス Chrome（初回にダウンロード）で描き、
+  描き変わるたびに送ります。
 - **HTTP + WebSocket API**: どの言語のスクリプトやアプリからでも描画できます。
 - **抜き差しに追従**: 挿し直すと、それまでの表示内容を再開します。
 - **ログイン時の自動起動**: launchd / systemd ユーザーユニット / Windows の `Run` キー
@@ -114,6 +116,14 @@ ssp dashboard --widgets clock,metric:ci,metric:deploy,metric:queue
 
 ```sh
 ssp dashboard --widgets clock,claude-code,cpu,memory
+```
+
+**Web ページで作った画面**。ヘッドレス Chrome で描きます（[使い方](docs/cli.ja.md#web-ページを表示する)）。
+
+![時刻と、1日のうちどれだけ過ぎたかを表示する Web ページ](docs/images/web-day.png)
+
+```sh
+ssp web contrib/web/day.html
 ```
 
 ほかにも、`ssp show` で画像を表示したり、自作のプログラムからフレームを送ったり（[後述](#自作プログラムから描画する)）

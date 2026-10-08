@@ -18,14 +18,16 @@ use ssp_core::{Fit, Frame};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
-use crate::config::{ClockConfig, DashboardConfig};
+use crate::config::{ClockConfig, Config, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
 use crate::sources::video::{self, MAX_VIDEO_BYTES, VideoFile, Videos};
+use crate::sources::web::WebPage;
 use crate::sources::{Clock, Content, Picture};
+use crate::web::Web;
 use types::{
-    BrightnessRequest, CapabilitiesView, ClockRequest, DashboardRequest, DisplayView, ErrorBody,
-    Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView,
+    BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
+    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView, WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -40,27 +42,28 @@ pub struct AppState {
     dashboard: DashboardConfig,
     metrics: Metrics,
     videos: Arc<Videos>,
+    web: Web,
     shutdown: watch::Receiver<bool>,
 }
 
 impl AppState {
+    /// The API of `manager` with the token, defaults and browser settings of `config`.
     /// `shutdown` turns `true` when the daemon is stopping; open streams then close.
     pub fn new(
         manager: Arc<Manager>,
-        token: Option<String>,
-        clock: ClockConfig,
-        dashboard: DashboardConfig,
+        config: &Config,
         metrics: Metrics,
         videos: Videos,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         Self {
             manager,
-            token: token.map(Into::into),
-            clock,
-            dashboard,
+            token: config.token.clone().map(Into::into),
+            clock: config.clock.clone(),
+            dashboard: config.dashboard.clone(),
             metrics,
             videos: Arc::new(videos),
+            web: Web::new(&config.web),
             shutdown,
         }
     }
@@ -80,6 +83,8 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/dashboard", post(dashboard))
         .route("/displays/{id}/stop", post(stop))
         .route("/displays/{id}/stream", get(stream::stream))
+        .route("/displays/{id}/web", post(show_web))
+        .route("/web/chrome", get(chrome_status).post(install_chrome))
         .route("/metrics", get(list_metrics))
         .route(
             "/metrics/{id}",
@@ -341,6 +346,44 @@ fn too_large(limit: u64, what: &str) -> ApiError {
         StatusCode::PAYLOAD_TOO_LARGE,
         format!("{what} may be at most {} MiB", limit >> 20),
     )
+}
+
+async fn show_web(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<WebRequest>,
+) -> Result<StatusCode, ApiError> {
+    let page = WebPage::new(&request.url, request.reload).map_err(ApiError::bad_request)?;
+    blocking(move || {
+        // Find (or download, if allowed) the browser now, so a missing one is reported here
+        // rather than only on the display.
+        app.web
+            .ensure()
+            .map_err(|e| ApiError::new(StatusCode::CONFLICT, e))?;
+        app.manager.set_content(
+            &id,
+            Content::Web {
+                page,
+                web: app.web.clone(),
+            },
+        )?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+async fn chrome_status(State(app): State<AppState>) -> Result<Json<ChromeView>, ApiError> {
+    blocking(move || Ok(Json(app.web.status()))).await
+}
+
+async fn install_chrome(State(app): State<AppState>) -> Result<Json<ChromeView>, ApiError> {
+    blocking(move || {
+        app.web
+            .install()
+            .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))?;
+        Ok(Json(app.web.status()))
+    })
+    .await
 }
 
 async fn brightness(

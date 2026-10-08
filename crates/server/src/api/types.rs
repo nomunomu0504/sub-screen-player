@@ -124,6 +124,19 @@ pub struct ClockRequest {
     pub background: Option<String>,
 }
 
+/// `POST /api/v1/displays/{id}/web`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebRequest {
+    /// An `http`, `https` or `file` URL.
+    pub url: String,
+    /// Reload the page every this many seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<u64>,
+}
+
+pub use crate::web::ChromeView;
+
 /// `POST /api/v1/displays/{id}/dashboard`. Unset fields use the daemon's `[dashboard]` config.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]

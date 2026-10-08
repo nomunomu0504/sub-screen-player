@@ -16,7 +16,7 @@ for, and where new code belongs.
 │  api/        routes, auth, WebSocket streams                                 │
 │  manager     finds displays, hotplug, what each display shows (Content)      │
 │  sources/    built-in screens that draw frames (clock, dashboard, image,     │
-│              animation, video through ffmpeg)                                │
+│              animation, video through ffmpeg, web page through Chrome)       │
 │  metrics     figures sent by scripts for the dashboard's metric panels       │
 └──────────────────────┼───────────────────────────────────────────────────────┘
                        │ Frame (landscape RGB, panel size)
@@ -132,6 +132,12 @@ A `Display` is only ever used by its device thread, so drivers need no locking.
   except Claude Code's session logs for the `claude-code` panel, and only once a dashboard shows
   that panel. Only token counts and times are kept, in memory; they are visible to API clients as
   the metric `claude-code`.
+- Web pages run in headless Chrome with a new, empty profile, deleted when the page is replaced.
+  Any API client can make the daemon open a URL, `file://` included, so a daemon reachable from
+  the network (with a token) lets token holders show the computer's local files on its display.
+- Headless Chrome is downloaded over HTTPS from Google's Chrome for Testing storage, only when the
+  user asks (`ssp web` confirms first) or sets `[web] auto_download`. Chrome for Testing publishes
+  no checksums; the zip's own CRCs are checked while unpacking.
 
 ## Extension points
 
@@ -144,7 +150,7 @@ What exists today and where planned features fit:
 | Built-in screens | available | A `Source` in `crates/server/src/sources/` plus a `Content` variant |
 | Built-in dashboard panels with their own data | available | A collector registered with `Metrics::provide` that keeps a metric up to date (`claude_code.rs`), plus a `Widget` variant |
 | Non-HID transports (USB bulk, serial) | planned | A new `Transport` implementation in `crates/core` |
-| Web (HTML/CSS) screens | planned | A `Source` that renders a page, or an external client streaming frames |
+| Web (HTML/CSS) screens | available | `sources/web.rs` shows a page through headless Chrome (`web/`: download, DevTools protocol) |
 | WASM plugins | planned | A `Source` that hosts a sandboxed plugin |
 | Layouts composed in the config | planned | A `Source` that combines other sources, configured in `config.rs` |
 

@@ -42,6 +42,23 @@ jobs:
       - name: Lint
         run: mise run lint
 
+      # The runners come with Google Chrome; the web page test uses it when it is set. Ubuntu
+      # 24.04 keeps Chrome's sandbox from starting unless user namespaces are allowed.
+      - name: Find Chrome
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          fi
+          for chrome in /usr/bin/google-chrome \
+              "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+              "C:/Program Files/Google/Chrome/Application/chrome.exe"; do
+            if [ -f "$chrome" ]; then
+              echo "SSP_TEST_CHROME=$chrome" >> "$GITHUB_ENV"
+              break
+            fi
+          done
+
       - name: Test
         run: mise run test
 

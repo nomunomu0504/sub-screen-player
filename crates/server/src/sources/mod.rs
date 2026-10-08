@@ -10,6 +10,7 @@ mod dashboard;
 pub(crate) use dashboard::number;
 pub mod stats;
 pub mod video;
+pub mod web;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,6 +59,13 @@ pub enum Content {
         /// How each frame is fitted to the panel.
         fit: Fit,
     },
+    /// A web page drawn by headless Chrome.
+    Web {
+        /// The page.
+        page: web::WebPage,
+        /// The browser settings.
+        web: crate::web::Web,
+    },
     /// The built-in clock.
     Clock(ClockConfig),
     /// The built-in dashboard; its clock panel uses the clock settings and its `metric:<id>`
@@ -75,6 +83,7 @@ impl Content {
             Self::Image { .. } => "image",
             Self::Animation { .. } => "animation",
             Self::Video { .. } => "video",
+            Self::Web { .. } => "web",
             Self::Clock(_) => "clock",
             Self::Dashboard(..) => "dashboard",
             Self::Stream => "stream",
@@ -93,6 +102,7 @@ impl Content {
                 Some(Box::new(animation::Player::new(animation.clone(), *fit)))
             }
             Self::Video { video, fit } => Some(Box::new(video::Player::new(video.clone(), *fit))),
+            Self::Web { page, web } => Some(Box::new(web::Page::new(page.clone(), web.clone()))),
             Self::Clock(config) => Some(Box::new(Clock::new(config.clone()))),
             Self::Dashboard(dashboard, clock, metrics) => Some(Box::new(Dashboard::new(
                 dashboard.clone(),

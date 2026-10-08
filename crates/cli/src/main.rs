@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ssp_server::Config;
 use ssp_server::api::types::{
     BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, MetricUpdate, MetricView,
-    PowerRequest,
+    PowerRequest, WebRequest,
 };
 use ssp_server::config::Widget;
 
@@ -100,6 +100,21 @@ enum Cmd {
         /// Also store the image on the device so it stays after power loss (writes flash memory)
         #[arg(long)]
         persist: bool,
+    },
+    /// Show a web page or a local HTML file, drawn by headless Chrome
+    Web {
+        /// An http(s) URL, or an HTML file
+        #[arg(required_unless_present = "install")]
+        page: Option<String>,
+        /// Reload the page every this many seconds
+        #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
+        reload: Option<u64>,
+        /// Download headless Chrome without asking, if it is not there yet
+        #[arg(long, short)]
+        yes: bool,
+        /// Only download headless Chrome (about 100 MB)
+        #[arg(long)]
+        install: bool,
     },
     /// Show the built-in clock
     Clock {
@@ -306,6 +321,23 @@ fn run(cli: Cli) -> Result<()> {
             let query = format!("?fit={}&persist={persist}", fit.name());
             cli_client(&cli.url, &cli.token, &config_path)?
                 .post_file(&format!("{display}/image{query}"), &path)
+        }
+        Cmd::Web {
+            page,
+            reload,
+            yes,
+            install,
+        } => {
+            let client = cli_client(&cli.url, &cli.token, &config_path)?;
+            ensure_chrome(&client, yes || install)?;
+            let Some(page) = page else {
+                return Ok(());
+            };
+            let request = WebRequest {
+                url: page_url(&page)?,
+                reload,
+            };
+            client.post_json(&format!("{display}/web"), &request)
         }
         Cmd::Clock {
             no_seconds,
@@ -525,6 +557,60 @@ fn status(client: &Client) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Makes sure the daemon has a browser for web pages, downloading one (after asking, unless
+/// `yes`) if needed.
+fn ensure_chrome(client: &Client, yes: bool) -> Result<()> {
+    use std::io::{BufRead, IsTerminal, Write};
+    let chrome = client.chrome()?;
+    if chrome.installed {
+        return Ok(());
+    }
+    if chrome.configured {
+        anyhow::bail!("[web] chrome in the daemon's config points to a missing program");
+    }
+    if !yes {
+        if !std::io::stdin().is_terminal() {
+            anyhow::bail!(
+                "web pages need headless Chrome ({}): run `ssp web --install` first, or add --yes",
+                ssp_server::web::DOWNLOAD_SIZE
+            );
+        }
+        eprint!(
+            "Web pages are drawn by headless Chrome, which is not installed yet.\n\
+             Download it ({}, from Google's Chrome for Testing) into {}? [y/N] ",
+            ssp_server::web::DOWNLOAD_SIZE,
+            chrome.dir
+        );
+        std::io::stderr().flush()?;
+        let mut answer = String::new();
+        std::io::stdin().lock().read_line(&mut answer)?;
+        if !matches!(answer.trim(), "y" | "Y" | "yes") {
+            anyhow::bail!("not downloaded");
+        }
+    }
+    eprintln!("Downloading headless Chrome...");
+    let installed = client.install_chrome()?;
+    eprintln!(
+        "Installed headless Chrome {}",
+        installed.version.as_deref().unwrap_or("")
+    );
+    Ok(())
+}
+
+/// A URL as it is, or a file as a `file://` URL.
+fn page_url(page: &str) -> Result<String> {
+    if let Ok(url) = url::Url::parse(page)
+        && matches!(url.scheme(), "http" | "https" | "file")
+    {
+        return Ok(url.into());
+    }
+    let path = std::fs::canonicalize(page)
+        .with_context(|| format!("{page} is neither a URL nor a file"))?;
+    let url = url::Url::from_file_path(&path)
+        .map_err(|()| anyhow::anyhow!("cannot turn {} into a URL", path.display()))?;
+    Ok(url.into())
 }
 
 /// Whether the file starts like a video (the daemon decides for good).

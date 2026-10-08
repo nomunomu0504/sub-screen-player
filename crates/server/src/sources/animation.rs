@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
+use image::DynamicImage;
 use ssp_core::{Animation, Fit, Frame};
 
 use super::Source;
@@ -8,14 +9,16 @@ use super::Source;
 /// Plays an [`Animation`] in a loop, each frame for its own delay.
 ///
 /// Which frame is shown follows the clock, not a frame counter: if drawing or sending is slow,
-/// frames are skipped instead of the animation slowing down.
+/// frames are skipped instead of the animation slowing down. Long animations, which are not kept
+/// decoded, are decoded on a separate thread a few frames ahead.
 pub struct Player {
     animation: Arc<Animation>,
     fit: Fit,
     started: Option<Instant>,
-    /// The last frame fitted to the panel, so a frame shown twice is not scaled twice.
-    fitted: Option<(usize, Frame)>,
     until_next: Duration,
+    /// The frame on screen, fitted to the panel, with its number (see `sequence_at`).
+    fitted: Option<(u64, Frame)>,
+    stream: Option<Stream>,
 }
 
 impl Player {
@@ -25,8 +28,9 @@ impl Player {
             animation,
             fit,
             started: None,
-            fitted: None,
             until_next: Duration::ZERO,
+            fitted: None,
+            stream: None,
         }
     }
 }
@@ -34,19 +38,80 @@ impl Player {
 impl Source for Player {
     fn render(&mut self, frame: &mut Frame) {
         let started = *self.started.get_or_insert_with(Instant::now);
-        let (index, until_next) = self.animation.at(started.elapsed());
+        let (sequence, until_next) = self.animation.sequence_at(started.elapsed());
         self.until_next = until_next;
         let (width, height) = (frame.width(), frame.height());
-        let fitted = match self.fitted.take() {
-            Some((shown, fitted)) if shown == index && fitted.width() == width => fitted,
-            _ => Frame::fit(self.animation.frame(index), width, height, self.fit),
+        if let Some((shown, fitted)) = &self.fitted
+            && *shown == sequence
+            && fitted.width() == width
+        {
+            frame.clone_from(fitted);
+            return;
+        }
+        let index = (sequence % self.animation.len() as u64) as usize;
+        let image = match self.animation.cached(index) {
+            Some(image) => Some(image),
+            None => self
+                .stream
+                .get_or_insert_with(|| Stream::new(self.animation.stream()))
+                .advance(sequence),
         };
+        let Some(image) = image else {
+            // The decoder failed: keep showing what is on screen.
+            return;
+        };
+        let fitted = Frame::fit(image, width, height, self.fit);
         frame.clone_from(&fitted);
-        self.fitted = Some((index, fitted));
+        self.fitted = Some((sequence, fitted));
     }
 
     fn next_change(&self) -> Option<Duration> {
         Some(self.until_next)
+    }
+}
+
+/// Frames of a long animation, decoded on another thread.
+struct Stream {
+    frames: mpsc::Receiver<ssp_core::Result<(u64, DynamicImage)>>,
+    current: Option<(u64, DynamicImage)>,
+    /// A frame received that is not due yet.
+    ahead: Option<(u64, DynamicImage)>,
+}
+
+impl Stream {
+    fn new(frames: mpsc::Receiver<ssp_core::Result<(u64, DynamicImage)>>) -> Self {
+        Self {
+            frames,
+            current: None,
+            ahead: None,
+        }
+    }
+
+    /// Takes frames in order up to number `target`, skipping the ones that are late. Waits
+    /// while the decoder is behind.
+    fn advance(&mut self, target: u64) -> Option<&DynamicImage> {
+        loop {
+            if self.current.as_ref().is_some_and(|(n, _)| *n >= target) {
+                break;
+            }
+            let next = match self.ahead.take() {
+                Some(next) => next,
+                None => match self.frames.recv() {
+                    Ok(Ok(next)) => next,
+                    Ok(Err(err)) => {
+                        tracing::warn!("cannot decode the animation: {err}");
+                        break;
+                    }
+                    Err(_) => break,
+                },
+            };
+            if next.0 > target && self.current.is_some() {
+                self.ahead = Some(next);
+                break;
+            }
+            self.current = Some(next);
+        }
+        self.current.as_ref().map(|(_, image)| image)
     }
 }
 
@@ -77,7 +142,15 @@ mod tests {
 
     #[test]
     fn shows_the_frames_in_turn() {
-        let mut player = Player::new(red_then_blue(), Fit::Stretch);
+        for animation in [
+            red_then_blue(),
+            Arc::new(Arc::unwrap_or_clone(red_then_blue()).into_streamed()),
+        ] {
+            plays_red_then_blue(Player::new(animation, Fit::Stretch));
+        }
+    }
+
+    fn plays_red_then_blue(mut player: Player) {
         let mut frame = Frame::blank(8, 4);
         player.render(&mut frame);
         let first = frame.image().get_pixel(4, 2).0;

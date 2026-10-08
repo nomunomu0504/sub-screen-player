@@ -81,7 +81,10 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ### `POST /displays/{id}/image`
 
 The body is a PNG, JPEG, GIF or WebP file (up to 64 MiB). An animated GIF, APNG or WebP plays in
-a loop, each frame for its own delay (the display's `content` is then `animation`). Query parameters:
+a loop, each frame for its own delay (the display's `content` is then `animation`), up to
+10,000 frames. Animations that take more than 256 MiB decoded (a full-screen 60 fps animation
+longer than about a second) are decoded again while they play instead of being kept in memory.
+Query parameters:
 
 | Parameter | Values | Default |
 |---|---|---|

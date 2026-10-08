@@ -129,7 +129,7 @@ impl Picture {
     pub fn first(&self) -> &DynamicImage {
         match self {
             Self::Still(image) => image,
-            Self::Animated(animation) => animation.frame(0),
+            Self::Animated(animation) => animation.first(),
         }
     }
 

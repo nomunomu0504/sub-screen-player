@@ -15,7 +15,7 @@ for, and where new code belongs.
 ┌──────────────────────┼──────────────────────────────────────── ssp-server ──┐
 │  api/        routes, auth, WebSocket streams                                 │
 │  manager     finds displays, hotplug, what each display shows (Content)      │
-│  sources/    built-in screens that draw frames (clock, still image)          │
+│  sources/    built-in screens that draw frames (clock, dashboard, image)     │
 └──────────────────────┼───────────────────────────────────────────────────────┘
                        │ Frame (landscape RGB, panel size)
 ┌──────────────────────┼──────────────────────────────────────────── ssp-core ──┐
@@ -67,10 +67,10 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
   The daemon's driver list is `crates/server/src/drivers.rs`. Which drivers are in use is a
   `DriverSelection` (`--driver` options, `[drivers]` in the config) applied with
   `Registry::select`; drivers marked `experimental` are only used when named.
-- **`Content`** (server): what a display is told to show: nothing, an image, the clock or a
-  stream. It is kept per display id, so a replugged display carries on.
+- **`Content`** (server): what a display is told to show: nothing, an image, the clock, the
+  dashboard or a stream. It is kept per display id, so a replugged display carries on.
 - **`Source`** (server trait): something that draws frames and says when the picture changes
-  next (the clock, a still image).
+  next (the clock, the dashboard, a still image).
 
 ## Life of a frame
 

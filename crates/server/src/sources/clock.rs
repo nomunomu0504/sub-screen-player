@@ -141,10 +141,15 @@ impl Source for Clock {
     }
 
     fn next_change(&self) -> Option<Duration> {
-        // Wake just after the next full second; unchanged frames are skipped downstream.
-        let into_second = Timestamp::now().subsec_nanosecond().max(0) as u64;
-        Some(Duration::from_nanos(1_000_000_000 - into_second) + Duration::from_millis(2))
+        Some(until_next_second())
     }
+}
+
+/// Time until just after the next full second, when a clock shows a new time. Unchanged frames
+/// are skipped downstream, so waking every second costs little.
+pub fn until_next_second() -> Duration {
+    let into_second = Timestamp::now().subsec_nanosecond().max(0) as u64;
+    Duration::from_nanos(1_000_000_000 - into_second) + Duration::from_millis(2)
 }
 
 #[cfg(test)]

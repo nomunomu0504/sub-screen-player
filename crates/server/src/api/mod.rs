@@ -16,12 +16,12 @@ use axum::{Json, middleware};
 use ssp_core::Frame;
 use tokio::sync::watch;
 
-use crate::config::ClockConfig;
+use crate::config::{ClockConfig, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::sources::{Clock, Content};
 use types::{
-    BrightnessRequest, CapabilitiesView, ClockRequest, DisplayView, ErrorBody, Health, ImageQuery,
-    PowerRequest, StatsView,
+    BrightnessRequest, CapabilitiesView, ClockRequest, DashboardRequest, DisplayView, ErrorBody,
+    Health, ImageQuery, PowerRequest, StatsView,
 };
 
 /// Largest request body accepted for images.
@@ -33,6 +33,7 @@ pub struct AppState {
     manager: Arc<Manager>,
     token: Option<Arc<str>>,
     clock: ClockConfig,
+    dashboard: DashboardConfig,
     shutdown: watch::Receiver<bool>,
 }
 
@@ -42,12 +43,14 @@ impl AppState {
         manager: Arc<Manager>,
         token: Option<String>,
         clock: ClockConfig,
+        dashboard: DashboardConfig,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         Self {
             manager,
             token: token.map(Into::into),
             clock,
+            dashboard,
             shutdown,
         }
     }
@@ -67,6 +70,7 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/power", post(power))
         .route("/displays/{id}/clear", post(clear))
         .route("/displays/{id}/clock", post(clock))
+        .route("/displays/{id}/dashboard", post(dashboard))
         .route("/displays/{id}/stop", post(stop))
         .route("/displays/{id}/stream", get(stream::stream));
     Router::new()
@@ -295,6 +299,27 @@ async fn clock(
     Clock::validate(&config).map_err(ApiError::bad_request)?;
     blocking(move || {
         app.manager.set_content(&id, Content::Clock(config))?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+async fn dashboard(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    request: Option<Json<DashboardRequest>>,
+) -> Result<StatusCode, ApiError> {
+    let request = request.map(|Json(r)| r).unwrap_or_default();
+    let mut config = app.dashboard.clone();
+    config.widgets = request.widgets.unwrap_or(config.widgets);
+    config.color = request.color.unwrap_or(config.color);
+    config.accent = request.accent.unwrap_or(config.accent);
+    config.background = request.background.unwrap_or(config.background);
+    config.validate().map_err(ApiError::bad_request)?;
+    let clock = app.clock.clone();
+    blocking(move || {
+        app.manager
+            .set_content(&id, Content::Dashboard(config, clock))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

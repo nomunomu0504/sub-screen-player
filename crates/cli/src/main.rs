@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use ssp_server::Config;
-use ssp_server::api::types::{BrightnessRequest, ClockRequest, DisplayView, PowerRequest};
+use ssp_server::api::types::{
+    BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, PowerRequest,
+};
+use ssp_server::config::Widget;
 
 use client::Client;
 
@@ -112,6 +115,12 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         weekdays: Option<Vec<String>>,
     },
+    /// Show the built-in dashboard: the time, CPU, memory, network and disk
+    Dashboard {
+        /// Panels from left to right, comma-separated, e.g. "clock,cpu,network"
+        #[arg(long, value_enum, value_delimiter = ',')]
+        widgets: Option<Vec<WidgetArg>>,
+    },
     /// Set the backlight
     Brightness {
         /// Percent, 0-100
@@ -124,7 +133,7 @@ enum Cmd {
     Off,
     /// Blank the screen
     Clear,
-    /// Stop the clock or image; the screen keeps its last picture
+    /// Stop the clock, dashboard or image; the screen keeps its last picture
     Stop,
     /// Start the daemon automatically at login
     Service {
@@ -175,6 +184,27 @@ impl FitArg {
             Self::Contain => "contain",
             Self::Cover => "cover",
             Self::Stretch => "stretch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum WidgetArg {
+    Clock,
+    Cpu,
+    Memory,
+    Network,
+    Disk,
+}
+
+impl From<WidgetArg> for Widget {
+    fn from(value: WidgetArg) -> Self {
+        match value {
+            WidgetArg::Clock => Self::Clock,
+            WidgetArg::Cpu => Self::Cpu,
+            WidgetArg::Memory => Self::Memory,
+            WidgetArg::Network => Self::Network,
+            WidgetArg::Disk => Self::Disk,
         }
     }
 }
@@ -260,6 +290,14 @@ fn run(cli: Cli) -> Result<()> {
             };
             cli_client(&cli.url, &cli.token, &config_path)?
                 .post_json(&format!("{display}/clock"), &request)
+        }
+        Cmd::Dashboard { widgets } => {
+            let request = DashboardRequest {
+                widgets: widgets.map(|w| w.into_iter().map(Widget::from).collect()),
+                ..DashboardRequest::default()
+            };
+            cli_client(&cli.url, &cli.token, &config_path)?
+                .post_json(&format!("{display}/dashboard"), &request)
         }
         Cmd::Brightness { percent } => cli_client(&cli.url, &cli.token, &config_path)?.post_json(
             &format!("{display}/brightness"),

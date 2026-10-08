@@ -27,7 +27,7 @@ quality = 85             # JPEG quality, 1-100
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
-show = "clock"           # "clock", "image" or "nothing"
+show = "clock"           # "clock", "dashboard", "image" or "nothing"
 # image = "/path/to/picture.png"
 fit = "contain"          # "contain", "cover" or "stretch"
 
@@ -37,6 +37,14 @@ seconds = true
 date_format = "%Y-%m-%d %a"   # "" hides the date
 # weekdays = ["日", "月", "火", "水", "木", "金", "土"]   # names for %a and %A, from Sunday
 color = "#F0F2F8"
+background = "#000000"
+
+[dashboard]
+# Panels from left to right: "clock", "cpu", "memory", "network", "disk".
+# The clock panel uses the formats of [clock].
+widgets = ["clock", "cpu", "memory", "network", "disk"]
+color = "#F0F2F8"        # text
+accent = "#6EE7B7"       # graphs
 background = "#000000"
 
 [drivers]
@@ -59,6 +67,8 @@ pub struct Config {
     pub startup: StartupConfig,
     /// Look of the built-in clock.
     pub clock: ClockConfig,
+    /// Contents and look of the built-in dashboard.
+    pub dashboard: DashboardConfig,
     /// Which device drivers the daemon uses.
     pub drivers: DriversConfig,
 }
@@ -71,6 +81,7 @@ impl Default for Config {
             display: DisplayConfig::default(),
             startup: StartupConfig::default(),
             clock: ClockConfig::default(),
+            dashboard: DashboardConfig::default(),
             drivers: DriversConfig::default(),
         }
     }
@@ -152,7 +163,7 @@ impl From<OnExit> for StopAction {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StartupConfig {
-    /// `"clock"`, `"image"` or `"nothing"`.
+    /// `"clock"`, `"dashboard"`, `"image"` or `"nothing"`.
     pub show: StartupShow,
     /// Image file for `show = "image"`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -180,6 +191,8 @@ pub enum StartupShow {
     /// The built-in clock.
     #[default]
     Clock,
+    /// The built-in dashboard.
+    Dashboard,
     /// `startup.image`.
     Image,
 }
@@ -250,6 +263,76 @@ impl ClockConfig {
         }
     }
 }
+
+/// Contents and look of the built-in dashboard.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DashboardConfig {
+    /// Panels from left to right.
+    pub widgets: Vec<Widget>,
+    /// Text color, `#RRGGBB`.
+    pub color: String,
+    /// Color of graphs and marks, `#RRGGBB`.
+    pub accent: String,
+    /// Background color, `#RRGGBB`.
+    pub background: String,
+}
+
+impl Default for DashboardConfig {
+    fn default() -> Self {
+        Self {
+            widgets: vec![
+                Widget::Clock,
+                Widget::Cpu,
+                Widget::Memory,
+                Widget::Network,
+                Widget::Disk,
+            ],
+            color: "#F0F2F8".into(),
+            accent: "#6EE7B7".into(),
+            background: "#000000".into(),
+        }
+    }
+}
+
+/// A panel of the dashboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Widget {
+    /// The time and date, formatted as in `[clock]`.
+    Clock,
+    /// CPU use with a graph of the last minute.
+    Cpu,
+    /// Memory use with a graph of the last minute.
+    Memory,
+    /// Download and upload speed with a graph of the last minute.
+    Network,
+    /// Space used on the system disk.
+    Disk,
+}
+
+impl DashboardConfig {
+    /// Checks the colors and the widget list.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.widgets.is_empty() {
+            return Err("dashboard.widgets needs at least one widget".into());
+        }
+        if self.widgets.len() > MAX_WIDGETS {
+            return Err(format!(
+                "dashboard.widgets takes at most {MAX_WIDGETS} widgets"
+            ));
+        }
+        for color in [&self.color, &self.accent, &self.background] {
+            if parse_color(color).is_none() {
+                return Err(format!("{color:?} is not a #RRGGBB color"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// More panels than this would be too narrow to read on a bar display.
+pub const MAX_WIDGETS: usize = 6;
 
 /// Errors from loading or checking a configuration.
 #[derive(Debug, thiserror::Error)]
@@ -331,6 +414,7 @@ impl Config {
         if !matches!(self.clock.weekdays.len(), 0 | 7) {
             return invalid("clock.weekdays needs 7 names, from Sunday".into());
         }
+        self.dashboard.validate().map_err(ConfigError::Invalid)?;
         Ok(())
     }
 }
@@ -388,6 +472,9 @@ mod tests {
             date_format = ""
             weekdays = ["日", "月", "火", "水", "木", "金", "土"]
             color = "#ff8800"
+            [dashboard]
+            widgets = ["cpu", "network"]
+            accent = "#FF8800"
             [drivers]
             enable = ["d92", "dnext"]
             "##,
@@ -398,6 +485,16 @@ mod tests {
         assert_eq!(config.clock.time_format(), "%H:%M");
         assert_eq!(parse_color(&config.clock.color), Some([0xff, 0x88, 0x00]));
         assert_eq!(config.drivers.selection().only, ["d92", "dnext"]);
+        assert_eq!(config.dashboard.widgets, [Widget::Cpu, Widget::Network]);
+    }
+
+    #[test]
+    fn checks_the_dashboard() {
+        assert!(toml::from_str::<Config>("[dashboard]\nwidgets = [\"gpu\"]").is_err());
+        let empty: Config = toml::from_str("[dashboard]\nwidgets = []").unwrap();
+        assert!(empty.validate().is_err());
+        let bad_color: Config = toml::from_str("[dashboard]\naccent = \"green\"").unwrap();
+        assert!(bad_color.validate().is_err());
     }
 
     #[test]

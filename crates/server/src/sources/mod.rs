@@ -5,6 +5,8 @@
 //! source; they are submitted to the display directly.
 
 mod clock;
+mod dashboard;
+pub mod stats;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,8 +15,9 @@ use image::DynamicImage;
 use ssp_core::{Fit, Frame};
 
 pub use clock::Clock;
+pub use dashboard::Dashboard;
 
-use crate::config::ClockConfig;
+use crate::config::{ClockConfig, DashboardConfig};
 
 /// Something that draws a picture and knows when it changes.
 pub trait Source: Send {
@@ -39,6 +42,8 @@ pub enum Content {
     },
     /// The built-in clock.
     Clock(ClockConfig),
+    /// The built-in dashboard; its clock panel uses the clock settings.
+    Dashboard(DashboardConfig, ClockConfig),
     /// Frames from a WebSocket client.
     Stream,
 }
@@ -50,6 +55,7 @@ impl Content {
             Self::Nothing => "nothing",
             Self::Image { .. } => "image",
             Self::Clock(_) => "clock",
+            Self::Dashboard(..) => "dashboard",
             Self::Stream => "stream",
         }
     }
@@ -63,6 +69,9 @@ impl Content {
                 fit: *fit,
             })),
             Self::Clock(config) => Some(Box::new(Clock::new(config.clone()))),
+            Self::Dashboard(dashboard, clock) => {
+                Some(Box::new(Dashboard::new(dashboard.clone(), clock.clone())))
+            }
         }
     }
 }

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::FitName;
+use crate::config::{FitName, Widget};
 
 /// `GET /api/v1/health`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub struct DisplayView {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
-    /// What it shows: `"nothing"`, `"image"`, `"clock"` or `"stream"`.
+    /// What it shows: `"nothing"`, `"image"`, `"clock"`, `"dashboard"` or `"stream"`.
     pub content: String,
     /// Supported operations.
     pub capabilities: CapabilitiesView,
@@ -113,6 +113,24 @@ pub struct ClockRequest {
     /// Text color, `#RRGGBB`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Background color, `#RRGGBB`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
+}
+
+/// `POST /api/v1/displays/{id}/dashboard`. Unset fields use the daemon's `[dashboard]` config.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DashboardRequest {
+    /// Panels from left to right.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub widgets: Option<Vec<Widget>>,
+    /// Text color, `#RRGGBB`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Color of graphs and marks, `#RRGGBB`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
     /// Background color, `#RRGGBB`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,

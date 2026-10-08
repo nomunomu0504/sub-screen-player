@@ -28,7 +28,9 @@ device-specific protocol has to be written; everything else is shared.
 
 - **Live frames at up to 60 fps.** Frames are encoded on one thread and sent on another. If
   frames arrive faster than the device can take them, only the newest one is sent.
-- **Built-in clock** with configurable formats and colors.
+- **Built-in clock** with configurable formats and colors, Japanese dates included.
+- **System dashboard**: the time next to CPU, memory, network and disk use, with graphs of the
+  last minute.
 - **Images**: PNG, JPEG, GIF and WebP, fitted to the panel (`contain`, `cover` or `stretch`).
   An image can optionally be stored on the device so it survives power loss.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
@@ -105,6 +107,7 @@ In another terminal:
 ssp devices                    # list displays
 ssp show photo.jpg --fit cover # show an image
 ssp clock --no-seconds         # back to the clock, without seconds
+ssp dashboard                  # the time with CPU, memory, network and disk use
 ssp brightness 60              # backlight in percent
 ssp off                        # screen off (`ssp on` turns it back on)
 ssp status                     # frame counters and timings
@@ -129,7 +132,7 @@ brightness = 80          # applied when a display connects
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
-show = "clock"           # "clock", "image" or "nothing"
+show = "clock"           # "clock", "dashboard", "image" or "nothing"
 
 [clock]
 seconds = true

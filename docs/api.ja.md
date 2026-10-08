@@ -30,6 +30,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `GET` | `/displays/{id}` | | 1つのディスプレイ |
 | `POST` | `/displays/{id}/image` | 画像ファイル | 画像を表示（後述） |
 | `POST` | `/displays/{id}/clock` | 任意の JSON | 組み込みの時計を表示 |
+| `POST` | `/displays/{id}/dashboard` | 任意の JSON | 組み込みのダッシュボードを表示 |
 | `POST` | `/displays/{id}/brightness` | `{"percent": 0-100}` | バックライトの明るさを設定 |
 | `POST` | `/displays/{id}/power` | `{"on": true \| false}` | 画面をオン／オフ |
 | `POST` | `/displays/{id}/clear` | | 表示中のコンテンツを止めて、画面を消去 |
@@ -72,7 +73,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`clock`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数です。
 
@@ -107,6 +108,22 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 `date_format` を空にすると日付を表示しません。`weekdays`（日曜日から順に7つの名前）を指定すると、`%a` と `%A` が
 その名前になります（例: `["日", "月", "火", "水", "木", "金", "土"]`）。
 
+### `POST /displays/{id}/dashboard`
+
+すべての項目は省略可能で、省略した項目は設定ファイルの `[dashboard]` の値になります。時計のパネルは `[clock]` の書式を
+使います。
+
+```json
+{
+  "widgets": ["clock", "cpu", "memory", "network", "disk"],
+  "color": "#F0F2F8",
+  "accent": "#6EE7B7",
+  "background": "#000000"
+}
+```
+
+`widgets` は左から並べるパネルです（`clock`・`cpu`・`memory`・`network`・`disk` から1〜6個）。`accent` はグラフの色です。
+
 ## WebSocket ストリーム
 
 `GET /displays/{id}/stream` は WebSocket に切り替わります。**バイナリ**メッセージ1つが1フレームです。
@@ -119,7 +136,7 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 
 - 送る頻度は自由です。ディスプレイは表示できる範囲で最新のフレームを出し（最大 `max_fps`）、古いものは捨てます。
   デーモンにとって最も処理が軽いのは、パネルとほぼ同じサイズの JPEG です。
-- ストリームが接続されている間、ディスプレイの `content` は `stream` になります。ほかのコンテンツ（画像、時計、`stop`）を
+- ストリームが接続されている間、ディスプレイの `content` は `stream` になります。ほかのコンテンツ（画像、時計、ダッシュボード、`stop`）を
   設定するとストリームは終了し、次に送られたフレームにはクローズコード `4000` で応答します。
 - 不正なフレームがあってもストリームは終わりません。デーモンはテキストメッセージ `{"error": "..."}` を返して続行します。
 - ディスプレイを挿し直してもストリームは続きます。抜かれている間に送られたフレームにはエラーを返します。

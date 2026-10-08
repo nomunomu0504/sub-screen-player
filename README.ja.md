@@ -28,7 +28,9 @@ API を通して、他のプログラムからも自由に描画できます。
 
 - **最大 60fps のライブ表示**: エンコードと送信を別スレッドで並行して行います。デバイスが受け取れる
   速さを超えてフレームが届いた場合は、最新のものだけを送ります。
-- **時計を内蔵**: 表示形式と色を設定できます。
+- **時計を内蔵**: 表示形式と色を設定できます。日本語の日付も表示できます。
+- **システムダッシュボード**: 時刻と、CPU・メモリ・ネットワーク・ディスクの使用状況を、直近1分のグラフ付きで
+  並べて表示します。
 - **画像表示**: PNG・JPEG・GIF・WebP に対応し、`contain` / `cover` / `stretch` でパネルに合わせます。
   電源を切っても残るようにデバイスへ保存することもできます。
 - **HTTP + WebSocket API**: どの言語のスクリプトやアプリからでも描画できます。
@@ -102,6 +104,7 @@ ssp serve                      # デーモンを起動（Ctrl-C で終了）。�
 ssp devices                    # ディスプレイ一覧
 ssp show photo.jpg --fit cover # 画像を表示
 ssp clock --no-seconds         # 秒なしの時計に戻す
+ssp dashboard                  # 時刻と CPU・メモリ・ネットワーク・ディスクを並べて表示
 ssp brightness 60              # 明るさ（%）
 ssp off                        # 画面を消す（`ssp on` で点灯）
 ssp status                     # フレーム数や処理時間
@@ -125,7 +128,7 @@ brightness = 80          # 接続時に設定する明るさ
 on_exit = "leave"        # 終了時: "leave" / "save-last" / "clear" / "sleep"
 
 [startup]
-show = "clock"           # 接続時の表示: "clock" / "image" / "nothing"
+show = "clock"           # 接続時の表示: "clock" / "dashboard" / "image" / "nothing"
 
 [clock]
 seconds = true

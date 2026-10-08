@@ -51,6 +51,34 @@ To change the clock just for now, use options instead:
 ssp clock --no-seconds --date-format ""
 ```
 
+### Show CPU, memory and network use next to the time
+
+```sh
+ssp dashboard
+```
+
+The dashboard shows the time (formatted as in `[clock]`) next to panels for CPU, memory, network
+and disk use. CPU, memory and network come with a graph of the last minute. The network panel
+shows the download speed with the upload speed below it (loopback is not counted), and the disk
+panel the space used on the system disk (`/`, or `C:\` on Windows). Pick and order the panels with
+`--widgets`:
+
+```sh
+ssp dashboard --widgets clock,cpu,network
+```
+
+To show the dashboard at login instead of the clock, and to keep your panels and colors, edit the
+config file and [restart the daemon](#autostart):
+
+```toml
+[startup]
+show = "dashboard"
+
+[dashboard]
+widgets = ["clock", "cpu", "memory", "network"]
+accent = "#FFD080"       # color of the graphs
+```
+
 ### Keep a picture on the screen, even when the computer is off
 
 ```sh
@@ -73,7 +101,7 @@ on_exit = "save-last"
 
 ### Stop, blank or turn off the screen
 
-| Command | What happens to the picture | The screen | The clock / image / stream |
+| Command | What happens to the picture | The screen | The clock / dashboard / image / stream |
 |---|---|---|---|
 | `ssp stop` | stays as it is | on | stopped |
 | `ssp clear` | becomes black | on | stopped |
@@ -232,8 +260,10 @@ These work with every command.
 | `  --format <FMT>` | Format of the time, e.g. `"%H:%M"` or `"%I:%M %p"` ([strftime syntax](https://docs.rs/jiff/latest/jiff/fmt/strtime/)). |
 | `  --date-format <FMT>` | Format of the date line, e.g. `"%Y-%m-%d %a"`. `""` hides it. |
 | `  --weekdays <NAMES>` | Names printed by `%a` and `%A`: seven, comma-separated, from Sunday, e.g. `日,月,火,水,木,金,土`. |
-| `ssp stop` | Stop the clock, image or stream. The screen keeps its last picture. |
-| `ssp clear` | Stop the clock, image or stream and blank the screen. |
+| `ssp dashboard` | Show the built-in dashboard: the time, CPU, memory, network and disk. Options not given come from `[dashboard]` in the config. |
+| `  --widgets <LIST>` | Panels from left to right, comma-separated: `clock`, `cpu`, `memory`, `network`, `disk`. |
+| `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
+| `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
 
 ### Screen
 

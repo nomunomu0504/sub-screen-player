@@ -1,7 +1,8 @@
 //! The sub-screen-player daemon (`ssp serve`).
 //!
 //! - [`manager`]: finds displays, keeps them open and remembers what each one shows.
-//! - [`sources`]: built-in screens such as the clock.
+//! - [`sources`]: built-in screens such as the clock and the dashboard.
+//! - [`text`] and [`draw`]: text and shapes for the built-in screens.
 //! - [`api`]: the HTTP + WebSocket API that clients (the CLI, scripts, apps) use.
 //! - [`config`]: the TOML configuration.
 //! - [`drivers`]: the list of device drivers compiled in.
@@ -9,6 +10,7 @@
 
 pub mod api;
 pub mod config;
+pub mod draw;
 pub mod drivers;
 pub mod manager;
 pub mod sources;
@@ -52,6 +54,7 @@ pub async fn serve(
         manager.clone(),
         config.token.clone(),
         config.clock.clone(),
+        config.dashboard.clone(),
         stop_signal,
     );
     let served = axum::serve(listener, api::router(state))

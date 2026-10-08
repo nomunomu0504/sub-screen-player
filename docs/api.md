@@ -30,6 +30,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `GET` | `/displays/{id}` | | One display |
 | `POST` | `/displays/{id}/image` | image file | Shows an image (see below) |
 | `POST` | `/displays/{id}/clock` | optional JSON | Shows the built-in clock |
+| `POST` | `/displays/{id}/dashboard` | optional JSON | Shows the built-in dashboard |
 | `POST` | `/displays/{id}/brightness` | `{"percent": 0-100}` | Sets the backlight |
 | `POST` | `/displays/{id}/power` | `{"on": true \| false}` | Switches the screen on or off |
 | `POST` | `/displays/{id}/clear` | | Stops the current content and blanks the screen |
@@ -72,7 +73,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `clock` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `clock`, `dashboard` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed.
@@ -108,6 +109,23 @@ Formats use strftime syntax ([reference](https://docs.rs/jiff/latest/jiff/fmt/st
 An empty `date_format` hides the date. `weekdays` (7 names, from Sunday) replaces what `%a` and
 `%A` print, e.g. `["日", "月", "火", "水", "木", "金", "土"]`.
 
+### `POST /displays/{id}/dashboard`
+
+All fields are optional; missing ones come from the `[dashboard]` section of the config. The
+clock panel uses the formats of `[clock]`.
+
+```json
+{
+  "widgets": ["clock", "cpu", "memory", "network", "disk"],
+  "color": "#F0F2F8",
+  "accent": "#6EE7B7",
+  "background": "#000000"
+}
+```
+
+`widgets` lists the panels from left to right (1 to 6 of `clock`, `cpu`, `memory`, `network`,
+`disk`). `accent` is the color of the graphs.
+
 ## WebSocket stream
 
 `GET /displays/{id}/stream` upgrades to a WebSocket. Every **binary** message is one frame:
@@ -121,7 +139,7 @@ An empty `date_format` hides the date. `weekdays` (7 names, from Sunday) replace
 - Send at any rate. The display shows the newest frame it can (up to `max_fps`); older ones
   are dropped. JPEG at about the panel size is the cheapest format for the daemon to handle.
 - While a stream is connected, the display's content is `stream`. Setting other content (an
-  image, the clock, `stop`) ends the stream: the next frame is answered with close code
+  image, the clock, the dashboard, `stop`) ends the stream: the next frame is answered with close code
   `4000`.
 - A bad frame does not end the stream. The daemon replies with a text message
   `{"error": "..."}` and keeps going.

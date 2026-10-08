@@ -355,6 +355,14 @@ fn startup_content(config: &Config) -> Result<Content, String> {
             Clock::validate(&config.clock)?;
             Ok(Content::Clock(config.clock.clone()))
         }
+        StartupShow::Dashboard => {
+            Clock::validate(&config.clock)?;
+            config.dashboard.validate()?;
+            Ok(Content::Dashboard(
+                config.dashboard.clone(),
+                config.clock.clone(),
+            ))
+        }
         StartupShow::Image => {
             let path = config
                 .startup

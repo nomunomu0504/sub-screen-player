@@ -39,6 +39,60 @@ API を通して、他のプログラムからも自由に描画できます。
 - **安全な初期設定**: API は既定で localhost のみ待ち受け、Web ページからのリクエストは拒否します。
   ネットワークに公開する場合はトークンが必須です。
 
+## 表示のパターン
+
+組み込みの画面の例です。TOML で書いた設定は設定ファイルに書きます（`ssp config init` で作成できます。編集したらデーモンを
+再起動してください）。
+
+**時計**（`ssp clock`）。起動時の既定の表示です。
+
+![組み込みの時計](docs/images/clock.png)
+
+**日本語の日付**。OS に入っているフォントで描きます。
+
+![日本語の日付の時計](docs/images/clock-ja.png)
+
+```toml
+[clock]
+date_format = "%Y年%m月%d日（%a）"
+weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+```
+
+**時刻だけを大きく、好きな色で。**
+
+![アンバー色の時刻だけの表示](docs/images/clock-big.png)
+
+```toml
+[clock]
+seconds = false
+date_format = ""
+color = "#FFD080"
+```
+
+**ダッシュボード**（`ssp dashboard`）。時刻と、CPU・メモリ・ネットワーク・ディスクの使用状況を、直近1分のグラフ付きで
+並べます。
+
+![ダッシュボード](docs/images/dashboard.png)
+
+**パネルを絞る**。例: `ssp dashboard --widgets clock,cpu,network`（`[clock]` で `seconds = false`）
+
+![時計・CPU・ネットワークだけのダッシュボード](docs/images/dashboard-compact.png)
+
+**色を変える**（時計なし）。
+
+![濃紺の背景に青のダッシュボード](docs/images/dashboard-colors.png)
+
+```toml
+[dashboard]
+widgets = ["cpu", "memory", "network", "disk"]
+color = "#E8EEF8"
+accent = "#60A5FA"
+background = "#0B1220"
+```
+
+ほかにも、`ssp show` で画像を表示したり、自作のプログラムからフレームを送ったり（[後述](#自作プログラムから描画する)）
+できます。
+
 ## インストール
 
 ### 1行インストール

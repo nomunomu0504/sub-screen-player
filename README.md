@@ -39,6 +39,61 @@ device-specific protocol has to be written; everything else is shared.
 - **Secure by default**: the API listens on localhost only and refuses requests from web
   pages. Exposing it on the network requires a token.
 
+## What it can show
+
+Some of the built-in screens. Settings shown as TOML go in the config file (`ssp config init`
+creates it; restart the daemon after editing).
+
+**The clock** (`ssp clock`), shown by default:
+
+![The built-in clock](docs/images/clock.png)
+
+**A Japanese date**, drawn with a font installed on your system:
+
+![The clock with a Japanese date](docs/images/clock-ja.png)
+
+```toml
+[clock]
+date_format = "%Y年%m月%d日（%a）"
+weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+```
+
+**Just the time, large and in your color:**
+
+![The time alone in amber](docs/images/clock-big.png)
+
+```toml
+[clock]
+seconds = false
+date_format = ""
+color = "#FFD080"
+```
+
+**The dashboard** (`ssp dashboard`): the time with CPU, memory, network and disk use, each with
+a graph of the last minute:
+
+![The dashboard](docs/images/dashboard.png)
+
+**Fewer panels**, e.g. `ssp dashboard --widgets clock,cpu,network` (with `seconds = false` in
+`[clock]`):
+
+![The dashboard with the clock, CPU and network](docs/images/dashboard-compact.png)
+
+**Your own colors**, without the clock:
+
+![The dashboard in blue on dark navy](docs/images/dashboard-colors.png)
+
+```toml
+[dashboard]
+widgets = ["cpu", "memory", "network", "disk"]
+color = "#E8EEF8"
+accent = "#60A5FA"
+background = "#0B1220"
+```
+
+Anything else is up to you: show a picture with `ssp show`, or send frames from your own program
+([below](#drawing-from-your-own-program)).
+
 ## Install
 
 ### One-line installer

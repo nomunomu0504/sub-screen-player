@@ -1,7 +1,8 @@
 name: Site
 
 # Builds the website (site/) and publishes it on GitHub Pages. Runs when the site or the docs it
-# includes change, and when a release is published (the download page lists the latest release).
+# includes change, and when a release is published (the download page lists the latest release;
+# the run started by the release only restarts this workflow on main, see rebuild-on-main).
 on:
   push:
     branches: [main]
@@ -35,7 +36,22 @@ env:
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
 
 jobs:
+  # A published release changes the download page, but a run started by the release uses the
+  # tag as its ref: the github-pages environment only deploys from main, and the tag may also
+  # predate later changes to the docs. So start this workflow again on the default branch.
+  rebuild-on-main:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run site.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+
   build:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -74,6 +90,7 @@ jobs:
 
   installers:
     name: Installer on ${{ matrix.os }}
+    if: github.event_name != 'release'
     strategy:
       fail-fast: false
       matrix:

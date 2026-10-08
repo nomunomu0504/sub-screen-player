@@ -134,7 +134,8 @@ Many displays have no public documentation, so drivers are often built from USB 
    version, builds `ssp` for macOS (universal), Linux (x86_64/arm64, static) and Windows
    (x64/ARM64), and attaches the archives and `SHA256SUMS.txt` to the release. If the release
    does not exist yet, it is created as a draft with generated notes.
-4. Write the release notes in English and Japanese, then publish the release.
+4. Write the release notes in English and Japanese, then publish the release. The [Site workflow](.github/workflows/site.yml)
+   then rebuilds the website from `main`, so the download page lists the new release.
 
 To attach binaries to an existing tag, run the workflow by hand (Actions → Release → Run
 workflow) with the tag name. With the tag left empty, it makes a test build of the given

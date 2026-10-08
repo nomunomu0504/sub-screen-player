@@ -22,7 +22,7 @@ Collect, and write down in `docs/devices/<model>.md` (and its Japanese version
 If there is no documentation, capture the vendor app's traffic. Wireshark with USBPcap works
 on x86 Windows. On machines where that is not possible (e.g. Apple Silicon), running the
 vendor app in a VMware VM with `usb.analyzer.enable = "TRUE"` logs the USB traffic in
-`vmware.log`. See the [reverse engineering etiquette](../CONTRIBUTING.md#reverse-engineering-etiquette).
+`vmware.log`. Also read the [etiquette for investigating a device's communication](../CONTRIBUTING.md#etiquette-for-investigating-a-devices-communication).
 
 Today `ssp-core` supports **HID** devices. If your display uses USB bulk transfers or a
 serial port, open an issue first: it needs a new `Transport` in `crates/core`, which other

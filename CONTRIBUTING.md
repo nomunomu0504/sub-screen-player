@@ -112,14 +112,14 @@ Before opening a pull request:
 - [ ] User-visible changes are reflected in the README and `docs/`, in English and Japanese.
 - [ ] Hardware testing is described (or stated as not done).
 
-## Reverse engineering etiquette
+## Etiquette for investigating a device's communication
 
 Many displays have no public documentation, so drivers are often built from USB captures.
 
 - Work out protocols for interoperability only. Do not copy code, binaries, firmware, images
   or fonts from vendor software into this repository.
-- Document how a fact was found (capture, experiment) in `docs/devices/<model>.md`, and mark
-  what is verified and what is a guess.
+- Document how a fact was found (capture, experiment) in `docs/devices/<model>.md` (and
+  `.ja.md`), and mark what is verified and what is a guess.
 - Never commit raw captures that may contain personal data. Trim them to the relevant bytes.
 - Some commands can leave a device stuck or overwrite its stored images. Write such findings
   down and make sure the driver never sends dangerous commands by accident.

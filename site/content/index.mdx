@@ -1,9 +1,9 @@
 ---
 title: sub-screen-player
-description: Drive small USB sub-displays from macOS, Linux and Windows. A clock, images or your own content at up to 60 fps.
+description: Drive small USB sub-displays from macOS, Linux and Windows. A clock, a system dashboard, images or your own content at up to 60 fps.
 template: splash
 hero:
-  tagline: Drive small USB sub-displays from macOS, Linux and Windows. Show a clock, images, or your own content at up to 60 frames per second.
+  tagline: Drive small USB sub-displays from macOS, Linux and Windows. Show a clock, a system dashboard, images, or your own content at up to 60 frames per second.
   actions:
     - text: Get started
       link: getting-started/
@@ -20,6 +20,7 @@ hero:
 import { Image } from 'astro:assets';
 import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 import clock from '../../assets/clock.png';
+import dashboard from '../../assets/dashboard.png';
 import InstallCommand from '../../components/InstallCommand.astro';
 
 <Image
@@ -43,14 +44,20 @@ Then run `ssp serve`: the clock appears on your display. More in [Getting starte
 
 ## What it does
 
+<Image
+	src={dashboard}
+	alt="The built-in dashboard: the time with CPU, memory, network and disk use"
+	style="width: 100%; height: auto; border-radius: 0.75rem; border: 1px solid var(--sl-color-gray-5);"
+/>
+
 <CardGrid>
 	<Card title="Live frames at 60 fps" icon="rocket">
 		Encoding and sending run in parallel. When frames arrive faster than the display takes them,
 		only the newest one is sent.
 	</Card>
-	<Card title="Clock and images" icon="seti:image">
-		A built-in clock with your own formats and colors, and PNG, JPEG, GIF or WebP images fitted to
-		the panel.
+	<Card title="Clock, dashboard and images" icon="seti:image">
+		A built-in clock with your own formats and colors, a dashboard of CPU, memory, network and disk
+		use, and PNG, JPEG, GIF or WebP images fitted to the panel.
 	</Card>
 	<Card title="Draw from any program" icon="puzzle">
 		An HTTP and WebSocket API: stream frames from a script, a dashboard or a game.

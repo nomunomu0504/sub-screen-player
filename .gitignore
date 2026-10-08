@@ -3,5 +3,7 @@
 .DS_Store
 # local configuration and captures never belong in the repository
 /local/
+# drafts and notes that stay on this machine (announcement posts and so on)
+/.private/
 *.pcap
 *.usbio.log*

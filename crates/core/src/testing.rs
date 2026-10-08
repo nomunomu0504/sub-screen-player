@@ -75,8 +75,19 @@ impl Transport for RecordingTransport {
 /// A call received by a [`FakeDisplay`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Call {
-    /// [`Display::show`] with the encoded bytes.
+    /// [`Display::show`] of a whole image, with the encoded bytes.
     Show(Vec<u8>),
+    /// [`Display::show`] of a part of the panel: its position and size.
+    ShowPart {
+        /// Left edge on the panel.
+        x: u32,
+        /// Top edge on the panel.
+        y: u32,
+        /// Width.
+        width: u32,
+        /// Height.
+        height: u32,
+    },
     /// [`Display::save`] with the encoded bytes.
     Save(Vec<u8>),
     /// [`Display::set_brightness`].
@@ -145,6 +156,7 @@ impl FakeDisplay {
                 max_fps: 60,
                 keep_alive_interval: None,
                 max_image_bytes: 4 << 20,
+                partial_images: false,
             },
         };
         let display = Self {
@@ -159,6 +171,12 @@ impl FakeDisplay {
     /// Makes [`Display::show`] take `delay`, like a slow USB link.
     pub fn show_delay(mut self, delay: Duration) -> Self {
         self.show_delay = delay;
+        self
+    }
+
+    /// Makes the display take images that cover only a part of the panel.
+    pub fn partial_images(mut self) -> Self {
+        self.info.capabilities.partial_images = true;
         self
     }
 
@@ -202,7 +220,18 @@ impl Display for FakeDisplay {
         if !self.show_delay.is_zero() {
             std::thread::sleep(self.show_delay);
         }
-        self.record(Call::Show(image.data.clone()))
+        if image.is_whole(&self.info.panel) {
+            return self.record(Call::Show(image.data.clone()));
+        }
+        if !self.info.capabilities.partial_images {
+            return Err(Error::InvalidArgument("partial image".into()));
+        }
+        self.record(Call::ShowPart {
+            x: image.x,
+            y: image.y,
+            width: image.width,
+            height: image.height,
+        })
     }
 
     fn save(&mut self, image: &EncodedImage) -> Result<()> {

@@ -186,6 +186,7 @@ impl Manager {
             quality: self.display.quality,
             min_quality: self.display.min_quality,
             skip_duplicates: true,
+            partial_updates: self.display.partial_updates,
         };
         let presenter = Presenter::spawn(display, options);
         if let Some(percent) = self.display.brightness

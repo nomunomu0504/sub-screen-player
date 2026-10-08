@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use image::{DynamicImage, GenericImageView, RgbImage, imageops::FilterType};
 
+use crate::regions::Rect;
 use crate::{EncodedImage, Error, ImageFormat, PanelSpec, Result, Rotation};
 
 /// How an image whose aspect ratio differs from the panel is fitted onto it.
@@ -186,15 +187,7 @@ impl Encoder {
         panel: &PanelSpec,
         max_bytes: usize,
     ) -> Result<EncodedImage> {
-        if (frame.width(), frame.height()) != (panel.width, panel.height) {
-            return Err(Error::InvalidArgument(format!(
-                "frame is {}x{}, panel is {}x{}",
-                frame.width(),
-                frame.height(),
-                panel.width,
-                panel.height
-            )));
-        }
+        check_size(frame, panel)?;
         let (width, height) = panel.encoded_size();
         let pixels = match panel.rotation {
             Rotation::None => frame.image().as_raw(),
@@ -203,9 +196,56 @@ impl Encoder {
                 &self.rotated
             }
         };
+        self.encode_pixels(pixels, width, height, panel.format, max_bytes)
+    }
+
+    /// Encodes `region` of `image`, a picture already in the panel's orientation (see
+    /// [`panel_image`]), as an image placed at the region's position.
+    pub fn encode_region(
+        &mut self,
+        image: &RgbImage,
+        region: Rect,
+        format: ImageFormat,
+        max_bytes: usize,
+    ) -> Result<EncodedImage> {
+        if region.width == 0
+            || region.height == 0
+            || region.x + region.width > image.width()
+            || region.y + region.height > image.height()
+        {
+            return Err(Error::InvalidArgument(format!(
+                "region {region:?} is outside the {}x{} picture",
+                image.width(),
+                image.height()
+            )));
+        }
+        let row = image.width() as usize * 3;
+        let (from, len) = (region.x as usize * 3, region.width as usize * 3);
+        self.rotated.clear();
+        for y in region.y..region.y + region.height {
+            let start = y as usize * row + from;
+            self.rotated
+                .extend_from_slice(&image.as_raw()[start..start + len]);
+        }
+        let pixels = std::mem::take(&mut self.rotated);
+        let encoded = self.encode_pixels(&pixels, region.width, region.height, format, max_bytes);
+        self.rotated = pixels;
+        let mut encoded = encoded?;
+        (encoded.x, encoded.y) = (region.x, region.y);
+        Ok(encoded)
+    }
+
+    fn encode_pixels(
+        &self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        format: ImageFormat,
+        max_bytes: usize,
+    ) -> Result<EncodedImage> {
         let mut quality = self.quality;
         loop {
-            let data = match panel.format {
+            let data = match format {
                 ImageFormat::Jpeg => encode_jpeg(pixels, width, height, quality)?,
             };
             if data.len() <= max_bytes {
@@ -213,7 +253,9 @@ impl Encoder {
                     data,
                     width,
                     height,
-                    format: panel.format,
+                    format,
+                    x: 0,
+                    y: 0,
                 });
             }
             if quality <= Self::MIN_QUALITY {
@@ -225,6 +267,31 @@ impl Encoder {
             quality = quality.saturating_sub(10).max(Self::MIN_QUALITY);
         }
     }
+}
+
+/// `frame` turned into the panel's orientation: the picture the device shows, pixel for pixel.
+pub fn panel_image(frame: &Frame, panel: &PanelSpec) -> Result<RgbImage> {
+    check_size(frame, panel)?;
+    if panel.rotation == Rotation::None {
+        return Ok(frame.image().clone());
+    }
+    let (width, height) = panel.encoded_size();
+    let mut pixels = Vec::new();
+    rotate(frame.image(), panel.rotation, &mut pixels);
+    Ok(RgbImage::from_raw(width, height, pixels).expect("rotation keeps the size"))
+}
+
+fn check_size(frame: &Frame, panel: &PanelSpec) -> Result<()> {
+    if (frame.width(), frame.height()) == (panel.width, panel.height) {
+        return Ok(());
+    }
+    Err(Error::InvalidArgument(format!(
+        "frame is {}x{}, panel is {}x{}",
+        frame.width(),
+        frame.height(),
+        panel.width,
+        panel.height
+    )))
 }
 
 fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u8>> {

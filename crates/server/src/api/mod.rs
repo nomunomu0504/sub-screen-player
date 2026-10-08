@@ -188,6 +188,7 @@ fn view(state: DisplayState) -> DisplayView {
         stats: state.stats.map(|s| StatsView {
             submitted: s.submitted,
             shown: s.shown,
+            partial: s.partial,
             dropped: s.dropped,
             duplicates: s.duplicates,
             last_encode_ms: s.last_encode.as_secs_f64() * 1000.0,

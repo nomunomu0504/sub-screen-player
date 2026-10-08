@@ -94,6 +94,23 @@ pub fn live_frame(jpeg: &[u8]) -> Vec<u8> {
     out
 }
 
+/// A live image of a part of the panel (`DRA` with a position): drawn at `x`, `y` over what is on
+/// screen. `width` and `height` are the JPEG's size. Coordinates are on the 462x1920 panel.
+///
+/// Same layout as [`live_frame`], plus `[13..21]` = width, height, x, y (u16 big-endian).
+pub fn live_region(jpeg: &[u8], x: u16, y: u16, width: u16, height: u16) -> Vec<u8> {
+    let mut out = live_frame(jpeg);
+    for (i, value) in [width, height, x, y].into_iter().enumerate() {
+        out[13 + 2 * i..15 + 2 * i].copy_from_slice(&value.to_be_bytes());
+    }
+    out
+}
+
+/// Shortest time between the starts of two `DRA`s. The device needs about 4 ms per image and
+/// drops images that come faster (this only matters for small ones; larger ones take longer
+/// to send anyway).
+pub const DRA_SPACING: std::time::Duration = std::time::Duration::from_millis(5);
+
 /// A stored image (`LOG`): header report, JPEG in raw reports, then `STP`.
 /// The device needs about 1.5 s to store it.
 pub fn stored_image(jpeg: &[u8], mode: StoreMode) -> Vec<u8> {
@@ -154,6 +171,16 @@ mod tests {
         // 32 + 14547 bytes need 15 reports; the rest is zero.
         assert_eq!(out.len(), 15 * REPORT_LEN);
         assert!(out[32 + jpeg.len()..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn live_region_carries_its_place() {
+        let jpeg = vec![0xAB; 100];
+        let out = live_region(&jpeg, 400, 96, 16, 32);
+        assert_eq!(&out[..13], &live_frame(&jpeg)[..13]);
+        assert_eq!(&out[13..21], &[0, 16, 0, 32, 0x01, 0x90, 0, 96]);
+        assert!(out[21..32].iter().all(|&b| b == 0));
+        assert_eq!(&out[32..132], jpeg.as_slice());
     }
 
     #[test]

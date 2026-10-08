@@ -57,6 +57,8 @@ pub struct D92 {
     session_ended: bool,
     /// Until when the device is busy storing an image.
     busy_until: Option<Instant>,
+    /// When the last `DRA` started (see [`protocol::DRA_SPACING`]).
+    last_dra: Option<Instant>,
 }
 
 impl D92 {
@@ -94,6 +96,7 @@ impl D92 {
                 max_fps: 60,
                 keep_alive_interval: Some(Duration::from_secs(2)),
                 max_image_bytes: protocol::MAX_JPEG_LEN,
+                partial_images: true,
             },
         };
         let mut d92 = Self {
@@ -101,6 +104,7 @@ impl D92 {
             info,
             session_ended: false,
             busy_until: None,
+            last_dra: None,
         };
         d92.send(&protocol::wake())?;
         Ok(d92)
@@ -113,14 +117,20 @@ impl D92 {
             .try_for_each(|report| self.transport.write_report(report))
     }
 
-    fn check(&self, image: &EncodedImage) -> Result<()> {
+    /// Checks a whole image, or with `part`, an image of a part of the panel.
+    fn check(&self, image: &EncodedImage, part: bool) -> Result<()> {
         let (width, height) = self.info.panel.encoded_size();
-        if image.format != ImageFormat::Jpeg
-            || (image.width, image.height) != (width, height)
-            || !image.data.starts_with(&[0xFF, 0xD8])
-        {
+        let fits = if part {
+            image.width > 0
+                && image.height > 0
+                && image.x + image.width <= width
+                && image.y + image.height <= height
+        } else {
+            image.is_whole(&self.info.panel)
+        };
+        if image.format != ImageFormat::Jpeg || !fits || !image.data.starts_with(&[0xFF, 0xD8]) {
             return Err(Error::InvalidArgument(format!(
-                "the D92 takes {width}x{height} JPEGs"
+                "the D92 takes JPEGs of {width}x{height} or of a part of that"
             )));
         }
         if image.data.len() > protocol::MAX_JPEG_LEN {
@@ -152,13 +162,30 @@ impl Display for D92 {
     }
 
     fn show(&mut self, image: &EncodedImage) -> Result<()> {
-        self.check(image)?;
+        let whole = image.is_whole(&self.info.panel);
+        self.check(image, !whole)?;
         self.before_image()?;
-        self.send(&protocol::live_frame(&image.data))
+        if let Some(last) = self.last_dra {
+            std::thread::sleep(
+                (last + protocol::DRA_SPACING).saturating_duration_since(Instant::now()),
+            );
+        }
+        self.last_dra = Some(Instant::now());
+        if whole {
+            return self.send(&protocol::live_frame(&image.data));
+        }
+        let place = |v: u32| u16::try_from(v).expect("checked to be on the panel");
+        self.send(&protocol::live_region(
+            &image.data,
+            place(image.x),
+            place(image.y),
+            place(image.width),
+            place(image.height),
+        ))
     }
 
     fn save(&mut self, image: &EncodedImage) -> Result<()> {
-        self.check(image)?;
+        self.check(image, false)?;
         self.before_image()?;
         self.send(&protocol::stored_image(&image.data, StoreMode::Saved))?;
         self.busy_until = Some(Instant::now() + STORE_TIME);
@@ -253,6 +280,30 @@ mod tests {
         assert!(reports.iter().all(|r| r.len() == REPORT_LEN));
         assert_eq!(words(&reports), ["DRA"]);
         assert_eq!(&reports[0][32..34], &[0xFF, 0xD8]);
+    }
+
+    #[test]
+    fn shows_a_part_of_the_panel_and_paces_dras() {
+        let (mut d92, transport) = open();
+        transport.take();
+        // The driver only checks the place; any JPEG will do.
+        let image = EncodedImage {
+            x: 400,
+            y: 96,
+            width: 16,
+            height: 32,
+            ..jpeg(&d92)
+        };
+        let started = Instant::now();
+        d92.show(&image).unwrap();
+        d92.show(&image).unwrap();
+        assert!(started.elapsed() >= protocol::DRA_SPACING);
+        let reports = transport.take();
+        assert_eq!(words(&reports), ["DRA", "DRA"]);
+        assert_eq!(&reports[0][13..21], &[0, 16, 0, 32, 0x01, 0x90, 0, 96]);
+        // A part that does not fit on the panel is refused.
+        let outside = EncodedImage { x: 450, ..image };
+        assert!(matches!(d92.show(&outside), Err(Error::InvalidArgument(_))));
     }
 
     #[test]

@@ -569,8 +569,9 @@ fn status(client: &Client) -> Result<()> {
         }
         if let Some(s) = &d.stats {
             say!(
-                "  frames    {} shown, {} dropped, {} unchanged, {} received",
+                "  frames    {} shown ({} in parts), {} dropped, {} unchanged, {} received",
                 s.shown,
+                s.partial,
                 s.dropped,
                 s.duplicates,
                 s.submitted

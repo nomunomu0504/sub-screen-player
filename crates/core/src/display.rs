@@ -68,6 +68,9 @@ pub struct Capabilities {
     pub keep_alive_interval: Option<Duration>,
     /// Largest encoded image the device accepts.
     pub max_image_bytes: usize,
+    /// [`Display::show`] takes images that cover only a part of the panel, drawn at their
+    /// position over what is on screen.
+    pub partial_images: bool,
 }
 
 /// Identity and properties of one connected display.
@@ -99,6 +102,9 @@ impl DisplayInfo {
 }
 
 /// An image ready for the wire: encoded and already in the panel's orientation.
+///
+/// Usually it covers the whole panel. On displays with [`Capabilities::partial_images`] it can
+/// also be a part of the panel, placed at `x`, `y`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedImage {
     /// Encoded bytes.
@@ -109,6 +115,18 @@ pub struct EncodedImage {
     pub height: u32,
     /// Encoding of `data`.
     pub format: ImageFormat,
+    /// Left edge on the panel, in the panel's orientation (0 for a whole image).
+    pub x: u32,
+    /// Top edge on the panel, in the panel's orientation (0 for a whole image).
+    pub y: u32,
+}
+
+impl EncodedImage {
+    /// Whether the image covers the whole of `panel`.
+    pub fn is_whole(&self, panel: &PanelSpec) -> bool {
+        (self.x, self.y, self.width, self.height)
+            == (0, 0, panel.encoded_size().0, panel.encoded_size().1)
+    }
 }
 
 /// One connected screen. Implemented by each driver in `crates/drivers/<model>`.

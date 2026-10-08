@@ -83,14 +83,20 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
    WebSocket/HTTP client sends one and the server decodes it.
 2. `Presenter::submit` stores it in a one-frame slot and returns at once. A frame still
    waiting in the slot is dropped (counted as `dropped`).
-3. The **encoder thread** takes the frame, rotates it and encodes it. If the result is larger
+3. The **encoder thread** takes the frame and rotates it. On displays that take partial images
+   (`partial_updates`), it compares the picture with what the screen will show, in 16x16
+   tiles, and encodes only the changed parts (at most 4 rectangles, on the tile grid so no
+   seams show) when they cover at most half of the screen; nothing changed means nothing is
+   sent. Otherwise, and every 10 s and after any command, it encodes the whole frame. If a
+   result is larger
    than the device accepts, it lowers the JPEG quality step by step. While frames are being
    dropped because the device falls behind, the device thread lowers the quality used for the
    next frames (down to `min_quality`), so smaller frames let it keep up; it raises the quality
    again once nothing is dropped, and at once after a pause (a clock, a dashboard).
 4. The **device thread** sends the newest encoded frame once the frame interval
    (`1 / max_fps`) has passed. A frame identical to the one on screen is skipped (counted as
-   `duplicates`). Encoding the next frame overlaps with sending this one, so the slower of
+   `duplicates`). Parts planned against an older screen (the device thread took another frame
+   meanwhile) are planned again against the current one before they are sent. Encoding the next frame overlaps with sending this one, so the slower of
    the two sets the frame rate, not their sum.
 5. The driver's `Display::show` turns the image into reports (`protocol.rs`) and writes them
    through its `Transport`.

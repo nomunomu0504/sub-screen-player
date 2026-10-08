@@ -316,6 +316,17 @@ quality = 85
 min_quality = 85       # never lower the quality, drop frames instead
 ```
 
+Displays that can draw a picture over a part of the screen (the D92 can) get only the parts of
+a frame that changed: a clock sends its seconds as about 4 KB instead of a 50 KB frame, and a
+web page with a small animation only the moving part. `ssp status` shows how many frames went
+in parts. Whole frames still go out every 10 seconds, after any command, and when more than
+half of the screen changes (videos, most animations). To always send whole frames:
+
+```toml
+[display]
+partial_updates = false
+```
+
 ### Develop support for a new display while another one keeps running
 
 Say a D92 shows your clock and you are writing a driver `dxxxx` for another display. Run the

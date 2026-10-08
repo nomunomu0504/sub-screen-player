@@ -9,6 +9,7 @@
 //! - [`Frame`] and [`Encoder`]: turning a landscape RGBA image into what the panel expects.
 //! - [`Animation`]: the frames and delays of an animated GIF, APNG or WebP.
 //! - [`Presenter`]: pacing frames to one device from any thread (latest frame wins).
+//! - [`regions`]: finding what changed between frames, for displays that take partial images.
 //!
 //! Device-specific protocol code never lives here; it belongs in `crates/drivers/<model>`.
 //! See `docs/architecture.md` for the full picture.
@@ -21,6 +22,7 @@ mod error;
 mod frame;
 pub mod hid;
 mod presenter;
+pub mod regions;
 pub mod testing;
 mod transport;
 
@@ -30,6 +32,6 @@ pub use display::{
 };
 pub use driver::{Candidate, Driver, DriverSelection, Found, Registry, UsbMatch};
 pub use error::{Error, Result};
-pub use frame::{Encoder, Fit, Frame};
+pub use frame::{Encoder, Fit, Frame, panel_image};
 pub use presenter::{Presenter, PresenterOptions, PresenterStats, StopAction};
 pub use transport::Transport;

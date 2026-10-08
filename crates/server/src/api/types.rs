@@ -70,6 +70,10 @@ pub struct StatsView {
     pub submitted: u64,
     /// Frames sent to the device.
     pub shown: u64,
+    /// Of the frames sent, those sent as their changed parts only (`[display] partial_updates`).
+    /// Missing from older daemons.
+    #[serde(default)]
+    pub partial: u64,
     /// Frames replaced by newer ones before being sent.
     pub dropped: u64,
     /// Frames skipped because nothing changed.

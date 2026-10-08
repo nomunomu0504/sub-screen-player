@@ -3,7 +3,16 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::{Display, DisplayInfo, EncodedImage, Encoder, Error, Frame, Result};
+use image::RgbImage;
+
+use crate::regions::{self, Change, Rect};
+use crate::{Display, DisplayInfo, EncodedImage, Encoder, Error, Frame, Result, panel_image};
+
+/// Most regions a partly changed frame is sent as. The D92 needs a few milliseconds per image,
+/// so a frame in many small pieces would take longer than in a few larger ones.
+const MAX_REGIONS: usize = 4;
+/// How often a whole frame is sent even if only parts change, in case a part went missing.
+const WHOLE_EVERY: Duration = Duration::from_secs(10);
 
 /// What a [`Presenter`] does to the screen when it is stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -31,6 +40,8 @@ pub struct PresenterOptions {
     pub min_quality: u8,
     /// Do not resend a frame that is identical to the one on screen.
     pub skip_duplicates: bool,
+    /// Send only the changed parts of a frame, on displays that take partial images.
+    pub partial_updates: bool,
 }
 
 impl Default for PresenterOptions {
@@ -40,6 +51,7 @@ impl Default for PresenterOptions {
             quality: Encoder::DEFAULT_QUALITY,
             min_quality: Encoder::DEFAULT_MIN_QUALITY,
             skip_duplicates: true,
+            partial_updates: true,
         }
     }
 }
@@ -51,6 +63,8 @@ pub struct PresenterStats {
     pub submitted: u64,
     /// Frames sent to the device.
     pub shown: u64,
+    /// Of the frames sent, those sent as changed parts only.
+    pub partial: u64,
     /// Frames replaced by a newer one before they were sent.
     pub dropped: u64,
     /// Frames not sent because they equal the one on screen.
@@ -59,7 +73,7 @@ pub struct PresenterStats {
     pub last_encode: Duration,
     /// Time the last frame took to send.
     pub last_send: Duration,
-    /// Size of the last frame sent.
+    /// Size of the last frame sent (all its parts).
     pub last_bytes: usize,
     /// JPEG quality frames are encoded with now (see [`PresenterOptions::min_quality`]).
     pub quality: u8,
@@ -88,11 +102,29 @@ struct State {
     /// JPEG quality for the next frames, lowered while the device falls behind.
     quality: u8,
     pending: Option<Frame>,
-    encoded: Option<EncodedImage>,
+    encoded: Option<Encoded>,
+    /// What the screen shows once the frame being sent is through, in the panel's orientation.
+    /// `None` when unknown: before the first frame, after a command or an error.
+    screen: Option<Arc<RgbImage>>,
+    /// Counts changes of `screen`, so that parts planned against an older screen are noticed.
+    screen_version: u64,
+    /// The picture of the last frame sent, kept after commands (for [`StopAction::SaveLast`]).
+    last_picture: Option<Arc<RgbImage>>,
+    /// When the last whole frame was sent.
+    last_whole: Option<Instant>,
     commands: VecDeque<Command>,
     running: bool,
     failure: Option<String>,
     stats: PresenterStats,
+}
+
+/// A frame ready to send: one whole image, or images of the changed parts.
+struct Encoded {
+    images: Vec<EncodedImage>,
+    /// The whole picture after the frame, in the panel's orientation.
+    picture: Arc<RgbImage>,
+    /// For parts: the `screen_version` they were planned against.
+    base: Option<u64>,
 }
 
 impl Shared {
@@ -128,6 +160,10 @@ impl Presenter {
                 quality,
                 pending: None,
                 encoded: None,
+                screen: None,
+                screen_version: 0,
+                last_picture: None,
+                last_whole: None,
                 commands: VecDeque::new(),
                 running: true,
                 failure: None,
@@ -140,19 +176,23 @@ impl Presenter {
             encoder: Condvar::new(),
         });
         let fps = options.max_fps.min(info.capabilities.max_fps).max(1);
+        let planner = Planner {
+            info: info.clone(),
+            partial: options.partial_updates && info.capabilities.partial_images,
+            skip_duplicates: options.skip_duplicates,
+        };
         let worker = Worker {
             shared: shared.clone(),
             display,
             encoder: Encoder::new(quality),
+            planner: planner.clone(),
             min_interval: Duration::from_secs(1) / fps,
-            skip_duplicates: options.skip_duplicates,
             quality: QualityControl::new(quality, min_quality),
         };
         let encoder_shared = shared.clone();
-        let encoder_info = info.clone();
         let threads = vec![
             spawn_named(format!("ssp-encode-{}", info.id()), move || {
-                encode_loop(&encoder_shared, &encoder_info, Encoder::new(quality));
+                encode_loop(&encoder_shared, &planner, Encoder::new(quality));
             }),
             spawn_named(format!("ssp-device-{}", info.id()), move || worker.run()),
         ];
@@ -292,9 +332,80 @@ fn spawn_named(name: String, f: impl FnOnce() + Send + 'static) -> JoinHandle<()
         .expect("failed to spawn a thread")
 }
 
-fn encode_loop(shared: &Shared, info: &DisplayInfo, mut encoder: Encoder) {
+/// Decides how a frame is sent: whole, in changed parts, or not at all.
+#[derive(Clone)]
+struct Planner {
+    info: DisplayInfo,
+    /// The display takes partial images and partial updates are on.
+    partial: bool,
+    skip_duplicates: bool,
+}
+
+impl Planner {
+    /// Encodes `picture` for a screen that shows `screen` (if known). `None` means there is
+    /// nothing to send.
+    fn plan(
+        &self,
+        encoder: &mut Encoder,
+        picture: Arc<RgbImage>,
+        screen: Option<(&RgbImage, u64)>,
+        whole_due: bool,
+    ) -> Result<Option<Encoded>> {
+        if let Some((screen, version)) = screen {
+            if self.skip_duplicates && *screen == *picture {
+                return Ok(None);
+            }
+            if self.partial && !whole_due {
+                match regions::changes(screen, &picture, MAX_REGIONS) {
+                    Change::None if self.skip_duplicates => return Ok(None),
+                    Change::Regions(parts) => {
+                        let images = parts
+                            .into_iter()
+                            .map(|part| self.encode(encoder, &picture, part))
+                            .collect::<Result<Vec<_>>>()?;
+                        return Ok(Some(Encoded {
+                            images,
+                            picture,
+                            base: Some(version),
+                        }));
+                    }
+                    Change::None | Change::Whole => {}
+                }
+            }
+        }
+        let (width, height) = self.info.panel.encoded_size();
+        let whole = Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        Ok(Some(Encoded {
+            images: vec![self.encode(encoder, &picture, whole)?],
+            picture,
+            base: None,
+        }))
+    }
+
+    fn encode(
+        &self,
+        encoder: &mut Encoder,
+        picture: &RgbImage,
+        part: Rect,
+    ) -> Result<EncodedImage> {
+        let info = &self.info;
+        encoder.encode_region(
+            picture,
+            part,
+            info.panel.format,
+            info.capabilities.max_image_bytes,
+        )
+    }
+}
+
+fn encode_loop(shared: &Shared, planner: &Planner, mut encoder: Encoder) {
     loop {
-        let frame = {
+        let (frame, screen, version, whole_due) = {
             let mut state = shared.lock();
             loop {
                 if !state.running {
@@ -302,7 +413,8 @@ fn encode_loop(shared: &Shared, info: &DisplayInfo, mut encoder: Encoder) {
                 }
                 if let Some(frame) = state.pending.take() {
                     encoder.set_quality(state.quality);
-                    break frame;
+                    let whole_due = state.last_whole.is_none_or(|t| t.elapsed() >= WHOLE_EVERY);
+                    break (frame, state.screen.clone(), state.screen_version, whole_due);
                 }
                 state = shared
                     .encoder
@@ -311,23 +423,35 @@ fn encode_loop(shared: &Shared, info: &DisplayInfo, mut encoder: Encoder) {
             }
         };
         let started = Instant::now();
-        match encoder.encode(&frame, &info.panel, info.capabilities.max_image_bytes) {
-            Ok(image) => {
-                let mut state = shared.lock();
+        let planned = panel_image(&frame, &planner.info.panel).and_then(|picture| {
+            let screen = screen.as_deref().map(|s| (s, version));
+            planner.plan(&mut encoder, Arc::new(picture), screen, whole_due)
+        });
+        let mut state = shared.lock();
+        match planned {
+            Ok(Some(encoded)) => {
                 state.stats.last_encode = started.elapsed();
-                if state.encoded.replace(image).is_some() {
+                if state.encoded.replace(encoded).is_some() {
                     state.stats.dropped += 1;
                 }
                 shared.device.notify_one();
             }
-            Err(err) => tracing::warn!(display = %info.id(), "dropping a frame: {err}"),
+            Ok(None) => {
+                // The screen already shows this picture: a frame still waiting would change it.
+                if state.encoded.take().is_some() {
+                    state.stats.dropped += 1;
+                }
+                state.stats.duplicates += 1;
+            }
+            Err(err) => tracing::warn!(display = %planner.info.id(), "dropping a frame: {err}"),
         }
     }
 }
 
 enum Job {
     Command(Command),
-    Show(EncodedImage),
+    /// A frame, and the screen before it if its parts were planned against an older one.
+    Show(Encoded, Option<Option<Arc<RgbImage>>>),
     KeepAlive,
 }
 
@@ -335,8 +459,8 @@ struct Worker {
     shared: Arc<Shared>,
     display: Box<dyn Display>,
     encoder: Encoder,
+    planner: Planner,
     min_interval: Duration,
-    skip_duplicates: bool,
     quality: QualityControl,
 }
 
@@ -403,9 +527,6 @@ impl Worker {
         let keep_alive = self.display.info().capabilities.keep_alive_interval;
         let mut last_show: Option<Instant> = None;
         let mut last_keep_alive = Instant::now();
-        // The last frame sent, and whether it is still what the screen shows.
-        let mut last: Option<EncodedImage> = None;
-        let mut on_screen = false;
 
         loop {
             let job = self.next_job(last_show, keep_alive.map(|every| last_keep_alive + every));
@@ -414,51 +535,29 @@ impl Worker {
                     last_keep_alive = Instant::now();
                     self.display.keep_alive()
                 }
-                Job::Show(image) => {
-                    if self.skip_duplicates && on_screen && last.as_ref() == Some(&image) {
-                        self.shared.lock().stats.duplicates += 1;
-                        continue;
-                    }
-                    let started = Instant::now();
-                    let idle = last_show.is_none_or(|t| started - t > self.min_interval * 4);
-                    last_show = Some(started);
-                    let result = self.display.show(&image);
-                    if result.is_ok() {
-                        let send = started.elapsed();
-                        let mut state = self.shared.lock();
-                        state.stats.shown += 1;
-                        state.stats.last_send = send;
-                        state.stats.last_bytes = image.data.len();
-                        let dropped = state.stats.dropped;
-                        state.quality = self.quality.adjust(
-                            state.quality,
-                            dropped,
-                            send,
-                            self.min_interval,
-                            idle,
-                        );
-                        state.stats.quality = state.quality;
-                        last = Some(image);
-                        on_screen = true;
-                    }
-                    result
-                }
+                Job::Show(encoded, stale) => self.show(encoded, stale, &mut last_show),
                 Job::Command(Command { op, reply }) => {
                     let stop = matches!(op, Op::Stop(_));
+                    let keeps_screen = matches!(op, Op::Brightness(_));
                     let result = match op {
-                        Op::Save(frame) => self.save(&frame).map(|image| {
-                            last = Some(image);
-                            on_screen = true;
-                        }),
+                        Op::Save(frame) => self.save(&frame),
                         Op::Brightness(percent) => self.display.set_brightness(percent),
-                        Op::Wake => self.display.wake().inspect(|()| on_screen = false),
-                        Op::Sleep => self.display.sleep().inspect(|()| on_screen = false),
-                        Op::Clear => self.display.clear().inspect(|()| on_screen = false),
+                        Op::Wake => self.display.wake(),
+                        Op::Sleep => self.display.sleep(),
+                        Op::Clear => self.display.clear(),
                         Op::Stop(action) => {
-                            let latest = self.shared.lock().encoded.take().or(last.take());
-                            self.apply_stop(action, latest.as_ref())
+                            let latest = {
+                                let mut state = self.shared.lock();
+                                let pending = state.encoded.take().map(|e| e.picture);
+                                pending.or_else(|| state.last_picture.clone())
+                            };
+                            self.apply_stop(action, latest.as_deref())
                         }
                     };
+                    // What the screen shows is no longer certain: the next frame goes whole.
+                    if !keeps_screen {
+                        self.forget_screen();
+                    }
                     let fatal = result.as_ref().is_err_and(Error::is_fatal);
                     // Close before replying, so a caller that gets the error already sees the
                     // presenter as stopped.
@@ -485,6 +584,68 @@ impl Worker {
         }
     }
 
+    /// Sends a frame. `stale` holds the screen before it when its parts were planned against
+    /// an older screen; they are planned again against this one.
+    fn show(
+        &mut self,
+        encoded: Encoded,
+        stale: Option<Option<Arc<RgbImage>>>,
+        last_show: &mut Option<Instant>,
+    ) -> Result<()> {
+        let started = Instant::now();
+        let idle = last_show.is_none_or(|t| started - t > self.min_interval * 4);
+        *last_show = Some(started);
+        let encoded = match stale {
+            None => encoded,
+            Some(screen) => {
+                let screen = screen.as_deref().map(|s| (s, 0));
+                match self
+                    .planner
+                    .plan(&mut self.encoder, encoded.picture, screen, false)
+                {
+                    Ok(Some(encoded)) => encoded,
+                    Ok(None) => return Ok(()),
+                    Err(err) => {
+                        self.forget_screen();
+                        return Err(err);
+                    }
+                }
+            }
+        };
+        let result = encoded
+            .images
+            .iter()
+            .try_for_each(|image| self.display.show(image));
+        if result.is_err() {
+            self.forget_screen();
+            return result;
+        }
+        let send = started.elapsed();
+        let whole = encoded.base.is_none();
+        let mut state = self.shared.lock();
+        state.stats.shown += 1;
+        if whole {
+            state.last_whole = Some(Instant::now());
+        } else {
+            state.stats.partial += 1;
+        }
+        state.stats.last_send = send;
+        state.stats.last_bytes = encoded.images.iter().map(|i| i.data.len()).sum();
+        let dropped = state.stats.dropped;
+        state.quality = self
+            .quality
+            .adjust(state.quality, dropped, send, self.min_interval, idle);
+        state.stats.quality = state.quality;
+        Ok(())
+    }
+
+    /// Marks what the screen shows as unknown, so the next frame is sent whole.
+    fn forget_screen(&self) {
+        let mut state = self.shared.lock();
+        state.screen = None;
+        state.screen_version += 1;
+    }
+
     /// Waits until there is something to do.
     fn next_job(&self, last_show: Option<Instant>, keep_alive_at: Option<Instant>) -> Job {
         let mut state = self.shared.lock();
@@ -495,7 +656,13 @@ impl Worker {
             let now = Instant::now();
             let ready_at = last_show.map_or(now, |t| t + self.min_interval);
             if state.encoded.is_some() && now >= ready_at {
-                return Job::Show(state.encoded.take().expect("checked above"));
+                // From now on the screen is this frame's picture as far as planning goes.
+                let encoded = state.encoded.take().expect("checked above");
+                let stale = encoded.base.is_some_and(|v| v != state.screen_version);
+                let before = state.screen.replace(encoded.picture.clone());
+                state.screen_version += 1;
+                state.last_picture = Some(encoded.picture.clone());
+                return Job::Show(encoded, stale.then_some(before));
             }
             if keep_alive_at.is_some_and(|t| now >= t) {
                 return Job::KeepAlive;
@@ -522,19 +689,31 @@ impl Worker {
         }
     }
 
-    fn save(&mut self, frame: &Frame) -> Result<EncodedImage> {
+    fn save(&mut self, frame: &Frame) -> Result<()> {
         let info = self.display.info();
         let image = self
             .encoder
             .encode(frame, &info.panel, info.capabilities.max_image_bytes)?;
-        self.display.save(&image)?;
-        Ok(image)
+        self.display.save(&image)
     }
 
-    fn apply_stop(&mut self, action: StopAction, latest: Option<&EncodedImage>) -> Result<()> {
+    fn apply_stop(&mut self, action: StopAction, latest: Option<&RgbImage>) -> Result<()> {
         match action {
             StopAction::Leave => Ok(()),
-            StopAction::SaveLast => latest.map_or(Ok(()), |image| self.display.save(image)),
+            StopAction::SaveLast => {
+                let Some(picture) = latest else {
+                    return Ok(());
+                };
+                let (width, height) = self.display.info().panel.encoded_size();
+                let whole = Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                };
+                let image = self.planner.encode(&mut self.encoder, picture, whole)?;
+                self.display.save(&image)
+            }
             StopAction::Clear => self.display.clear(),
             StopAction::Sleep => self.display.sleep(),
         }
@@ -729,6 +908,99 @@ mod tests {
         assert!(matches!(calls[1], Call::Show(_)));
         assert_eq!(calls[2], Call::Clear);
         assert!(matches!(&calls[3], Call::Save(d) if Call::Show(d.clone()) == calls[1]));
+    }
+
+    /// `frame(shade)` with a landscape box painted white.
+    fn frame_with_box(shade: u8, x: u32, y: u32, w: u32, h: u32) -> Frame {
+        let mut frame = frame(shade);
+        for py in y..y + h {
+            for px in x..x + w {
+                frame.image_mut().put_pixel(px, py, image::Rgb([255; 3]));
+            }
+        }
+        frame
+    }
+
+    fn parts(calls: &[Call]) -> Vec<Call> {
+        calls
+            .iter()
+            .filter(|c| matches!(c, Call::ShowPart { .. }))
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn sends_only_the_changed_part() {
+        let (display, log) = FakeDisplay::new();
+        let presenter = Presenter::spawn(
+            Box::new(display.partial_images()),
+            PresenterOptions::default(),
+        );
+        presenter.submit(frame(30)).unwrap();
+        wait_until(|| shows(&log.calls()) == 1);
+        // Landscape x 100..110, y 50..60 is panel x 402..411, y 100..109 after the turn
+        // clockwise, i.e. the 16x16 tile at 400, 96.
+        presenter
+            .submit(frame_with_box(30, 100, 50, 10, 10))
+            .unwrap();
+        wait_until(|| parts(&log.calls()).len() == 1);
+        assert_eq!(
+            parts(&log.calls()),
+            [Call::ShowPart {
+                x: 400,
+                y: 96,
+                width: 16,
+                height: 16
+            }]
+        );
+        assert_eq!(presenter.stats().partial, 1);
+        assert_eq!(shows(&log.calls()), 1);
+    }
+
+    #[test]
+    fn large_changes_and_commands_send_whole_frames() {
+        let (display, log) = FakeDisplay::new();
+        let presenter = Presenter::spawn(
+            Box::new(display.partial_images()),
+            PresenterOptions::default(),
+        );
+        presenter.submit(frame(30)).unwrap();
+        wait_until(|| shows(&log.calls()) == 1);
+        // More than half of the screen changes.
+        presenter
+            .submit(frame_with_box(30, 0, 0, 1200, 462))
+            .unwrap();
+        wait_until(|| shows(&log.calls()) == 2);
+        // After a command the screen is not trusted: the next frame goes whole too.
+        presenter.wake().unwrap();
+        presenter
+            .submit(frame_with_box(30, 0, 0, 1200, 400))
+            .unwrap();
+        wait_until(|| shows(&log.calls()) == 3);
+        assert!(parts(&log.calls()).is_empty());
+        // Then small changes go in parts again.
+        presenter
+            .submit(frame_with_box(30, 0, 0, 1200, 401))
+            .unwrap();
+        wait_until(|| parts(&log.calls()).len() == 1);
+    }
+
+    #[test]
+    fn partial_updates_can_be_switched_off() {
+        let (display, log) = FakeDisplay::new();
+        let options = PresenterOptions {
+            partial_updates: false,
+            ..PresenterOptions::default()
+        };
+        let presenter = Presenter::spawn(Box::new(display.partial_images()), options);
+        presenter.submit(frame(30)).unwrap();
+        wait_until(|| shows(&log.calls()) == 1);
+        presenter
+            .submit(frame_with_box(30, 100, 50, 10, 10))
+            .unwrap();
+        wait_until(|| shows(&log.calls()) == 2);
+        assert!(parts(&log.calls()).is_empty());
+        assert_eq!(presenter.stats().partial, 0);
     }
 
     #[test]

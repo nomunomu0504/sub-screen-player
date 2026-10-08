@@ -72,7 +72,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
       "power": true, "clear": true, "max_fps": 60
     },
     "stats": {
-      "submitted": 925, "shown": 908, "dropped": 17, "duplicates": 0,
+      "submitted": 925, "shown": 908, "partial": 850, "dropped": 17, "duplicates": 0,
       "last_encode_ms": 5.39, "last_send_ms": 21.85, "last_bytes": 50940
     }
   }
@@ -82,7 +82,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
 - `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
-- `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数です。
+- `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数、`partial` は変わった部分だけを送った数です（`[display] partial_updates`）。
 
 ### `POST /displays/{id}/image`
 

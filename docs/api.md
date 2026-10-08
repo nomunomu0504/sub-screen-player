@@ -72,7 +72,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
       "power": true, "clear": true, "max_fps": 60
     },
     "stats": {
-      "submitted": 925, "shown": 908, "dropped": 17, "duplicates": 0,
+      "submitted": 925, "shown": 908, "partial": 850, "dropped": 17, "duplicates": 0,
       "last_encode_ms": 5.39, "last_send_ms": 21.85, "last_bytes": 50940
     }
   }
@@ -83,7 +83,8 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 - `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
-  `duplicates` counts frames skipped because nothing changed.
+  `duplicates` counts frames skipped because nothing changed; `partial` counts frames sent as
+  their changed parts only (`[display] partial_updates`).
 
 ### `POST /displays/{id}/image`
 

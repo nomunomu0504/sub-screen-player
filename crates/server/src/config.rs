@@ -26,6 +26,7 @@ max_fps = 60
 quality = 85             # JPEG quality, 1-100
 min_quality = 70         # lowest quality used to keep up with fast animations and streams
                          # (the same as quality keeps it fixed)
+partial_updates = true   # send only the changed parts of a frame (D92), e.g. a clock's seconds
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
@@ -181,6 +182,8 @@ pub struct DisplayConfig {
     /// Lowest JPEG quality used while the display falls behind fast frames (1..=100). Values
     /// above `quality` act like `quality`, i.e. a fixed quality.
     pub min_quality: u8,
+    /// Send only the changed parts of a frame, on displays that can show partial images.
+    pub partial_updates: bool,
     /// What to do to the screens when the daemon exits.
     pub on_exit: OnExit,
 }
@@ -192,6 +195,7 @@ impl Default for DisplayConfig {
             max_fps: 60,
             quality: 85,
             min_quality: 70,
+            partial_updates: true,
             on_exit: OnExit::Leave,
         }
     }

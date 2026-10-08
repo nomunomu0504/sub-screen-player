@@ -79,6 +79,10 @@ pub struct StatsView {
     pub last_send_ms: f64,
     /// Size of the last frame sent, in bytes.
     pub last_bytes: usize,
+    /// JPEG quality frames are encoded with now; lower than `[display] quality` while the
+    /// display falls behind fast frames. Missing from daemons before 0.3.
+    #[serde(default)]
+    pub quality: u8,
 }
 
 /// `POST /api/v1/displays/{id}/brightness`.

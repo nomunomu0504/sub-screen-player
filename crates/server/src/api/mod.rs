@@ -172,6 +172,7 @@ fn view(state: DisplayState) -> DisplayView {
             last_encode_ms: s.last_encode.as_secs_f64() * 1000.0,
             last_send_ms: s.last_send.as_secs_f64() * 1000.0,
             last_bytes: s.last_bytes,
+            quality: s.quality,
         }),
         id: state.id,
     }

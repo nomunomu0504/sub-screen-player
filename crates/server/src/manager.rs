@@ -179,6 +179,7 @@ impl Manager {
         let options = PresenterOptions {
             max_fps: self.display.max_fps,
             quality: self.display.quality,
+            min_quality: self.display.min_quality,
             skip_duplicates: true,
         };
         let presenter = Presenter::spawn(display, options);

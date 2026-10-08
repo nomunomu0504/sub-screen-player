@@ -158,6 +158,10 @@ impl Encoder {
     /// JPEG quality used unless configured otherwise.
     pub const DEFAULT_QUALITY: u8 = 85;
 
+    /// Lowest quality a [`crate::Presenter`] goes down to while the device falls behind,
+    /// unless configured otherwise.
+    pub const DEFAULT_MIN_QUALITY: u8 = 70;
+
     /// Lowest quality tried when an image is over the device's size limit.
     const MIN_QUALITY: u8 = 25;
 
@@ -167,6 +171,11 @@ impl Encoder {
             quality: quality.clamp(1, 100),
             rotated: Vec::new(),
         }
+    }
+
+    /// Changes the JPEG quality (1..=100) of the next frames.
+    pub fn set_quality(&mut self, quality: u8) {
+        self.quality = quality.clamp(1, 100);
     }
 
     /// Rotates and encodes `frame` for `panel`. If the result is larger than `max_bytes`,
@@ -229,7 +238,8 @@ fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u
     };
     let mut out = Vec::with_capacity(rgb.len() / 8);
     let mut encoder = jpeg_encoder::Encoder::new(&mut out, quality);
-    // Baseline 4:2:0 is what small display firmwares decode reliably.
+    // Baseline 4:2:0 with the standard Huffman tables is what small display firmwares decode
+    // reliably. Optimized tables are 10 % smaller but the D92 shows them broken.
     encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_2);
     encoder
         .encode(rgb, w, h, jpeg_encoder::ColorType::Rgb)

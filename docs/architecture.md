@@ -79,7 +79,10 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
 2. `Presenter::submit` stores it in a one-frame slot and returns at once. A frame still
    waiting in the slot is dropped (counted as `dropped`).
 3. The **encoder thread** takes the frame, rotates it and encodes it. If the result is larger
-   than the device accepts, it lowers the JPEG quality step by step.
+   than the device accepts, it lowers the JPEG quality step by step. While frames are being
+   dropped because the device falls behind, the device thread lowers the quality used for the
+   next frames (down to `min_quality`), so smaller frames let it keep up; it raises the quality
+   again once nothing is dropped, and at once after a pause (a clock, a dashboard).
 4. The **device thread** sends the newest encoded frame once the frame interval
    (`1 / max_fps`) has passed. A frame identical to the one on screen is skipped (counted as
    `duplicates`). Encoding the next frame overlaps with sending this one, so the slower of

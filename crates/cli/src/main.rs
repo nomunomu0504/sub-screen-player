@@ -486,8 +486,8 @@ fn status(client: &Client) -> Result<()> {
                 s.shown, s.dropped, s.duplicates, s.submitted
             );
             println!(
-                "  last      {:.1} ms encode, {:.1} ms send, {} bytes",
-                s.last_encode_ms, s.last_send_ms, s.last_bytes
+                "  last      {:.1} ms encode, {:.1} ms send, {} bytes, quality {}",
+                s.last_encode_ms, s.last_send_ms, s.last_bytes, s.quality
             );
         }
     }

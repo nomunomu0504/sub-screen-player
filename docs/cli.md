@@ -181,6 +181,19 @@ the example in the [README](../README.md#drawing-from-your-own-program) and the
 [API reference](api.md#websocket-stream). While a stream runs, `ssp devices` shows `stream` as
 the content. `ssp clock` or `ssp show` takes the display back.
 
+Detailed pictures at a high frame rate can be more than the USB link carries: on the D92 a
+detailed 1920x462 frame at JPEG quality 85 takes about 22 ms to send, so about 45 frames per
+second get through. While frames come faster than the display takes them, the JPEG quality is
+lowered (down to `min_quality`, 70 by default) until it keeps up, and raised again as soon as
+it does; `ssp status` shows the quality in use. A clock or a dashboard stays at full quality.
+To always keep the full quality, set `min_quality` to the same value as `quality`:
+
+```toml
+[display]
+quality = 85
+min_quality = 85       # never lower the quality, drop frames instead
+```
+
 ### Develop support for a new display while another one keeps running
 
 Say a D92 shows your clock and you are writing a driver `dxxxx` for another display. Run the
@@ -239,7 +252,7 @@ These work with every command.
 | `ssp devices` | List displays: id, model, size, what they show and whether they are connected. If the daemon is not running, lists the supported displays plugged into this computer instead. |
 | `  --json` | Print the full details as JSON (same as `GET /api/v1/displays`). |
 | `  --driver <ID>` | Only list displays of this driver (repeatable). |
-| `ssp status` | Daemon version and, per display, firmware and frame counters: frames shown, dropped (replaced by newer ones), unchanged (skipped) and received, plus the last encode time, send time and size. |
+| `ssp status` | Daemon version and, per display, firmware and frame counters: frames shown, dropped (replaced by newer ones), unchanged (skipped) and received, plus the last encode time, send time and size, and the JPEG quality in use. |
 | `ssp selftest` | Check connected displays directly, without the daemon. Runs about 25 s per display and reports PASS / WARN / FAIL per check: open (and firmware), commands (wake, brightness 100%), still image, streaming (frames per second), keep-alive (still connected after being idle) and power (off and on). Several displays are all opened first and tested one after another. If the daemon is running, displays of the drivers it uses are skipped (it could take them at any moment): stop it, or run it with `--driver` for other drivers only. Exits with 1 if a check fails or nothing could be tested. Use `--display` to test one display. |
 | `  --driver <ID>` | Only test displays of this driver (repeatable). Also enables experimental drivers. |
 | `  --frames <N>` | Frames sent in the streaming check (default 180). |

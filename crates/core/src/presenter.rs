@@ -24,8 +24,11 @@ pub enum StopAction {
 pub struct PresenterOptions {
     /// Upper bound for the frame rate. The display's own limit applies as well.
     pub max_fps: u32,
-    /// JPEG quality (1..=100).
+    /// JPEG quality (1..=100) when the device keeps up.
     pub quality: u8,
+    /// Lowest JPEG quality used to keep up when frames come faster than the device takes them
+    /// (fast animations, streams). Equal to `quality` keeps the quality fixed.
+    pub min_quality: u8,
     /// Do not resend a frame that is identical to the one on screen.
     pub skip_duplicates: bool,
 }
@@ -35,6 +38,7 @@ impl Default for PresenterOptions {
         Self {
             max_fps: 60,
             quality: Encoder::DEFAULT_QUALITY,
+            min_quality: Encoder::DEFAULT_MIN_QUALITY,
             skip_duplicates: true,
         }
     }
@@ -57,6 +61,8 @@ pub struct PresenterStats {
     pub last_send: Duration,
     /// Size of the last frame sent.
     pub last_bytes: usize,
+    /// JPEG quality frames are encoded with now (see [`PresenterOptions::min_quality`]).
+    pub quality: u8,
 }
 
 /// Owns one [`Display`] and feeds it frames from any thread.
@@ -79,6 +85,8 @@ struct Shared {
 }
 
 struct State {
+    /// JPEG quality for the next frames, lowered while the device falls behind.
+    quality: u8,
     pending: Option<Frame>,
     encoded: Option<EncodedImage>,
     commands: VecDeque<Command>,
@@ -113,14 +121,20 @@ impl Presenter {
     /// Takes ownership of `display` and starts the worker threads.
     pub fn spawn(display: Box<dyn Display>, options: PresenterOptions) -> Self {
         let info = display.info().clone();
+        let quality = options.quality.clamp(1, 100);
+        let min_quality = options.min_quality.clamp(1, quality);
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
+                quality,
                 pending: None,
                 encoded: None,
                 commands: VecDeque::new(),
                 running: true,
                 failure: None,
-                stats: PresenterStats::default(),
+                stats: PresenterStats {
+                    quality,
+                    ..PresenterStats::default()
+                },
             }),
             device: Condvar::new(),
             encoder: Condvar::new(),
@@ -129,13 +143,13 @@ impl Presenter {
         let worker = Worker {
             shared: shared.clone(),
             display,
-            encoder: Encoder::new(options.quality),
+            encoder: Encoder::new(quality),
             min_interval: Duration::from_secs(1) / fps,
             skip_duplicates: options.skip_duplicates,
+            quality: QualityControl::new(quality, min_quality),
         };
         let encoder_shared = shared.clone();
         let encoder_info = info.clone();
-        let quality = options.quality;
         let threads = vec![
             spawn_named(format!("ssp-encode-{}", info.id()), move || {
                 encode_loop(&encoder_shared, &encoder_info, Encoder::new(quality));
@@ -287,6 +301,7 @@ fn encode_loop(shared: &Shared, info: &DisplayInfo, mut encoder: Encoder) {
                     return;
                 }
                 if let Some(frame) = state.pending.take() {
+                    encoder.set_quality(state.quality);
                     break frame;
                 }
                 state = shared
@@ -322,6 +337,65 @@ struct Worker {
     encoder: Encoder,
     min_interval: Duration,
     skip_duplicates: bool,
+    quality: QualityControl,
+}
+
+/// Lowers the JPEG quality while the device falls behind and raises it again when it keeps up.
+///
+/// Falling behind shows as dropped frames: a newer frame replaced one that was never sent.
+/// Smaller frames send faster, so the quality settles where the device just keeps up. Content
+/// that changes slowly (a clock, a dashboard) never drops frames and stays at full quality.
+struct QualityControl {
+    max: u8,
+    min: u8,
+    /// Dropped frames counted at the last adjustment.
+    dropped: u64,
+    /// Frames sent in a row without a drop.
+    calm: u32,
+}
+
+impl QualityControl {
+    /// Frames sent without a drop before the quality goes up a step.
+    const CALM_FRAMES: u32 = 4;
+
+    fn new(max: u8, min: u8) -> Self {
+        Self {
+            max,
+            min,
+            dropped: 0,
+            calm: 0,
+        }
+    }
+
+    /// The quality for the next frames, after a frame took `send` to send.
+    /// `idle` tells that the frame came after a pause, i.e. the source is slow.
+    fn adjust(
+        &mut self,
+        current: u8,
+        dropped: u64,
+        send: Duration,
+        interval: Duration,
+        idle: bool,
+    ) -> u8 {
+        let behind = dropped > self.dropped;
+        self.dropped = dropped;
+        if behind {
+            self.calm = 0;
+            // Far behind: bigger steps, so a stream settles within a second.
+            let step = if send > interval * 3 / 2 { 5 } else { 2 };
+            return current.saturating_sub(step).max(self.min);
+        }
+        if idle {
+            self.calm = 0;
+            return self.max;
+        }
+        self.calm += 1;
+        if self.calm >= Self::CALM_FRAMES {
+            self.calm = 0;
+            return (current + 1).min(self.max);
+        }
+        current
+    }
 }
 
 impl Worker {
@@ -346,13 +420,24 @@ impl Worker {
                         continue;
                     }
                     let started = Instant::now();
+                    let idle = last_show.is_none_or(|t| started - t > self.min_interval * 4);
                     last_show = Some(started);
                     let result = self.display.show(&image);
                     if result.is_ok() {
+                        let send = started.elapsed();
                         let mut state = self.shared.lock();
                         state.stats.shown += 1;
-                        state.stats.last_send = started.elapsed();
+                        state.stats.last_send = send;
                         state.stats.last_bytes = image.data.len();
+                        let dropped = state.stats.dropped;
+                        state.quality = self.quality.adjust(
+                            state.quality,
+                            dropped,
+                            send,
+                            self.min_interval,
+                            idle,
+                        );
+                        state.stats.quality = state.quality;
                         last = Some(image);
                         on_screen = true;
                     }
@@ -517,7 +602,12 @@ mod tests {
     fn latest_frame_wins_when_the_device_is_slow() {
         let (display, log) = FakeDisplay::new();
         let display = display.show_delay(Duration::from_millis(100));
-        let presenter = Presenter::spawn(Box::new(display), PresenterOptions::default());
+        // A fixed quality, so the last frame can be compared byte for byte.
+        let options = PresenterOptions {
+            min_quality: Encoder::DEFAULT_QUALITY,
+            ..Default::default()
+        };
+        let presenter = Presenter::spawn(Box::new(display), options);
         for shade in 0..20 {
             presenter.submit(frame(shade)).unwrap();
             std::thread::sleep(Duration::from_millis(5));
@@ -559,6 +649,54 @@ mod tests {
         }
         wait_until(|| shows(&log.calls()) == 3);
         assert!(started.elapsed() >= Duration::from_millis(200));
+        presenter.stop(StopAction::Leave).unwrap();
+    }
+
+    #[test]
+    fn lowers_the_quality_while_the_device_falls_behind() {
+        let (display, _log) = FakeDisplay::new();
+        // A device that needs 40 ms per frame cannot keep up with frames every 5 ms.
+        let display = display.show_delay(Duration::from_millis(40));
+        let options = PresenterOptions {
+            quality: 85,
+            min_quality: 70,
+            skip_duplicates: false,
+            ..Default::default()
+        };
+        let presenter = Presenter::spawn(Box::new(display), options);
+        assert_eq!(presenter.stats().quality, 85);
+        for shade in 0..200u8 {
+            presenter.submit(frame(shade)).unwrap();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(presenter.stats().quality, 70, "{:?}", presenter.stats());
+
+        // A slow source (a clock) gets full quality back.
+        wait_until(|| {
+            presenter.stats().submitted == presenter.stats().shown + presenter.stats().dropped
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        presenter.submit(frame(1)).unwrap();
+        wait_until(|| presenter.stats().quality == 85);
+        presenter.stop(StopAction::Leave).unwrap();
+    }
+
+    #[test]
+    fn keeps_a_fixed_quality_when_min_equals_quality() {
+        let (display, _log) = FakeDisplay::new();
+        let display = display.show_delay(Duration::from_millis(40));
+        let options = PresenterOptions {
+            quality: 80,
+            min_quality: 80,
+            skip_duplicates: false,
+            ..Default::default()
+        };
+        let presenter = Presenter::spawn(Box::new(display), options);
+        for shade in 0..60u8 {
+            presenter.submit(frame(shade)).unwrap();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(presenter.stats().quality, 80);
         presenter.stop(StopAction::Leave).unwrap();
     }
 

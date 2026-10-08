@@ -24,6 +24,8 @@ listen = "127.0.0.1:7920"
 # brightness = 80        # percent, applied when a display connects
 max_fps = 60
 quality = 85             # JPEG quality, 1-100
+min_quality = 70         # lowest quality used to keep up with fast animations and streams
+                         # (the same as quality keeps it fixed)
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
@@ -118,6 +120,9 @@ pub struct DisplayConfig {
     pub max_fps: u32,
     /// JPEG quality (1..=100).
     pub quality: u8,
+    /// Lowest JPEG quality used while the display falls behind fast frames (1..=100). Values
+    /// above `quality` act like `quality`, i.e. a fixed quality.
+    pub min_quality: u8,
     /// What to do to the screens when the daemon exits.
     pub on_exit: OnExit,
 }
@@ -128,6 +133,7 @@ impl Default for DisplayConfig {
             brightness: None,
             max_fps: 60,
             quality: 85,
+            min_quality: 70,
             on_exit: OnExit::Leave,
         }
     }
@@ -399,6 +405,9 @@ impl Config {
         }
         if !(1..=100).contains(&self.display.quality) {
             return invalid("display.quality must be 1..=100".into());
+        }
+        if !(1..=100).contains(&self.display.min_quality) {
+            return invalid("display.min_quality must be 1..=100".into());
         }
         if self.display.max_fps == 0 {
             return invalid("display.max_fps must be at least 1".into());

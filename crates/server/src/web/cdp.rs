@@ -17,6 +17,8 @@ use tungstenite::{Message, WebSocket};
 const START_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a command may take.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Start of the names of the throwaway profiles, followed by the daemon's process id.
+const PROFILE_PREFIX: &str = "ssp-chrome-profile-";
 
 /// A headless browser with a throwaway profile, closed (and its profile deleted) when dropped.
 pub struct Browser {
@@ -31,7 +33,7 @@ impl Browser {
     pub fn launch(chrome: &Path, width: u32, height: u32) -> Result<Self, String> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let profile = std::env::temp_dir().join(format!(
-            "ssp-chrome-profile-{}-{}",
+            "{PROFILE_PREFIX}{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -125,6 +127,69 @@ impl Drop for Browser {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
+}
+
+/// Stops the browsers, and deletes the profiles, that daemons which did not exit cleanly (killed,
+/// or crashed) left behind: a browser keeps running when the daemon that started it is gone.
+pub fn clean_up_after_others() {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    let profiles: Vec<(PathBuf, u32)> = entries
+        .flatten()
+        .filter_map(|entry| Some((entry.path(), owner(&entry.file_name().into_string().ok()?)?)))
+        .filter(|(_, pid)| *pid != std::process::id())
+        .collect();
+    if profiles.is_empty() {
+        return;
+    }
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
+    for (profile, pid) in profiles {
+        let daemon_runs = system
+            .process(Pid::from_u32(pid))
+            .is_some_and(|p| p.name().to_string_lossy().starts_with("ssp"));
+        if daemon_runs {
+            continue;
+        }
+        let flag = format!("--user-data-dir={}", profile.display());
+        let mut stopped = 0;
+        for process in system.processes().values() {
+            if process
+                .cmd()
+                .iter()
+                .any(|arg| arg.to_string_lossy() == flag)
+                && process.kill()
+            {
+                stopped += 1;
+            }
+        }
+        for _ in 0..20 {
+            if std::fs::remove_dir_all(&profile).is_ok() || !profile.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        tracing::info!(
+            profile = %profile.display(),
+            "cleaned up after a daemon that did not exit cleanly ({stopped} browser processes)"
+        );
+    }
+}
+
+/// The daemon process id in a profile's name.
+fn owner(name: &str) -> Option<u32> {
+    name.strip_prefix(PROFILE_PREFIX)?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// Something the browser reported.
@@ -260,6 +325,49 @@ fn to_event(message: Value) -> Option<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A browser left by a daemon that is gone is stopped and its profile deleted. Uses the
+    /// browser in `SSP_TEST_CHROME`, if set.
+    #[test]
+    fn cleans_up_after_a_killed_daemon() {
+        let Some(chrome) = std::env::var_os("SSP_TEST_CHROME") else {
+            eprintln!("skipped: set SSP_TEST_CHROME to a Chrome to run it");
+            return;
+        };
+        // No process has this id (process ids stay below 2^22 on Linux, 99999 on macOS).
+        let profile = std::env::temp_dir().join(format!("{PROFILE_PREFIX}4999999-0"));
+        let _ = std::fs::remove_dir_all(&profile);
+        let mut browser = Command::new(chrome)
+            .arg("--headless=new")
+            .arg("--remote-debugging-port=0")
+            .arg(format!("--user-data-dir={}", profile.display()))
+            .arg("about:blank")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !profile.join("DevToolsActivePort").exists() && started.elapsed().as_secs() < 60 {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        clean_up_after_others();
+        let exited = (0..100).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            browser.try_wait().unwrap().is_some()
+        });
+        if !exited {
+            let _ = browser.kill();
+        }
+        assert!(exited, "the browser was stopped");
+        assert!(!profile.exists(), "the profile was deleted");
+    }
+
+    #[test]
+    fn reads_the_owner_of_a_profile() {
+        assert_eq!(owner("ssp-chrome-profile-4242-0"), Some(4242));
+        assert_eq!(owner("ssp-chrome-profile-x-0"), None);
+        assert_eq!(owner("something-else"), None);
+    }
 
     #[test]
     fn reads_events() {

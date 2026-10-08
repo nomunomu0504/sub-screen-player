@@ -58,6 +58,10 @@ pub async fn serve(
     tracing::info!("API listening on http://{}", listener.local_addr()?);
 
     let scanner = manager.spawn_scanner(SCAN_INTERVAL);
+    // Browsers a killed daemon left running; looking at all processes takes a moment.
+    let _ = std::thread::Builder::new()
+        .name("ssp-cleanup".into())
+        .spawn(web::cdp::clean_up_after_others);
     let (stopping, stop_signal) = watch::channel(false);
     // Videos sent to the API wait in a folder of this daemon's own (one daemon per port).
     let uploads = std::env::temp_dir().join(format!("sub-screen-player-{}", config.listen.port()));

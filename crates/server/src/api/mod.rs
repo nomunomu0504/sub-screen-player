@@ -95,7 +95,37 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/api/v1", api)
         .layer(middleware::from_fn_with_state(state.clone(), auth::guard))
+        .layer(middleware::map_response(json_errors))
         .with_state(state)
+}
+
+/// Turns the error answers axum makes itself (malformed JSON, a bad query, an unknown path),
+/// which are plain text, into the `{"error": "..."}` body of every other error.
+async fn json_errors(response: Response) -> Response {
+    let status = response.status();
+    let json = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .is_some_and(|v| v.as_bytes().starts_with(b"application/json"));
+    if !(status.is_client_error() || status.is_server_error()) || json {
+        return response;
+    }
+    let message = match axum::body::to_bytes(response.into_body(), 64 << 10).await {
+        Ok(text) if !text.is_empty() => String::from_utf8_lossy(&text).into_owned(),
+        _ => status.canonical_reason().unwrap_or("error").to_owned(),
+    };
+    ApiError::new(status, message).into_response()
+}
+
+/// An optional JSON body, read whatever its `Content-Type` says (scripts often send none). An
+/// empty body is `None`.
+fn optional_json<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<Option<T>, ApiError> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    serde_json::from_slice(body)
+        .map(Some)
+        .map_err(|e| ApiError::bad_request(format!("invalid request: {e}")))
 }
 
 /// An error response with a JSON body.
@@ -437,9 +467,9 @@ async fn clear(
 async fn clock(
     State(app): State<AppState>,
     Path(id): Path<String>,
-    request: Option<Json<ClockRequest>>,
+    body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
-    let request = request.map(|Json(r)| r).unwrap_or_default();
+    let request: ClockRequest = optional_json(&body)?.unwrap_or_default();
     let mut config = app.clock.clone();
     if let Some(seconds) = request.seconds {
         config.seconds = seconds;
@@ -468,9 +498,9 @@ async fn clock(
 async fn dashboard(
     State(app): State<AppState>,
     Path(id): Path<String>,
-    request: Option<Json<DashboardRequest>>,
+    body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
-    let request = request.map(|Json(r)| r).unwrap_or_default();
+    let request: DashboardRequest = optional_json(&body)?.unwrap_or_default();
     let mut config = app.dashboard.clone();
     config.widgets = request.widgets.unwrap_or(config.widgets);
     config.color = request.color.unwrap_or(config.color);

@@ -287,14 +287,16 @@ async fn rejects_bad_metrics() {
         assert!(error(&body).contains(message), "{body}");
     }
 
-    // Bodies that are not a metric update are refused by axum's `Json` extractor, whose answers
-    // are plain text, not the `{"error": ...}` that docs/api.md promises for errors.
+    // Bodies that are not a metric update are refused by axum's `Json` extractor; the answer is
+    // still a JSON error.
     let typo = json_request("PUT", "/api/v1/metrics/ci", r#"{"vaule": 1}"#);
     let (status, body) = api.send(typo).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body.contains("unknown field `vaule`"), "{body}");
+    assert!(error(&body).contains("unknown field `vaule`"), "{body}");
     let cut = json_request("PUT", "/api/v1/metrics/ci", r#"{"value": 1"#);
-    assert_eq!(api.send(cut).await.0, StatusCode::BAD_REQUEST);
+    let (status, body) = api.send(cut).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(!error(&body).is_empty(), "{body}");
 
     let all: Vec<MetricView> = api.get("/api/v1/metrics").await;
     assert!(all.is_empty());
@@ -335,9 +337,11 @@ async fn rejects_bad_images() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(error(&body).contains("nope"), "{body}");
 
-    // Refused by axum's `Query` extractor, in plain text.
+    // Refused by axum's `Query` extractor, as a JSON error too.
     let sideways = post("/api/v1/displays/fake-0001/image?fit=sideways", png());
-    assert_eq!(api.send(sideways).await.0, StatusCode::BAD_REQUEST);
+    let (status, body) = api.send(sideways).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error(&body).contains("fit"), "{body}");
     assert_eq!(api.content().await, "nothing");
 }
 
@@ -435,25 +439,32 @@ async fn shows_a_dashboard() {
     let (status, body) = api.send(request("POST", uri)).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
 
-    // An unknown widget fails to deserialize: axum answers 422, in plain text.
+    // An unknown widget is refused.
     let gpu = json_request("POST", uri, r#"{"widgets": ["gpu"]}"#);
     let (status, body) = api.send(gpu).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body.contains("unknown widget"), "{body}");
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error(&body).contains("unknown widget"), "{body}");
     let green = json_request("POST", uri, r#"{"accent": "green"}"#);
     let (status, body) = api.send(green).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(error(&body).contains("#RRGGBB"), "{body}");
 
-    // Possibly unintended: a body sent without `Content-Type: application/json` is ignored, and
-    // so are unknown fields, so both of these show the configured dashboard instead of failing.
-    for ignored in [
-        post(uri, r#"{"widgets": ["gpu"]}"#),
-        json_request("POST", uri, r#"{"widget": ["cpu"]}"#),
-    ] {
-        let (status, body) = api.send(ignored).await;
-        assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
-    }
+    // A body is read without `Content-Type: application/json` too, and misspelled fields are
+    // refused rather than ignored.
+    let (status, body) = api.send(post(uri, r#"{"widgets": ["gpu"]}"#)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error(&body).contains("unknown widget"), "{body}");
+    let (status, body) = api.send(post(uri, r#"{"widgets": ["cpu"]}"#)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let typo = json_request("POST", uri, r#"{"widget": ["cpu"]}"#);
+    let (status, body) = api.send(typo).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error(&body).contains("unknown field `widget`"), "{body}");
+
+    // Unknown paths answer with a JSON error as well.
+    let (status, body) = api.send(request("GET", "/api/v1/nothing-here")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!error(&body).is_empty(), "{body}");
 }
 
 #[tokio::test]

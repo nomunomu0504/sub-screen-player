@@ -7,7 +7,8 @@ program can do.
 
 - Base URL: `http://127.0.0.1:7920/api/v1` (change with `listen` in the config)
 - Bodies are JSON unless noted. Successful actions return `204 No Content`.
-- Errors return a JSON body `{"error": "..."}`.
+- Errors return a JSON body `{"error": "..."}`, malformed requests and unknown paths included.
+  Misspelled fields in a JSON body are refused, not ignored.
 
 ## Authentication
 

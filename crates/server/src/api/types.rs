@@ -106,7 +106,7 @@ pub struct PowerRequest {
 
 /// `POST /api/v1/displays/{id}/clock`. Unset fields use the daemon's `[clock]` config.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ClockRequest {
     /// Show seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,7 +143,7 @@ pub use crate::web::ChromeView;
 
 /// `POST /api/v1/displays/{id}/dashboard`. Unset fields use the daemon's `[dashboard]` config.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct DashboardRequest {
     /// Panels from left to right.
     #[serde(skip_serializing_if = "Option::is_none")]

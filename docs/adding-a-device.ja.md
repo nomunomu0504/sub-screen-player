@@ -20,7 +20,7 @@
 ドキュメントがない場合は、メーカー製アプリの通信をキャプチャします。x86 の Windows なら Wireshark と USBPcap が
 使えます。それができない環境（Apple Silicon など）では、VMware の仮想マシンでメーカー製アプリを動かし、
 `usb.analyzer.enable = "TRUE"` を設定すると、USB の通信が `vmware.log` に記録されます。
-[リバースエンジニアリングの作法](../CONTRIBUTING.ja.md#リバースエンジニアリングの作法)も読んでおいてください。
+[通信を調べるときの作法](../CONTRIBUTING.ja.md#通信を調べるときの作法)も読んでおいてください。
 
 現在 `ssp-core` が対応しているのは **HID** デバイスです。USB バルク転送やシリアルポートを使うディスプレイの場合は、
 先に Issue を立ててください。`crates/core` に新しい `Transport` が必要になり、それはほかのドライバとも共有されます。

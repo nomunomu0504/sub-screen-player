@@ -10,10 +10,10 @@ use crate::{Error, Result};
 pub const MAX_FRAMES: usize = 1000;
 /// Most memory the decoded frames (8-bit RGBA) may take.
 pub const MAX_BYTES: usize = 256 << 20;
-/// Delays shorter than this are played as [`DEFAULT_DELAY`], as browsers do: many GIFs say
-/// 0 or 10 ms and mean "the default speed".
-const MIN_DELAY: Duration = Duration::from_millis(20);
-/// See [`MIN_DELAY`].
+/// Delays up to this are played as [`DEFAULT_DELAY`], as browsers do: many GIFs say 0 or 10 ms
+/// and mean "the default speed". 60 fps animations (about 16.7 ms) play at their own speed.
+const MAX_UNSET_DELAY: Duration = Duration::from_millis(10);
+/// See [`MAX_UNSET_DELAY`].
 const DEFAULT_DELAY: Duration = Duration::from_millis(100);
 
 /// An animated image (GIF, APNG or animated WebP): its frames at their original size, each with
@@ -107,7 +107,7 @@ fn collect(frames: Frames<'_>) -> Result<Vec<(DynamicImage, Duration)>> {
     for frame in frames {
         let frame = frame.map_err(image)?;
         let delay = match Duration::from(frame.delay()) {
-            short if short < MIN_DELAY => DEFAULT_DELAY,
+            unset if unset <= MAX_UNSET_DELAY => DEFAULT_DELAY,
             delay => delay,
         };
         let buffer = frame.into_buffer();
@@ -186,6 +186,13 @@ mod tests {
     fn unspecified_delays_play_at_the_default_speed() {
         let animation = Animation::decode(&gif(&[0, 10, 50])).unwrap().unwrap();
         assert_eq!(animation.duration(), Duration::from_millis(250));
+    }
+
+    #[test]
+    fn fast_animations_keep_their_speed() {
+        // GIF delays are in 10 ms steps: 20 ms is the fastest real speed (50 fps).
+        let animation = Animation::decode(&gif(&[20, 20, 20])).unwrap().unwrap();
+        assert_eq!(animation.duration(), Duration::from_millis(60));
     }
 
     #[test]

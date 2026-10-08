@@ -1,5 +1,9 @@
 //! Figures sent from outside the daemon (`PUT /api/v1/metrics/{id}`), shown on the dashboard by
 //! `metric:<id>` panels. Kept in memory only.
+//!
+//! Built-in panels that need figures gathered in the background (such as `claude-code`) use the
+//! same store: their collector is registered with [`Metrics::provide`] and started the first time
+//! a dashboard shows the panel.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -150,15 +154,52 @@ impl Metric {
     }
 }
 
+/// Starts the collector of a built-in metric.
+type Start = Box<dyn FnOnce() + Send>;
+
 /// All metrics, shared by the API and the dashboards.
-#[derive(Debug, Clone, Default)]
-pub struct Metrics(Arc<Mutex<HashMap<String, Metric>>>);
+#[derive(Clone, Default)]
+pub struct Metrics {
+    values: Arc<Mutex<HashMap<String, Metric>>>,
+    /// Collectors not started yet, by metric id.
+    providers: Arc<Mutex<HashMap<String, Start>>>,
+}
+
+impl std::fmt::Debug for Metrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Metrics")
+            .field("values", &*self.lock())
+            .finish_non_exhaustive()
+    }
+}
 
 impl Metrics {
     fn lock(&self) -> MutexGuard<'_, HashMap<String, Metric>> {
-        self.0
+        self.values
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Registers a metric the daemon gathers itself: `start` runs the first time
+    /// [`Metrics::activate`] is called for `id`, typically to spawn a thread that keeps the metric
+    /// up to date with [`Metrics::set`].
+    pub fn provide(&self, id: &str, start: impl FnOnce() + Send + 'static) {
+        self.providers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(id.to_owned(), Box::new(start));
+    }
+
+    /// Starts the collector of metric `id`, if it has one and it has not started yet.
+    pub fn activate(&self, id: &str) {
+        let start = self
+            .providers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(id);
+        if let Some(start) = start {
+            start();
+        }
     }
 
     /// Creates or updates metric `id`.
@@ -336,6 +377,21 @@ mod tests {
         metrics.set("ci", label_only).unwrap();
         assert!(metrics.remove("ci"));
         assert!(!metrics.remove("ci"));
+    }
+
+    #[test]
+    fn starts_a_provider_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let metrics = Metrics::default();
+        let started = Arc::new(AtomicUsize::new(0));
+        let counter = started.clone();
+        metrics.provide("built-in", move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+        });
+        metrics.activate("other");
+        metrics.activate("built-in");
+        metrics.activate("built-in");
+        assert_eq!(started.load(Ordering::SeqCst), 1);
     }
 
     #[test]

@@ -33,6 +33,8 @@ API を通して、他のプログラムからも自由に描画できます。
   並べて表示します。
 - **自分の数値もダッシュボードに**: CI の状態、キューの長さ、天気など、どんなスクリプトからでも `ssp metric set` や
   API で値を送れば、グラフ付きのパネルとして表示されます。
+- **Claude Code の使用量パネル**: 今の5時間ブロックと今日のトークン数を、Claude Code が手元に残すログから表示します
+  （外部には何も送りません）。
 - **画像・アニメーションの表示**: PNG・JPEG・GIF・WebP に対応し、`contain` / `cover` / `stretch` でパネルに合わせます。
   アニメーション GIF・APNG・WebP は繰り返し再生します。
   電源を切っても残るようにデバイスへ保存することもできます。
@@ -101,6 +103,15 @@ background = "#0B1220"
 ```sh
 ssp metric set ci --value 2 --label CI --unit failed --detail "main · 39 of 41 jobs passed"
 ssp dashboard --widgets clock,metric:ci,metric:deploy,metric:queue
+```
+
+**Claude Code の使用量**。今の5時間ブロックと今日のトークン数を、Claude Code が PC に残すログから表示します
+（[詳しく](docs/cli.ja.md#claude-code-の使用量を表示する)）。
+
+![時計・CPU・メモリと並んだ Claude Code のパネル](docs/images/dashboard-claude-code.png)
+
+```sh
+ssp dashboard --widgets clock,claude-code,cpu,memory
 ```
 
 ほかにも、`ssp show` で画像を表示したり、自作のプログラムからフレームを送ったり（[後述](#自作プログラムから描画する)）

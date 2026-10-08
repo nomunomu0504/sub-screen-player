@@ -32,6 +32,8 @@ fontdb = "0.24.0"
 # CPU, memory, network and disk figures for the dashboard
 sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network"] }
 jiff = "0.2.38"
+# Finding replies in Claude Code's logs without parsing every line
+memchr = "2.8.3"
 
 # Errors and logging
 thiserror = "2.0.21"

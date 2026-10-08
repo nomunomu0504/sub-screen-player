@@ -5,11 +5,13 @@
 //! - [`text`] and [`draw`]: text and shapes for the built-in screens.
 //! - [`api`]: the HTTP + WebSocket API that clients (the CLI, scripts, apps) use.
 //! - [`metrics`]: figures sent from outside, shown as dashboard panels.
+//! - [`claude_code`]: the `claude-code` panel's reader of Claude Code's usage logs.
 //! - [`config`]: the TOML configuration.
 //! - [`drivers`]: the list of device drivers compiled in.
 #![warn(missing_docs)]
 
 pub mod api;
+pub mod claude_code;
 pub mod config;
 pub mod draw;
 pub mod drivers;
@@ -40,6 +42,7 @@ pub async fn serve(
     let registry =
         drivers::registry(&config.drivers.selection()).context("invalid [drivers] config")?;
     let metrics = metrics::Metrics::default();
+    claude_code::register(&metrics, config.claude_code.clone());
     let manager =
         Arc::new(Manager::new(registry, &config, metrics.clone()).map_err(anyhow::Error::msg)?);
     let listener = tokio::net::TcpListener::bind(config.listen)

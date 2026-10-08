@@ -132,7 +132,8 @@ clock panel uses the formats of `[clock]`.
 ```
 
 `widgets` lists the panels from left to right (1 to 6 of `clock`, `cpu`, `memory`, `network`,
-`disk` and `metric:<id>`). `accent` is the color of the graphs.
+`disk`, `claude-code` and `metric:<id>`; see the [CLI guide](cli.md#show-how-much-claude-code-you-have-used)
+for `claude-code`). `accent` is the color of the graphs.
 
 ### Metrics
 
@@ -160,7 +161,8 @@ creating a metric needs one of `value`, `text` and `series`.
 | `max` | number | Top of the graph. Defaults to the largest value in the graph. |
 | `ttl` | seconds | How long the value counts as current (default 300, at most a week). After that the panel is dimmed and says how old the value is. |
 
-Ids are 1 to 32 of `a-z`, `0-9` and `-`. The daemon keeps at most 64 metrics, in memory only: they
+Numbers of 100,000 or more are shortened on the panel (`123k`, `4.56M`, `7.8B`). Ids are 1 to 32
+of `a-z`, `0-9` and `-`. The daemon keeps at most 64 metrics, in memory only: they
 are gone after a restart, so send them again (most senders run on a timer anyway). A
 `metric:<id>` panel whose metric has not arrived yet says "waiting for data".
 
@@ -183,6 +185,10 @@ are gone after a restart, so send them again (most senders run on a timer anyway
 
 `text` replaces `value` when set; `max` appears when set. `age` is in seconds.
 `DELETE /metrics/{id}` returns `404` for an unknown id.
+
+While a dashboard shows the `claude-code` panel, the daemon keeps the metric `claude-code` up to
+date itself (tokens in the current 5-hour block, the time it ends and today's total in `detail`,
+and tokens per minute over the last hour in `history`).
 
 ## WebSocket stream
 

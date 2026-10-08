@@ -6,6 +6,7 @@ import { Image } from 'astro:assets';
 import clockBig from '../assets/screens/clock-big.png';
 import clockJa from '../assets/screens/clock-ja.png';
 import clock from '../assets/screens/clock.png';
+import dashboardClaudeCode from '../assets/screens/dashboard-claude-code.png';
 import dashboardColors from '../assets/screens/dashboard-colors.png';
 import dashboardCompact from '../assets/screens/dashboard-compact.png';
 import dashboardMetrics from '../assets/screens/dashboard-metrics.png';
@@ -47,6 +48,15 @@ const screens = [
 			ja: 'CI の状態やキューの長さなど、スクリプトから送った値をパネルとして並べられます。',
 		},
 		how: 'ssp metric set ci --value 2',
+	},
+	{
+		image: dashboardClaudeCode,
+		title: { en: 'Claude Code usage', ja: 'Claude Code の使用量' },
+		text: {
+			en: 'Tokens in the current 5-hour block and today, from the logs on your computer.',
+			ja: '今の5時間ブロックと今日のトークン数を、手元のログから。',
+		},
+		how: 'ssp dashboard --widgets clock,claude-code',
 	},
 	{
 		image: clock,

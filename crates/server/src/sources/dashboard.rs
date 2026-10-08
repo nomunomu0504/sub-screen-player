@@ -10,6 +10,7 @@ use ssp_core::Frame;
 use super::Source;
 use super::clock::{Clock, until_next_second};
 use super::stats::{self, HISTORY, Stats};
+use crate::claude_code;
 use crate::config::{ClockConfig, DashboardConfig, Widget, parse_color};
 use crate::draw::{self, mix};
 use crate::metrics::{Metric, Metrics};
@@ -79,6 +80,9 @@ impl Dashboard {
     /// Creates a dashboard; its clock panel uses the formats of `clock` and `metric:<id>`
     /// panels read `metrics`. Invalid colors fall back to the defaults.
     pub fn new(config: DashboardConfig, clock: ClockConfig, metrics: Metrics) -> Self {
+        if config.widgets.contains(&Widget::ClaudeCode) {
+            metrics.activate(claude_code::METRIC_ID);
+        }
         let defaults = DashboardConfig::default();
         let color = |value: &str, default: &str| {
             parse_color(value).unwrap_or_else(|| parse_color(default).unwrap_or([255; 3]))
@@ -236,17 +240,9 @@ impl Dashboard {
                 ),
                 None => built_in("DISK", "-".into(), "", "not found".into(), Graph::None),
             },
-            Widget::Metric(id) => match self.metrics.get(id) {
-                Some(metric) => metric_panel(id, &metric),
-                None => Panel {
-                    label: id.clone(),
-                    value: "-".into(),
-                    unit: String::new(),
-                    detail: "waiting for data".into(),
-                    dim: true,
-                    graph: Graph::None,
-                },
-            },
+            Widget::Metric(id) => self.metric(id),
+            // Its figures are a metric kept up to date by `claude_code`.
+            Widget::ClaudeCode => self.metric(claude_code::METRIC_ID),
             Widget::Clock => unreachable!("the clock is not a figure panel"),
         }
     }
@@ -353,6 +349,23 @@ impl Dashboard {
     }
 }
 
+impl Dashboard {
+    /// The panel of metric `id`, or a placeholder until it arrives.
+    fn metric(&self, id: &str) -> Panel {
+        match self.metrics.get(id) {
+            Some(metric) => metric_panel(id, &metric),
+            None => Panel {
+                label: id.to_owned(),
+                value: "-".into(),
+                unit: String::new(),
+                detail: "waiting for data".into(),
+                dim: true,
+                graph: Graph::None,
+            },
+        }
+    }
+}
+
 /// The panel of a metric sent from outside.
 fn metric_panel(id: &str, metric: &Metric) -> Panel {
     let stale = metric.is_stale();
@@ -395,19 +408,27 @@ fn metric_panel(id: &str, metric: &Metric) -> Panel {
 }
 
 /// Formats a metric value: whole numbers as they are, others with about three significant digits.
-fn number(value: f64) -> String {
-    let text = if value.fract() == 0.0 || value.abs() >= 100.0 {
+/// From 100,000 on, numbers are shortened with k, M or B (`123k`, `4.56M`).
+pub(crate) fn number(value: f64) -> String {
+    let (value, suffix) = match value.abs() {
+        v if v >= 999.5e6 => (value / 1e9, "B"),
+        v if v >= 999.5e3 => (value / 1e6, "M"),
+        v if v >= 1e5 => (value / 1e3, "k"),
+        _ => (value, ""),
+    };
+    let text = if (suffix.is_empty() && value.fract() == 0.0) || value.abs() >= 100.0 {
         format!("{value:.0}")
     } else if value.abs() >= 10.0 {
         format!("{value:.1}")
     } else {
         format!("{value:.2}")
     };
-    if text.contains('.') {
-        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    let text = if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.')
     } else {
-        text
-    }
+        &text
+    };
+    format!("{text}{suffix}")
 }
 
 /// "45 s ago", "12 min ago", "3 h ago".
@@ -577,7 +598,12 @@ mod tests {
     #[test]
     fn formats_metric_numbers() {
         assert_eq!(number(3.0), "3");
-        assert_eq!(number(1234567.0), "1234567");
+        assert_eq!(number(99_999.0), "99999");
+        assert_eq!(number(123_456.0), "123k");
+        assert_eq!(number(999_999.0), "1M");
+        assert_eq!(number(1_234_567.0), "1.23M");
+        assert_eq!(number(-45_600_000.0), "-45.6M");
+        assert_eq!(number(7.8e9), "7.8B");
         assert_eq!(number(42.26), "42.3");
         assert_eq!(number(0.126), "0.13");
         assert_eq!(number(1.5), "1.5");

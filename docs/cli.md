@@ -105,6 +105,35 @@ restarts, panels say "waiting for data" until the next value arrives.
 [contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) is a complete example that shows
 how the last GitHub Actions runs of a branch went.
 
+### Show how much Claude Code you have used
+
+```sh
+ssp dashboard --widgets clock,claude-code,cpu,memory
+```
+
+![The Claude Code panel next to the clock, CPU and memory](images/dashboard-claude-code.png)
+
+The `claude-code` panel adds up the tokens of every Claude Code session on this computer
+(subagents included):
+
+- the large figure is the current 5-hour block, with the time it ends: a block starts at the
+  hour of the first reply after the previous block ended and lasts five hours, which is how
+  Claude's usage limits are usually tracked. It is an estimate from your logs, not the limit
+  Anthropic counts;
+- `today` is the total since midnight;
+- the graph shows tokens per minute over the last hour.
+
+Input, output and cache-creation tokens are counted. Cache reads (the conversation read again on
+every turn, billed at a fraction) are not, or they would dwarf the rest.
+
+**What is read**: the session logs Claude Code keeps in `~/.claude/projects/` (or under
+`$CLAUDE_CONFIG_DIR`, or `~/.config/claude`), of which only the token counts and times of the
+replies are used. Nothing is sent anywhere, and nothing is read until a dashboard shows the
+panel. The first read of a day's logs takes about a second; after that, only new lines are read,
+every 30 seconds. Point it elsewhere with `[claude_code] dir` in the config. The same figures are
+available to scripts as the metric `claude-code` (`ssp metric list`,
+[`GET /api/v1/metrics/claude-code`](api.md#metrics)).
+
 ### Keep a picture on the screen, even when the computer is off
 
 ```sh
@@ -300,7 +329,7 @@ These work with every command.
 | `  --date-format <FMT>` | Format of the date line, e.g. `"%Y-%m-%d %a"`. `""` hides it. |
 | `  --weekdays <NAMES>` | Names printed by `%a` and `%A`: seven, comma-separated, from Sunday, e.g. `日,月,火,水,木,金,土`. |
 | `ssp dashboard` | Show the built-in dashboard: the time, CPU, memory, network, disk and your own metrics. Options not given come from `[dashboard]` in the config. |
-| `  --widgets <LIST>` | Panels from left to right, comma-separated: `clock`, `cpu`, `memory`, `network`, `disk`, `metric:<id>`. |
+| `  --widgets <LIST>` | Panels from left to right, comma-separated: `clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`, `metric:<id>`. |
 | `ssp metric set <ID>` | Create or update a metric for `metric:<ID>` panels. The id is 1-32 of `a-z`, `0-9` and `-`. Options not given keep their previous value. |
 | `  --value <N>` | The number shown, also added to the graph. `-` reads it from standard input. |
 | `  --text <TEXT>` | A short text shown instead of a number, e.g. `passing`. |

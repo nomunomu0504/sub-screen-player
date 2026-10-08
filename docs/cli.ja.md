@@ -101,6 +101,32 @@ uptime | awk '{print $(NF-2)}' | tr -d , | ssp metric set load --value - --label
 「waiting for data」と表示されます。GitHub Actions の直近の実行結果を表示する
 [contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) が、そのまま使える例です。
 
+### Claude Code の使用量を表示する
+
+```sh
+ssp dashboard --widgets clock,claude-code,cpu,memory
+```
+
+![時計・CPU・メモリと並んだ Claude Code のパネル](images/dashboard-claude-code.png)
+
+`claude-code` のパネルは、この PC で動いたすべての Claude Code のセッション（サブエージェントを含む）のトークン数を
+合計します。
+
+- 大きな数字は、今の5時間ブロックのトークン数と、ブロックが終わる時刻です。ブロックは、前のブロックが終わった後の最初の応答の
+  時刻（時単位で切り捨て）から5時間で、Claude の利用上限を数えるときによく使われる区切り方です。手元のログからの概算で、
+  Anthropic が数えている上限そのものではありません。
+- `today` は0時からの合計です。
+- グラフは直近1時間の1分ごとのトークン数です。
+
+数えるのは入力・出力・キャッシュ作成のトークンです。キャッシュの読み込み（毎ターン会話を読み直す分で、料金は数分の1）は、
+ほかを桁違いに上回ってしまうので数えません。
+
+**読むもの**: Claude Code が `~/.claude/projects/`（または `$CLAUDE_CONFIG_DIR`・`~/.config/claude` の下）に残す
+セッションのログで、使うのは応答のトークン数と時刻だけです。外部には何も送らず、ダッシュボードにこのパネルを出すまでは
+何も読みません。1日分のログを最初に読むのに1秒ほどかかり、その後は30秒ごとに追記された行だけを読みます。別の場所を
+読ませるには、設定ファイルの `[claude_code] dir` を使います。同じ値は、メトリクス `claude-code` としてスクリプトからも
+使えます（`ssp metric list`、[`GET /api/v1/metrics/claude-code`](api.ja.md#メトリクス)）。
+
 ### PC の電源を切っても画像を表示しておく
 
 ```sh
@@ -289,7 +315,7 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --date-format <FMT>` | 日付行の書式。例: `"%Y-%m-%d %a"`。`""` で非表示。 |
 | `  --weekdays <NAMES>` | `%a` と `%A` に使う曜日の名前。日曜日から順にカンマ区切りで7つ。例: `日,月,火,水,木,金,土` |
 | `ssp dashboard` | 組み込みのダッシュボード（時刻・CPU・メモリ・ネットワーク・ディスク・自分のメトリクス）を表示します。指定しなかった項目は設定ファイルの `[dashboard]` に従います。 |
-| `  --widgets <LIST>` | 左から並べるパネル。カンマ区切りで `clock`・`cpu`・`memory`・`network`・`disk`・`metric:<id>` から選びます。 |
+| `  --widgets <LIST>` | 左から並べるパネル。カンマ区切りで `clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>` から選びます。 |
 | `ssp metric set <ID>` | `metric:<ID>` パネルに出すメトリクスを作成・更新します。id は `a-z`・`0-9`・`-` の1〜32文字。指定しなかった項目は前の値のままです。 |
 | `  --value <N>` | 表示する数値。グラフにも追加されます。`-` で標準入力から読みます。 |
 | `  --text <TEXT>` | 数値の代わりに表示する短い文字列。例: `passing` |

@@ -7,6 +7,7 @@
 mod animation;
 mod clock;
 mod dashboard;
+pub(crate) use dashboard::number;
 pub mod stats;
 
 use std::sync::Arc;

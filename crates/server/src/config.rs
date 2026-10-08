@@ -42,13 +42,19 @@ color = "#F0F2F8"
 background = "#000000"
 
 [dashboard]
-# Panels from left to right: "clock", "cpu", "memory", "network", "disk", and
-# "metric:<id>" for figures sent with `ssp metric set <id>` or PUT /api/v1/metrics/<id>.
+# Panels from left to right: "clock", "cpu", "memory", "network", "disk", "claude-code"
+# (tokens Claude Code used, see [claude_code]), and "metric:<id>" for figures sent with
+# `ssp metric set <id>` or PUT /api/v1/metrics/<id>.
 # The clock panel uses the formats of [clock].
 widgets = ["clock", "cpu", "memory", "network", "disk"]
 color = "#F0F2F8"        # text
 accent = "#6EE7B7"       # graphs
 background = "#000000"
+
+[claude_code]
+# Claude Code's directory, whose projects/ holds the session logs the "claude-code" panel
+# reads (on this computer only). Default: $CLAUDE_CONFIG_DIR, else ~/.config/claude and ~/.claude.
+# dir = "~/.claude"
 
 [drivers]
 # enable = ["d92"]       # use only these drivers (experimental ones included)
@@ -72,6 +78,8 @@ pub struct Config {
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
     pub dashboard: DashboardConfig,
+    /// Where the `claude-code` dashboard panel reads its figures.
+    pub claude_code: ClaudeCodeConfig,
     /// Which device drivers the daemon uses.
     pub drivers: DriversConfig,
 }
@@ -85,9 +93,20 @@ impl Default for Config {
             startup: StartupConfig::default(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
+            claude_code: ClaudeCodeConfig::default(),
             drivers: DriversConfig::default(),
         }
     }
+}
+
+/// Where the `claude-code` dashboard panel reads Claude Code's session logs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClaudeCodeConfig {
+    /// Claude Code's directory (`~` allowed); the logs are in its `projects/`. Default:
+    /// `$CLAUDE_CONFIG_DIR`, else `~/.config/claude` and `~/.claude`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dir: Option<std::path::PathBuf>,
 }
 
 /// Which device drivers the daemon uses (driver ids such as `"d92"`).
@@ -303,7 +322,7 @@ impl Default for DashboardConfig {
 }
 
 /// A panel of the dashboard. Written as a string: `"clock"`, `"cpu"`, `"memory"`,
-/// `"network"`, `"disk"` or `"metric:<id>"`.
+/// `"network"`, `"disk"`, `"claude-code"` or `"metric:<id>"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub enum Widget {
@@ -317,6 +336,8 @@ pub enum Widget {
     Network,
     /// Space used on the system disk.
     Disk,
+    /// Tokens Claude Code used in the current 5-hour block and today, from its local logs.
+    ClaudeCode,
     /// A metric sent from outside (`PUT /api/v1/metrics/{id}`).
     Metric(String),
 }
@@ -331,6 +352,7 @@ impl std::str::FromStr for Widget {
             "memory" => Self::Memory,
             "network" => Self::Network,
             "disk" => Self::Disk,
+            "claude-code" => Self::ClaudeCode,
             _ => match s.strip_prefix("metric:") {
                 Some(id) => {
                     crate::metrics::validate_id(id)?;
@@ -338,7 +360,7 @@ impl std::str::FromStr for Widget {
                 }
                 None => {
                     return Err(format!(
-                        "unknown widget {s:?} (expected clock, cpu, memory, network, disk or metric:<id>)"
+                        "unknown widget {s:?} (expected clock, cpu, memory, network, disk, claude-code or metric:<id>)"
                     ));
                 }
             },
@@ -354,6 +376,7 @@ impl std::fmt::Display for Widget {
             Self::Memory => f.write_str("memory"),
             Self::Network => f.write_str("network"),
             Self::Disk => f.write_str("disk"),
+            Self::ClaudeCode => f.write_str("claude-code"),
             Self::Metric(id) => write!(f, "metric:{id}"),
         }
     }

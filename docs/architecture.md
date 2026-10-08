@@ -127,6 +127,10 @@ A `Display` is only ever used by its device thread, so drivers need no locking.
 - Without a token, requests whose `Host` or `Origin` header is not loopback are rejected.
   This stops web pages in the user's browser from driving the display (CSRF, DNS rebinding).
 - With a token, every request needs `Authorization: Bearer <token>` or `?token=<token>`.
+- The daemon reads no files of the user's beyond its config and the images it is told to show,
+  except Claude Code's session logs for the `claude-code` panel, and only once a dashboard shows
+  that panel. Only token counts and times are kept, in memory; they are visible to API clients as
+  the metric `claude-code`.
 
 ## Extension points
 
@@ -137,6 +141,7 @@ What exists today and where planned features fit:
 | New display models | available | A new crate under `crates/drivers/` ([guide](adding-a-device.md)) |
 | External programs drawing frames | available | WebSocket stream or HTTP image endpoint ([API](api.md)) |
 | Built-in screens | available | A `Source` in `crates/server/src/sources/` plus a `Content` variant |
+| Built-in dashboard panels with their own data | available | A collector registered with `Metrics::provide` that keeps a metric up to date (`claude_code.rs`), plus a `Widget` variant |
 | Non-HID transports (USB bulk, serial) | planned | A new `Transport` implementation in `crates/core` |
 | Web (HTML/CSS) screens | planned | A `Source` that renders a page, or an external client streaming frames |
 | WASM plugins | planned | A `Source` that hosts a sandboxed plugin |

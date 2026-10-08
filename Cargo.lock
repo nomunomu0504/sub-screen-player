@@ -1452,6 +1452,7 @@ dependencies = [
  "fontdb",
  "image",
  "jiff",
+ "memchr",
  "serde",
  "serde_json",
  "ssp-core",

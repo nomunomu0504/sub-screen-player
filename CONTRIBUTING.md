@@ -124,24 +124,6 @@ Many displays have no public documentation, so drivers are often built from USB 
 - Some commands can leave a device stuck or overwrite its stored images. Write such findings
   down and make sure the driver never sends dangerous commands by accident.
 
-## Releasing (maintainers)
-
-1. Set the new version in `[workspace.package]` of the root `Cargo.toml` (and in
-   `[workspace.dependencies]` for the workspace crates), run `cargo build` to update
-   `Cargo.lock`, and commit: `chore: release vX.Y.Z`.
-2. Tag and push: `git tag -a vX.Y.Z -m "sub-screen-player vX.Y.Z" && git push origin vX.Y.Z`.
-3. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the
-   version, builds `ssp` for macOS (universal), Linux (x86_64/arm64, static) and Windows
-   (x64/ARM64), and attaches the archives and `SHA256SUMS.txt` to the release. If the release
-   does not exist yet, it is created as a draft with generated notes.
-4. Write the release notes in English and Japanese, then publish the release. The [Site workflow](.github/workflows/site.yml)
-   then rebuilds the website from `main`, so the download page lists the new release.
-
-To attach binaries to an existing tag, run the workflow by hand (Actions → Release → Run
-workflow) with the tag name. With the tag left empty, it makes a test build of the given
-branch or commit instead: nothing is published, and the archives can be downloaded from the
-workflow run (`gh run download`), e.g. to try a change on another OS.
-
 ## License
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion

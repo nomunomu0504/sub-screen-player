@@ -124,14 +124,16 @@ mod tests {
 
     use super::*;
 
+    /// Red for 50 ms, then blue for long enough that a test sleeping past the change (slow CI
+    /// runners do) still lands on blue.
     fn red_then_blue() -> Arc<Animation> {
         let mut bytes = Vec::new();
         {
             let mut encoder = GifEncoder::new(Cursor::new(&mut bytes));
             encoder.set_repeat(Repeat::Infinite).unwrap();
-            for color in [[255, 0, 0, 255], [0, 0, 255, 255]] {
+            for (color, ms) in [([255, 0, 0, 255], 50), ([0, 0, 255, 255], 10_000)] {
                 let image = RgbaImage::from_pixel(4, 2, Rgba(color));
-                let delay = Delay::from_numer_denom_ms(50, 1);
+                let delay = Delay::from_numer_denom_ms(ms, 1);
                 encoder
                     .encode_frame(ImageFrame::from_parts(image, 0, 0, delay))
                     .unwrap();

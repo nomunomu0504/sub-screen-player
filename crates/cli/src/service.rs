@@ -107,11 +107,31 @@ mod platform {
         std::fs::create_dir_all(path.parent().expect("has a parent"))?;
         std::fs::write(&path, plist).with_context(|| format!("cannot write {}", path.display()))?;
         let domain = domain()?;
-        // Replace a running instance; failing because none was loaded is fine.
-        let _ = run(Command::new("launchctl").args(["bootout", &format!("{domain}/{LABEL}")]));
-        run(Command::new("launchctl")
-            .args(["bootstrap", &domain])
-            .arg(&path))?;
+        let service = format!("{domain}/{LABEL}");
+        // Replace a running instance; failing because none was loaded is fine. `bootout`
+        // returns before the old daemon has exited, and `bootstrap` fails until it has
+        // ("Bootstrap failed: 5: Input/output error"), so wait for it and retry a little.
+        let _ = run(Command::new("launchctl").args(["bootout", &service]));
+        let started = std::time::Instant::now();
+        while run(Command::new("launchctl").args(["print", &service])).is_ok()
+            && started.elapsed() < std::time::Duration::from_secs(15)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let mut attempts = 0;
+        loop {
+            match run(Command::new("launchctl")
+                .args(["bootstrap", &domain])
+                .arg(&path))
+            {
+                Ok(_) => break,
+                Err(_) if attempts < 10 => {
+                    attempts += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                Err(err) => return Err(err),
+            }
+        }
         Ok(format!(
             "Installed {} and started the daemon.\nLogs: {}",
             path.display(),

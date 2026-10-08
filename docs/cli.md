@@ -79,6 +79,32 @@ widgets = ["clock", "cpu", "memory", "network"]
 accent = "#FFD080"       # color of the graphs
 ```
 
+### Show your own figures: CI status, a queue, the weather
+
+Any script can put a figure on the dashboard. Send it with `ssp metric set` (or
+[the API](api.md#metrics)) and add a `metric:<id>` panel:
+
+```sh
+ssp metric set ci --value 2 --label CI --unit failed --detail "main · 39 of 41 jobs passed"
+ssp metric set deploy --text live --label Deploy --detail "v0.3.0"
+ssp dashboard --widgets clock,metric:ci,metric:deploy,cpu
+```
+
+![Panels for a CI status, a deployment and a queue](images/dashboard-metrics.png)
+
+Each `--value` is also added to the panel's graph. Send a new value whenever it changes, e.g. from
+cron or a CI job; `--value -` reads the number from standard input:
+
+```sh
+uptime | awk '{print $(NF-2)}' | tr -d , | ssp metric set load --value - --label "Load"
+```
+
+A value older than `--ttl` seconds (default 300) is dimmed and says how old it is, so a stopped
+script does not leave a figure that looks current. Metrics are kept in memory only: after the daemon
+restarts, panels say "waiting for data" until the next value arrives.
+[contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) is a complete example that shows
+how the last GitHub Actions runs of a branch went.
+
 ### Keep a picture on the screen, even when the computer is off
 
 ```sh
@@ -273,8 +299,17 @@ These work with every command.
 | `  --format <FMT>` | Format of the time, e.g. `"%H:%M"` or `"%I:%M %p"` ([strftime syntax](https://docs.rs/jiff/latest/jiff/fmt/strtime/)). |
 | `  --date-format <FMT>` | Format of the date line, e.g. `"%Y-%m-%d %a"`. `""` hides it. |
 | `  --weekdays <NAMES>` | Names printed by `%a` and `%A`: seven, comma-separated, from Sunday, e.g. `日,月,火,水,木,金,土`. |
-| `ssp dashboard` | Show the built-in dashboard: the time, CPU, memory, network and disk. Options not given come from `[dashboard]` in the config. |
-| `  --widgets <LIST>` | Panels from left to right, comma-separated: `clock`, `cpu`, `memory`, `network`, `disk`. |
+| `ssp dashboard` | Show the built-in dashboard: the time, CPU, memory, network, disk and your own metrics. Options not given come from `[dashboard]` in the config. |
+| `  --widgets <LIST>` | Panels from left to right, comma-separated: `clock`, `cpu`, `memory`, `network`, `disk`, `metric:<id>`. |
+| `ssp metric set <ID>` | Create or update a metric for `metric:<ID>` panels. The id is 1-32 of `a-z`, `0-9` and `-`. Options not given keep their previous value. |
+| `  --value <N>` | The number shown, also added to the graph. `-` reads it from standard input. |
+| `  --text <TEXT>` | A short text shown instead of a number, e.g. `passing`. |
+| `  --label`, `--unit`, `--detail` | Name above the value (default: the id), unit after it, and the line under it. |
+| `  --max <N>` | Top of the graph (default: the largest value in it). |
+| `  --ttl <SECONDS>` | How long the value counts as current (default 300). |
+| `  --series <LIST>` | Replace the graph with these values, oldest first, comma-separated. |
+| `ssp metric list` | List the metrics, with their age. `--json` prints them as JSON. |
+| `ssp metric rm <ID>` | Remove a metric. |
 | `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
 

@@ -5,7 +5,8 @@
 //     Japanese (*.ja.md), which stay readable on GitHub as they are.
 // Repository docs get a frontmatter title from their first heading, lose the language switch
 // line (the site has its own), and have their links rewritten: links between published docs
-// point to site pages, everything else to the file on GitHub.
+// point to site pages, pictures in docs/images/ to their copies (below), everything else to the
+// file on GitHub.
 // The pictures of the screens in docs/images/ (also shown in the READMEs) are copied to
 // src/assets/screens/ so pages can import them.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -52,6 +53,10 @@ function rewriteLink(target: string, source: string, slug: string): string {
 	const [path, anchor] = target.split('#', 2);
 	const resolved = posix.normalize(posix.join(posix.dirname(source), path));
 	const hash = anchor === undefined ? '' : `#${anchor}`;
+	if (resolved.startsWith('docs/images/')) {
+		const picture = `src/assets/screens/${resolved.slice('docs/images/'.length)}`;
+		return posix.relative(posix.dirname(`src/content/docs/${slug}`), picture);
+	}
 	const page = slugs.get(resolved);
 	if (page) return `${posix.relative(slug, page) || '.'}/${hash}`;
 	const kind = existsSync(join(root, resolved)) && statSync(join(root, resolved)).isDirectory() ? 'tree' : 'blob';

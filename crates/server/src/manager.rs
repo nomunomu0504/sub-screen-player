@@ -16,6 +16,7 @@ use ssp_core::{
 };
 
 use crate::config::{Config, DisplayConfig, StartupShow};
+use crate::metrics::Metrics;
 use crate::sources::{Clock, Content, Picture, Source};
 
 /// How long to wait before retrying a device that failed to open.
@@ -93,12 +94,13 @@ struct Entry {
 }
 
 impl Manager {
-    /// Creates a manager. Fails if the startup content cannot be loaded.
-    pub fn new(registry: Registry, config: &Config) -> Result<Self, String> {
+    /// Creates a manager. Fails if the startup content cannot be loaded. Dashboards read
+    /// `metrics`.
+    pub fn new(registry: Registry, config: &Config, metrics: Metrics) -> Result<Self, String> {
         Ok(Self {
             registry,
             display: config.display.clone(),
-            startup: startup_content(config)?,
+            startup: startup_content(config, metrics)?,
             inner: Mutex::default(),
         })
     }
@@ -349,7 +351,7 @@ fn start(entry: &mut Entry) {
     entry.player = Some(Player::start(device.clone(), source, generation, mine));
 }
 
-fn startup_content(config: &Config) -> Result<Content, String> {
+fn startup_content(config: &Config, metrics: Metrics) -> Result<Content, String> {
     match config.startup.show {
         StartupShow::Nothing => Ok(Content::Nothing),
         StartupShow::Clock => {
@@ -362,6 +364,7 @@ fn startup_content(config: &Config) -> Result<Content, String> {
             Ok(Content::Dashboard(
                 config.dashboard.clone(),
                 config.clock.clone(),
+                metrics,
             ))
         }
         StartupShow::Image => {
@@ -450,7 +453,7 @@ mod tests {
         let mut config = Config::default();
         config.startup.show = show;
         config.display.brightness = Some(42);
-        Manager::new(Registry::new(), &config).unwrap()
+        Manager::new(Registry::new(), &config, Metrics::default()).unwrap()
     }
 
     fn attach(manager: &Manager, path: &str) -> (CallLog, ssp_core::testing::Unplug) {

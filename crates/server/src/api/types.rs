@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::{FitName, Widget};
+pub use crate::metrics::MetricUpdate;
 
 /// `GET /api/v1/health`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,4 +180,36 @@ pub enum StreamFormat {
 pub struct ErrorBody {
     /// What went wrong.
     pub error: String,
+}
+
+/// A metric in `GET /api/v1/metrics` and `GET /api/v1/metrics/{id}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MetricView {
+    /// The id used in the URL and in `metric:<id>` dashboard widgets.
+    pub id: String,
+    /// Name shown above the value; the id when not set.
+    pub label: String,
+    /// The number shown, unless `text` is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    /// Text shown instead of a number.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Shown small after the value.
+    pub unit: String,
+    /// The line under the value.
+    pub detail: String,
+    /// Top of the graph; the largest recent value when not set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    /// Seconds until the value counts as stale.
+    pub ttl: u64,
+    /// When the value last changed (RFC 3339).
+    pub updated: String,
+    /// Seconds since the value last changed.
+    pub age: u64,
+    /// Whether the value is older than `ttl`.
+    pub stale: bool,
+    /// Recent values, oldest first.
+    pub history: Vec<f32>,
 }

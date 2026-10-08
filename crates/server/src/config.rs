@@ -42,7 +42,8 @@ color = "#F0F2F8"
 background = "#000000"
 
 [dashboard]
-# Panels from left to right: "clock", "cpu", "memory", "network", "disk".
+# Panels from left to right: "clock", "cpu", "memory", "network", "disk", and
+# "metric:<id>" for figures sent with `ssp metric set <id>` or PUT /api/v1/metrics/<id>.
 # The clock panel uses the formats of [clock].
 widgets = ["clock", "cpu", "memory", "network", "disk"]
 color = "#F0F2F8"        # text
@@ -301,9 +302,10 @@ impl Default for DashboardConfig {
     }
 }
 
-/// A panel of the dashboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+/// A panel of the dashboard. Written as a string: `"clock"`, `"cpu"`, `"memory"`,
+/// `"network"`, `"disk"` or `"metric:<id>"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum Widget {
     /// The time and date, formatted as in `[clock]`.
     Clock,
@@ -315,6 +317,60 @@ pub enum Widget {
     Network,
     /// Space used on the system disk.
     Disk,
+    /// A metric sent from outside (`PUT /api/v1/metrics/{id}`).
+    Metric(String),
+}
+
+impl std::str::FromStr for Widget {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        Ok(match s {
+            "clock" => Self::Clock,
+            "cpu" => Self::Cpu,
+            "memory" => Self::Memory,
+            "network" => Self::Network,
+            "disk" => Self::Disk,
+            _ => match s.strip_prefix("metric:") {
+                Some(id) => {
+                    crate::metrics::validate_id(id)?;
+                    Self::Metric(id.to_owned())
+                }
+                None => {
+                    return Err(format!(
+                        "unknown widget {s:?} (expected clock, cpu, memory, network, disk or metric:<id>)"
+                    ));
+                }
+            },
+        })
+    }
+}
+
+impl std::fmt::Display for Widget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Clock => f.write_str("clock"),
+            Self::Cpu => f.write_str("cpu"),
+            Self::Memory => f.write_str("memory"),
+            Self::Network => f.write_str("network"),
+            Self::Disk => f.write_str("disk"),
+            Self::Metric(id) => write!(f, "metric:{id}"),
+        }
+    }
+}
+
+impl TryFrom<String> for Widget {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, String> {
+        value.parse()
+    }
+}
+
+impl From<Widget> for String {
+    fn from(value: Widget) -> Self {
+        value.to_string()
+    }
 }
 
 impl DashboardConfig {
@@ -500,6 +556,9 @@ mod tests {
     #[test]
     fn checks_the_dashboard() {
         assert!(toml::from_str::<Config>("[dashboard]\nwidgets = [\"gpu\"]").is_err());
+        assert!(toml::from_str::<Config>("[dashboard]\nwidgets = [\"metric:Bad\"]").is_err());
+        let metric: Config = toml::from_str("[dashboard]\nwidgets = [\"metric:ci\"]").unwrap();
+        assert_eq!(metric.dashboard.widgets, [Widget::Metric("ci".into())]);
         let empty: Config = toml::from_str("[dashboard]\nwidgets = []").unwrap();
         assert!(empty.validate().is_err());
         let bad_color: Config = toml::from_str("[dashboard]\naccent = \"green\"").unwrap();

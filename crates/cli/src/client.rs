@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use ssp_server::api::types::{DisplayView, ErrorBody, Health};
+use ssp_server::api::types::{DisplayView, ErrorBody, Health, MetricView};
 use ureq::http::Response;
 
 pub struct Client {
@@ -55,6 +55,26 @@ impl Client {
 
     pub fn displays(&self) -> Result<Vec<DisplayView>> {
         self.get("/displays")
+    }
+
+    pub fn metrics(&self) -> Result<Vec<MetricView>> {
+        self.get("/metrics")
+    }
+
+    pub fn put_json(&self, path: &str, body: &impl Serialize) -> Result<()> {
+        let mut request = self.agent.put(self.url(path));
+        if let Some(auth) = self.auth() {
+            request = request.header("Authorization", auth);
+        }
+        self.check(request.send_json(body)).map(drop)
+    }
+
+    pub fn delete(&self, path: &str) -> Result<()> {
+        let mut request = self.agent.delete(self.url(path));
+        if let Some(auth) = self.auth() {
+            request = request.header("Authorization", auth);
+        }
+        self.check(request.call()).map(drop)
     }
 
     pub fn post_json(&self, path: &str, body: &impl Serialize) -> Result<()> {

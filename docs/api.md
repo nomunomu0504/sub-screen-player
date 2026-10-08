@@ -36,6 +36,10 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `POST` | `/displays/{id}/clear` | | Stops the current content and blanks the screen |
 | `POST` | `/displays/{id}/stop` | | Stops the current content; the screen keeps its picture |
 | `GET` | `/displays/{id}/stream` | | WebSocket for live frames (see below) |
+| `PUT` | `/metrics/{id}` | JSON | Sets a figure for `metric:<id>` dashboard panels (see below) |
+| `GET` | `/metrics` | | All metrics |
+| `GET` | `/metrics/{id}` | | One metric |
+| `DELETE` | `/metrics/{id}` | | Removes a metric |
 
 ### `GET /health`
 
@@ -128,7 +132,57 @@ clock panel uses the formats of `[clock]`.
 ```
 
 `widgets` lists the panels from left to right (1 to 6 of `clock`, `cpu`, `memory`, `network`,
-`disk`). `accent` is the color of the graphs.
+`disk` and `metric:<id>`). `accent` is the color of the graphs.
+
+### Metrics
+
+Metrics are figures your own scripts send, shown by the dashboard's `metric:<id>` panels: a CI
+status, a queue length, a price, the room temperature. Send a new value whenever it changes; the
+panel redraws within a second.
+
+```sh
+curl -X PUT http://127.0.0.1:7920/api/v1/metrics/ci \
+  -H 'Content-Type: application/json' \
+  -d '{"label": "CI", "value": 2, "unit": "failed", "detail": "main · 39 of 41 jobs passed"}'
+```
+
+`PUT /metrics/{id}` takes these fields, all optional. Fields left out keep their previous value;
+creating a metric needs one of `value`, `text` and `series`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `value` | number | The figure shown. Each value is also added to the panel's graph (the last 60 are kept). |
+| `text` | string (≤ 40) | A short text shown instead of a number, e.g. `"passing"`. Clears the graph. |
+| `series` | numbers (≤ 1000) | Replaces the graph's values, oldest first; the last one becomes `value` unless `value` is given too. |
+| `label` | string (≤ 40) | Name above the value. Defaults to the id. |
+| `unit` | string (≤ 16) | Shown small after the value, e.g. `"%"`. |
+| `detail` | string (≤ 120) | The line under the value. |
+| `max` | number | Top of the graph. Defaults to the largest value in the graph. |
+| `ttl` | seconds | How long the value counts as current (default 300, at most a week). After that the panel is dimmed and says how old the value is. |
+
+Ids are 1 to 32 of `a-z`, `0-9` and `-`. The daemon keeps at most 64 metrics, in memory only: they
+are gone after a restart, so send them again (most senders run on a timer anyway). A
+`metric:<id>` panel whose metric has not arrived yet says "waiting for data".
+
+`GET /metrics` returns all metrics sorted by id, and `GET /metrics/{id}` one:
+
+```json
+{
+  "id": "ci",
+  "label": "CI",
+  "value": 2.0,
+  "unit": "failed",
+  "detail": "main · 39 of 41 jobs passed",
+  "ttl": 300,
+  "updated": "2026-10-08T10:24:49.809733Z",
+  "age": 12,
+  "stale": false,
+  "history": [0.0, 3.0, 2.0]
+}
+```
+
+`text` replaces `value` when set; `max` appears when set. `age` is in seconds.
+`DELETE /metrics/{id}` returns `404` for an unknown id.
 
 ## WebSocket stream
 

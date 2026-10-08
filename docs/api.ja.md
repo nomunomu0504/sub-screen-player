@@ -36,6 +36,10 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `POST` | `/displays/{id}/clear` | | 表示中のコンテンツを止めて、画面を消去 |
 | `POST` | `/displays/{id}/stop` | | 表示中のコンテンツを止める（画面は最後の絵のまま） |
 | `GET` | `/displays/{id}/stream` | | ライブフレーム用の WebSocket（後述） |
+| `PUT` | `/metrics/{id}` | JSON | ダッシュボードの `metric:<id>` パネルに出す値を設定（後述） |
+| `GET` | `/metrics` | | すべてのメトリクス |
+| `GET` | `/metrics/{id}` | | 1つのメトリクス |
+| `DELETE` | `/metrics/{id}` | | メトリクスを削除 |
 
 ### `GET /health`
 
@@ -125,7 +129,56 @@ curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/ima
 }
 ```
 
-`widgets` は左から並べるパネルです（`clock`・`cpu`・`memory`・`network`・`disk` から1〜6個）。`accent` はグラフの色です。
+`widgets` は左から並べるパネルです（`clock`・`cpu`・`memory`・`network`・`disk`・`metric:<id>` から1〜6個）。`accent` はグラフの色です。
+
+### メトリクス
+
+メトリクスは、自分のスクリプトから送る値です。ダッシュボードの `metric:<id>` パネルに表示されます。CI の状態、キューの長さ、
+価格、室温など、何でも構いません。値が変わるたびに送れば、1秒以内にパネルが描き直されます。
+
+```sh
+curl -X PUT http://127.0.0.1:7920/api/v1/metrics/ci \
+  -H 'Content-Type: application/json' \
+  -d '{"label": "CI", "value": 2, "unit": "failed", "detail": "main · 39 of 41 jobs passed"}'
+```
+
+`PUT /metrics/{id}` の項目はすべて省略可能で、省略した項目は前の値のままです。新しく作るときは `value`・`text`・`series`
+のどれかが必要です。
+
+| 項目 | 型 | 意味 |
+|---|---|---|
+| `value` | 数値 | 表示する値。送るたびにパネルのグラフにも追加されます（直近60個を保持）。 |
+| `text` | 文字列（40文字まで） | 数値の代わりに表示する短い文字列（例: `"passing"`）。グラフは消えます。 |
+| `series` | 数値の配列（1000個まで） | グラフの値を古い順に置き換えます。`value` を同時に送らなければ、最後の値が `value` になります。 |
+| `label` | 文字列（40文字まで） | 値の上に出す名前。省略時は id。 |
+| `unit` | 文字列（16文字まで） | 値の後ろに小さく出す単位（例: `"%"`）。 |
+| `detail` | 文字列（120文字まで） | 値の下の行。 |
+| `max` | 数値 | グラフの上端。省略時はグラフ中の最大値。 |
+| `ttl` | 秒 | 値を最新とみなす時間（既定 300、最大1週間）。過ぎるとパネルが暗くなり、何分前の値かを表示します。 |
+
+id は `a-z`・`0-9`・`-` の1〜32文字です。デーモンが持てるメトリクスは64個までで、メモリ上にだけ保持します。デーモンを
+再起動すると消えるので、もう一度送ってください（送る側はたいてい定期実行なので、そのまま戻ります）。まだ値が届いていない
+`metric:<id>` パネルには「waiting for data」と表示されます。
+
+`GET /metrics` はすべてのメトリクスを id 順で、`GET /metrics/{id}` は1つを返します。
+
+```json
+{
+  "id": "ci",
+  "label": "CI",
+  "value": 2.0,
+  "unit": "failed",
+  "detail": "main · 39 of 41 jobs passed",
+  "ttl": 300,
+  "updated": "2026-10-08T10:24:49.809733Z",
+  "age": 12,
+  "stale": false,
+  "history": [0.0, 3.0, 2.0]
+}
+```
+
+`text` を設定したときは `value` の代わりに `text` が入り、`max` は設定したときだけ入ります。`age` の単位は秒です。
+`DELETE /metrics/{id}` は、存在しない id に `404` を返します。
 
 ## WebSocket ストリーム
 

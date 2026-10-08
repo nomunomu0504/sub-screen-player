@@ -67,8 +67,8 @@ impl History {
     }
 
     /// The values, oldest first.
-    pub fn values(&mut self) -> &[f32] {
-        self.0.make_contiguous()
+    pub fn values(&self) -> Vec<f32> {
+        self.0.iter().copied().collect()
     }
 
     /// The largest value, or 0.

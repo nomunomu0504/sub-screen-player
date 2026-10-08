@@ -76,6 +76,31 @@ widgets = ["clock", "cpu", "memory", "network"]
 accent = "#FFD080"       # グラフの色
 ```
 
+### 自分の数値を表示する（CI の状態、キュー、天気など）
+
+どんなスクリプトからでも、ダッシュボードに値を出せます。`ssp metric set`（または [API](api.ja.md#メトリクス)）で値を送り、
+`metric:<id>` のパネルを並べます。
+
+```sh
+ssp metric set ci --value 2 --label CI --unit failed --detail "main · 39 of 41 jobs passed"
+ssp metric set deploy --text live --label Deploy --detail "v0.3.0"
+ssp dashboard --widgets clock,metric:ci,metric:deploy,cpu
+```
+
+![CI の状態・デプロイ・キューのパネル](images/dashboard-metrics.png)
+
+`--value` で送った値は、パネルのグラフにも追加されます。cron や CI のジョブなどから、値が変わるたびに送ってください。
+`--value -` は数値を標準入力から読みます。
+
+```sh
+uptime | awk '{print $(NF-2)}' | tr -d , | ssp metric set load --value - --label "Load"
+```
+
+`--ttl` 秒（既定 300）より古い値は暗く表示され、何分前の値かが出ます。スクリプトが止まっても、古い値が最新のように
+見えることはありません。メトリクスはメモリ上にだけ保持するので、デーモンを再起動すると、次の値が届くまでパネルには
+「waiting for data」と表示されます。GitHub Actions の直近の実行結果を表示する
+[contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) が、そのまま使える例です。
+
 ### PC の電源を切っても画像を表示しておく
 
 ```sh
@@ -263,8 +288,17 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --format <FMT>` | 時刻の書式。例: `"%H:%M"`、`"%I:%M %p"`（[strftime 形式](https://docs.rs/jiff/latest/jiff/fmt/strtime/)）。 |
 | `  --date-format <FMT>` | 日付行の書式。例: `"%Y-%m-%d %a"`。`""` で非表示。 |
 | `  --weekdays <NAMES>` | `%a` と `%A` に使う曜日の名前。日曜日から順にカンマ区切りで7つ。例: `日,月,火,水,木,金,土` |
-| `ssp dashboard` | 組み込みのダッシュボード（時刻・CPU・メモリ・ネットワーク・ディスク）を表示します。指定しなかった項目は設定ファイルの `[dashboard]` に従います。 |
-| `  --widgets <LIST>` | 左から並べるパネル。カンマ区切りで `clock`・`cpu`・`memory`・`network`・`disk` から選びます。 |
+| `ssp dashboard` | 組み込みのダッシュボード（時刻・CPU・メモリ・ネットワーク・ディスク・自分のメトリクス）を表示します。指定しなかった項目は設定ファイルの `[dashboard]` に従います。 |
+| `  --widgets <LIST>` | 左から並べるパネル。カンマ区切りで `clock`・`cpu`・`memory`・`network`・`disk`・`metric:<id>` から選びます。 |
+| `ssp metric set <ID>` | `metric:<ID>` パネルに出すメトリクスを作成・更新します。id は `a-z`・`0-9`・`-` の1〜32文字。指定しなかった項目は前の値のままです。 |
+| `  --value <N>` | 表示する数値。グラフにも追加されます。`-` で標準入力から読みます。 |
+| `  --text <TEXT>` | 数値の代わりに表示する短い文字列。例: `passing` |
+| `  --label`・`--unit`・`--detail` | 値の上の名前（省略時は id）、値の後ろの単位、値の下の行。 |
+| `  --max <N>` | グラフの上端（省略時はグラフ中の最大値）。 |
+| `  --ttl <SECONDS>` | 値を最新とみなす秒数（既定 300）。 |
+| `  --series <LIST>` | グラフの値を、古い順のカンマ区切りの値で置き換えます。 |
+| `ssp metric list` | メトリクスの一覧を、更新からの経過時間付きで表示します。`--json` で JSON を出力します。 |
+| `ssp metric rm <ID>` | メトリクスを削除します。 |
 | `ssp stop` | 時計・ダッシュボード・画像・ストリームを止めます。画面には最後の絵が残ります。 |
 | `ssp clear` | 時計・ダッシュボード・画像・ストリームを止め、画面を消去します。 |
 

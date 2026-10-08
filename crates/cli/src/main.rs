@@ -12,7 +12,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use ssp_server::Config;
 use ssp_server::api::types::{
-    BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, PowerRequest,
+    BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, MetricUpdate, MetricView,
+    PowerRequest,
 };
 use ssp_server::config::Widget;
 
@@ -115,11 +116,17 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         weekdays: Option<Vec<String>>,
     },
-    /// Show the built-in dashboard: the time, CPU, memory, network and disk
+    /// Show the built-in dashboard: the time, CPU, memory, network, disk and your own metrics
     Dashboard {
-        /// Panels from left to right, comma-separated, e.g. "clock,cpu,network"
-        #[arg(long, value_enum, value_delimiter = ',')]
-        widgets: Option<Vec<WidgetArg>>,
+        /// Panels from left to right, comma-separated: clock, cpu, memory, network, disk or
+        /// metric:<id>, e.g. "clock,metric:ci,cpu"
+        #[arg(long, value_delimiter = ',')]
+        widgets: Option<Vec<Widget>>,
+    },
+    /// Send figures to the dashboard's `metric:<id>` panels
+    Metric {
+        #[command(subcommand)]
+        action: MetricCmd,
     },
     /// Set the backlight
     Brightness {
@@ -171,6 +178,50 @@ enum ConfigCmd {
     Show,
 }
 
+#[derive(Subcommand)]
+enum MetricCmd {
+    /// Create or update a metric
+    Set {
+        /// 1-32 of a-z, 0-9 and -; shown by the `metric:<id>` panel
+        id: String,
+        /// A number, also added to the graph; `-` reads it from standard input
+        #[arg(long, allow_hyphen_values = true, conflicts_with = "text")]
+        value: Option<String>,
+        /// A short text shown instead of a number, e.g. "passing"
+        #[arg(long)]
+        text: Option<String>,
+        /// Name shown above the value [default: the id]
+        #[arg(long)]
+        label: Option<String>,
+        /// Shown small after the value, e.g. "%" or "failed"
+        #[arg(long)]
+        unit: Option<String>,
+        /// The line under the value
+        #[arg(long)]
+        detail: Option<String>,
+        /// Top of the graph [default: the largest recent value]
+        #[arg(long)]
+        max: Option<f64>,
+        /// Seconds until the value is shown as stale [default: 300]
+        #[arg(long)]
+        ttl: Option<u64>,
+        /// Replace the graph with these values, oldest first, comma-separated
+        #[arg(long, value_delimiter = ',', allow_hyphen_values = true)]
+        series: Option<Vec<f64>>,
+    },
+    /// List the metrics the daemon has
+    List {
+        /// Print JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a metric
+    Rm {
+        /// The metric's id
+        id: String,
+    },
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum FitArg {
     Contain,
@@ -184,27 +235,6 @@ impl FitArg {
             Self::Contain => "contain",
             Self::Cover => "cover",
             Self::Stretch => "stretch",
-        }
-    }
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum WidgetArg {
-    Clock,
-    Cpu,
-    Memory,
-    Network,
-    Disk,
-}
-
-impl From<WidgetArg> for Widget {
-    fn from(value: WidgetArg) -> Self {
-        match value {
-            WidgetArg::Clock => Self::Clock,
-            WidgetArg::Cpu => Self::Cpu,
-            WidgetArg::Memory => Self::Memory,
-            WidgetArg::Network => Self::Network,
-            WidgetArg::Disk => Self::Disk,
         }
     }
 }
@@ -293,12 +323,13 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Dashboard { widgets } => {
             let request = DashboardRequest {
-                widgets: widgets.map(|w| w.into_iter().map(Widget::from).collect()),
+                widgets,
                 ..DashboardRequest::default()
             };
             cli_client(&cli.url, &cli.token, &config_path)?
                 .post_json(&format!("{display}/dashboard"), &request)
         }
+        Cmd::Metric { action } => metric(&cli_client(&cli.url, &cli.token, &config_path)?, action),
         Cmd::Brightness { percent } => cli_client(&cli.url, &cli.token, &config_path)?.post_json(
             &format!("{display}/brightness"),
             &BrightnessRequest { percent },
@@ -492,6 +523,102 @@ fn status(client: &Client) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn metric(client: &Client, action: MetricCmd) -> Result<()> {
+    match action {
+        MetricCmd::Set {
+            id,
+            value,
+            text,
+            label,
+            unit,
+            detail,
+            max,
+            ttl,
+            series,
+        } => {
+            let value = value.map(|v| parse_value(&v)).transpose()?;
+            let update = MetricUpdate {
+                label,
+                value,
+                text,
+                unit,
+                detail,
+                max,
+                ttl,
+                series,
+            };
+            client.put_json(&format!("/metrics/{id}"), &update)
+        }
+        MetricCmd::List { json } => {
+            let metrics = client.metrics()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&metrics)?);
+            } else if metrics.is_empty() {
+                println!("No metrics yet. Send one with `ssp metric set <id> --value <n>`.");
+            } else {
+                print_metrics(&metrics);
+            }
+            Ok(())
+        }
+        MetricCmd::Rm { id } => client.delete(&format!("/metrics/{id}")),
+    }
+}
+
+/// A `--value`: a number, or `-` for a number on standard input.
+fn parse_value(value: &str) -> Result<f64> {
+    let text = if value == "-" {
+        std::io::read_to_string(std::io::stdin()).context("cannot read standard input")?
+    } else {
+        value.to_owned()
+    };
+    text.trim()
+        .parse()
+        .with_context(|| format!("--value must be a number, not {:?}", text.trim()))
+}
+
+fn print_metrics(metrics: &[MetricView]) {
+    let rows: Vec<[String; 4]> = metrics
+        .iter()
+        .map(|m| {
+            let value = match (&m.text, m.value) {
+                (Some(text), _) => text.clone(),
+                (None, Some(value)) => format!("{value} {}", m.unit).trim_end().to_owned(),
+                (None, None) => "-".into(),
+            };
+            let age = match m.age {
+                s if s < 120 => format!("{s} s ago"),
+                s if s < 2 * 3600 => format!("{} min ago", s / 60),
+                s => format!("{} h ago", s / 3600),
+            };
+            let state = if m.stale { "  (stale)" } else { "" };
+            [
+                m.id.clone(),
+                m.label.clone(),
+                value,
+                format!("{age}{state}"),
+            ]
+        })
+        .collect();
+    let header = ["ID", "LABEL", "VALUE", "UPDATED"].map(String::from);
+    let widths: Vec<usize> = (0..4)
+        .map(|i| {
+            rows.iter()
+                .chain([&header])
+                .map(|r| r[i].chars().count())
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    for row in [&header].into_iter().chain(&rows) {
+        let line: Vec<String> = row
+            .iter()
+            .zip(&widths)
+            .map(|(c, w)| format!("{c:<w$}"))
+            .collect();
+        println!("{}", line.join("  ").trim_end());
+    }
 }
 
 fn init_logging(log_file: Option<&Path>) -> Result<()> {

@@ -19,6 +19,7 @@ pub use clock::Clock;
 pub use dashboard::Dashboard;
 
 use crate::config::{ClockConfig, DashboardConfig};
+use crate::metrics::Metrics;
 
 /// Something that draws a picture and knows when it changes.
 pub trait Source: Send {
@@ -50,8 +51,9 @@ pub enum Content {
     },
     /// The built-in clock.
     Clock(ClockConfig),
-    /// The built-in dashboard; its clock panel uses the clock settings.
-    Dashboard(DashboardConfig, ClockConfig),
+    /// The built-in dashboard; its clock panel uses the clock settings and its `metric:<id>`
+    /// panels the metrics sent to the daemon.
+    Dashboard(DashboardConfig, ClockConfig, Metrics),
     /// Frames from a WebSocket client.
     Stream,
 }
@@ -81,9 +83,11 @@ impl Content {
                 Some(Box::new(animation::Player::new(animation.clone(), *fit)))
             }
             Self::Clock(config) => Some(Box::new(Clock::new(config.clone()))),
-            Self::Dashboard(dashboard, clock) => {
-                Some(Box::new(Dashboard::new(dashboard.clone(), clock.clone())))
-            }
+            Self::Dashboard(dashboard, clock, metrics) => Some(Box::new(Dashboard::new(
+                dashboard.clone(),
+                clock.clone(),
+                metrics.clone(),
+            ))),
         }
     }
 }

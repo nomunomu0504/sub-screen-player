@@ -11,17 +11,18 @@ use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, middleware};
 use ssp_core::Frame;
 use tokio::sync::watch;
 
 use crate::config::{ClockConfig, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
+use crate::metrics::{Metric, Metrics};
 use crate::sources::{Clock, Content, Picture};
 use types::{
     BrightnessRequest, CapabilitiesView, ClockRequest, DashboardRequest, DisplayView, ErrorBody,
-    Health, ImageQuery, PowerRequest, StatsView,
+    Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView,
 };
 
 /// Largest request body accepted for images.
@@ -34,6 +35,7 @@ pub struct AppState {
     token: Option<Arc<str>>,
     clock: ClockConfig,
     dashboard: DashboardConfig,
+    metrics: Metrics,
     shutdown: watch::Receiver<bool>,
 }
 
@@ -44,6 +46,7 @@ impl AppState {
         token: Option<String>,
         clock: ClockConfig,
         dashboard: DashboardConfig,
+        metrics: Metrics,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         Self {
@@ -51,6 +54,7 @@ impl AppState {
             token: token.map(Into::into),
             clock,
             dashboard,
+            metrics,
             shutdown,
         }
     }
@@ -72,7 +76,12 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/clock", post(clock))
         .route("/displays/{id}/dashboard", post(dashboard))
         .route("/displays/{id}/stop", post(stop))
-        .route("/displays/{id}/stream", get(stream::stream));
+        .route("/displays/{id}/stream", get(stream::stream))
+        .route("/metrics", get(list_metrics))
+        .route(
+            "/metrics/{id}",
+            put(set_metric).get(get_metric).delete(delete_metric),
+        );
     Router::new()
         .nest("/api/v1", api)
         .layer(middleware::from_fn_with_state(state.clone(), auth::guard))
@@ -96,6 +105,10 @@ impl ApiError {
 
     fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, message)
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, message)
     }
 }
 
@@ -316,9 +329,10 @@ async fn dashboard(
     config.background = request.background.unwrap_or(config.background);
     config.validate().map_err(ApiError::bad_request)?;
     let clock = app.clock.clone();
+    let metrics = app.metrics.clone();
     blocking(move || {
         app.manager
-            .set_content(&id, Content::Dashboard(config, clock))?;
+            .set_content(&id, Content::Dashboard(config, clock, metrics))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -330,4 +344,64 @@ async fn stop(State(app): State<AppState>, Path(id): Path<String>) -> Result<Sta
         Ok(StatusCode::NO_CONTENT)
     })
     .await
+}
+
+async fn list_metrics(State(app): State<AppState>) -> Json<Vec<MetricView>> {
+    Json(
+        app.metrics
+            .list()
+            .into_iter()
+            .map(|(id, metric)| metric_view(id, &metric))
+            .collect(),
+    )
+}
+
+async fn get_metric(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<MetricView>, ApiError> {
+    let metric = app
+        .metrics
+        .get(&id)
+        .ok_or_else(|| ApiError::not_found(format!("no metric {id:?}")))?;
+    Ok(Json(metric_view(id, &metric)))
+}
+
+async fn set_metric(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(update): Json<MetricUpdate>,
+) -> Result<StatusCode, ApiError> {
+    app.metrics
+        .set(&id, update)
+        .map_err(ApiError::bad_request)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_metric(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if app.metrics.remove(&id) {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::not_found(format!("no metric {id:?}")))
+    }
+}
+
+fn metric_view(id: String, metric: &Metric) -> MetricView {
+    MetricView {
+        label: metric.label.clone().unwrap_or_else(|| id.clone()),
+        id,
+        value: metric.value,
+        text: metric.text.clone(),
+        unit: metric.unit.clone(),
+        detail: metric.detail.clone(),
+        max: metric.max,
+        ttl: metric.ttl.as_secs(),
+        updated: metric.updated_at.to_string(),
+        age: metric.age().as_secs(),
+        stale: metric.is_stale(),
+        history: metric.history.iter().copied().collect(),
+    }
 }

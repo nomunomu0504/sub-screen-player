@@ -31,6 +31,8 @@ API を通して、他のプログラムからも自由に描画できます。
 - **時計を内蔵**: 表示形式と色を設定できます。日本語の日付も表示できます。
 - **システムダッシュボード**: 時刻と、CPU・メモリ・ネットワーク・ディスクの使用状況を、直近1分のグラフ付きで
   並べて表示します。
+- **自分の数値もダッシュボードに**: CI の状態、キューの長さ、天気など、どんなスクリプトからでも `ssp metric set` や
+  API で値を送れば、グラフ付きのパネルとして表示されます。
 - **画像・アニメーションの表示**: PNG・JPEG・GIF・WebP に対応し、`contain` / `cover` / `stretch` でパネルに合わせます。
   アニメーション GIF・APNG・WebP は繰り返し再生します。
   電源を切っても残るようにデバイスへ保存することもできます。
@@ -89,6 +91,16 @@ widgets = ["cpu", "memory", "network", "disk"]
 color = "#E8EEF8"
 accent = "#60A5FA"
 background = "#0B1220"
+```
+
+**自分の数値を並べる**。どんなスクリプトからでも `ssp metric set` で値を送り、`metric:<id>` のパネルを並べます
+（[使い方](docs/cli.ja.md#自分の数値を表示するci-の状態キュー天気など)）。
+
+![CI の状態・デプロイ・キューのパネル](docs/images/dashboard-metrics.png)
+
+```sh
+ssp metric set ci --value 2 --label CI --unit failed --detail "main · 39 of 41 jobs passed"
+ssp dashboard --widgets clock,metric:ci,metric:deploy,metric:queue
 ```
 
 ほかにも、`ssp show` で画像を表示したり、自作のプログラムからフレームを送ったり（[後述](#自作プログラムから描画する)）

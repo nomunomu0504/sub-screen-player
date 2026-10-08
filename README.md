@@ -31,6 +31,8 @@ device-specific protocol has to be written; everything else is shared.
 - **Built-in clock** with configurable formats and colors, Japanese dates included.
 - **System dashboard**: the time next to CPU, memory, network and disk use, with graphs of the
   last minute.
+- **Your own figures on the dashboard**: any script can send a value (a CI status, a queue
+  length, the weather) with `ssp metric set` or the API, and it shows up as a panel with a graph.
 - **Images and animations**: PNG, JPEG, GIF and WebP, fitted to the panel (`contain`, `cover` or
   `stretch`). Animated GIF, APNG and WebP play in a loop.
   An image can optionally be stored on the device so it survives power loss.
@@ -90,6 +92,16 @@ widgets = ["cpu", "memory", "network", "disk"]
 color = "#E8EEF8"
 accent = "#60A5FA"
 background = "#0B1220"
+```
+
+**Your own figures** next to the built-in ones: send them from any script with `ssp metric set`
+and add `metric:<id>` panels ([how](docs/cli.md#show-your-own-figures-ci-status-a-queue-the-weather)):
+
+![Panels for a CI status, a deployment and a queue](docs/images/dashboard-metrics.png)
+
+```sh
+ssp metric set ci --value 2 --label CI --unit failed --detail "main · 39 of 41 jobs passed"
+ssp dashboard --widgets clock,metric:ci,metric:deploy,metric:queue
 ```
 
 Anything else is up to you: show a picture with `ssp show`, or send frames from your own program

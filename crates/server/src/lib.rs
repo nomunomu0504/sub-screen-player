@@ -4,6 +4,7 @@
 //! - [`sources`]: built-in screens such as the clock and the dashboard.
 //! - [`text`] and [`draw`]: text and shapes for the built-in screens.
 //! - [`api`]: the HTTP + WebSocket API that clients (the CLI, scripts, apps) use.
+//! - [`metrics`]: figures sent from outside, shown as dashboard panels.
 //! - [`config`]: the TOML configuration.
 //! - [`drivers`]: the list of device drivers compiled in.
 #![warn(missing_docs)]
@@ -13,6 +14,7 @@ pub mod config;
 pub mod draw;
 pub mod drivers;
 pub mod manager;
+pub mod metrics;
 pub mod sources;
 pub mod text;
 
@@ -37,7 +39,9 @@ pub async fn serve(
     config.validate()?;
     let registry =
         drivers::registry(&config.drivers.selection()).context("invalid [drivers] config")?;
-    let manager = Arc::new(Manager::new(registry, &config).map_err(anyhow::Error::msg)?);
+    let metrics = metrics::Metrics::default();
+    let manager =
+        Arc::new(Manager::new(registry, &config, metrics.clone()).map_err(anyhow::Error::msg)?);
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .with_context(|| {
@@ -55,6 +59,7 @@ pub async fn serve(
         config.token.clone(),
         config.clock.clone(),
         config.dashboard.clone(),
+        metrics,
         stop_signal,
     );
     let served = axum::serve(listener, api::router(state))

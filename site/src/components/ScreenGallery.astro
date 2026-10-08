@@ -8,6 +8,7 @@ import clockJa from '../assets/screens/clock-ja.png';
 import clock from '../assets/screens/clock.png';
 import dashboardColors from '../assets/screens/dashboard-colors.png';
 import dashboardCompact from '../assets/screens/dashboard-compact.png';
+import dashboardMetrics from '../assets/screens/dashboard-metrics.png';
 import dashboard from '../assets/screens/dashboard.png';
 
 interface Props {
@@ -37,6 +38,15 @@ const screens = [
 		title: { en: 'Your colors', ja: '色を変える' },
 		text: { en: 'Text, graph and background colors, here without the clock.', ja: '文字・グラフ・背景の色を変えられます（この例は時計なし）。' },
 		how: '[dashboard] color, accent, background',
+	},
+	{
+		image: dashboardMetrics,
+		title: { en: 'Your own figures', ja: '自分の数値' },
+		text: {
+			en: 'Any script can send a value, such as a CI status or a queue length, and show it as a panel.',
+			ja: 'CI の状態やキューの長さなど、スクリプトから送った値をパネルとして並べられます。',
+		},
+		how: 'ssp metric set ci --value 2',
 	},
 	{
 		image: clock,

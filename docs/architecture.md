@@ -16,6 +16,7 @@ for, and where new code belongs.
 │  api/        routes, auth, WebSocket streams                                 │
 │  manager     finds displays, hotplug, what each display shows (Content)      │
 │  sources/    built-in screens that draw frames (clock, dashboard, image)     │
+│  metrics     figures sent by scripts for the dashboard's metric panels       │
 └──────────────────────┼───────────────────────────────────────────────────────┘
                        │ Frame (landscape RGB, panel size)
 ┌──────────────────────┼──────────────────────────────────────────── ssp-core ──┐
@@ -71,6 +72,9 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
   dashboard or a stream. It is kept per display id, so a replugged display carries on.
 - **`Source`** (server trait): something that draws frames and says when the picture changes
   next (the clock, the dashboard, a still image).
+- **`Metrics`** (server): the figures scripts send with `PUT /api/v1/metrics/{id}`, kept in
+  memory and shared by the API and every dashboard. A `metric:<id>` panel reads its metric each
+  time it draws, so a new value shows within a second without telling the dashboards.
 
 ## Life of a frame
 

@@ -31,7 +31,8 @@ device-specific protocol has to be written; everything else is shared.
 - **Built-in clock** with configurable formats and colors, Japanese dates included.
 - **System dashboard**: the time next to CPU, memory, network and disk use, with graphs of the
   last minute.
-- **Images**: PNG, JPEG, GIF and WebP, fitted to the panel (`contain`, `cover` or `stretch`).
+- **Images and animations**: PNG, JPEG, GIF and WebP, fitted to the panel (`contain`, `cover` or
+  `stretch`). Animated GIF, APNG and WebP play in a loop.
   An image can optionally be stored on the device so it survives power loss.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.

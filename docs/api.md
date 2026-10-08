@@ -73,19 +73,20 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `clock`, `dashboard` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `animation`, `clock`, `dashboard` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed.
 
 ### `POST /displays/{id}/image`
 
-The body is a PNG, JPEG, GIF or WebP file (up to 64 MiB). Query parameters:
+The body is a PNG, JPEG, GIF or WebP file (up to 64 MiB). An animated GIF, APNG or WebP plays in
+a loop, each frame for its own delay (the display's `content` is then `animation`). Query parameters:
 
 | Parameter | Values | Default |
 |---|---|---|
 | `fit` | `contain` (letterbox), `cover` (crop), `stretch` | `contain` |
-| `persist` | `true` also stores the image on the device (survives power loss, writes flash) | `false` |
+| `persist` | `true` also stores the image on the device (survives power loss, writes flash); the first frame of an animation | `false` |
 
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"

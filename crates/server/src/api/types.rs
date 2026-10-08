@@ -36,7 +36,8 @@ pub struct DisplayView {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
-    /// What it shows: `"nothing"`, `"image"`, `"clock"`, `"dashboard"` or `"stream"`.
+    /// What it shows: `"nothing"`, `"image"`, `"animation"`, `"clock"`, `"dashboard"` or
+    /// `"stream"`.
     pub content: String,
     /// Supported operations.
     pub capabilities: CapabilitiesView,

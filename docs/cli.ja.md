@@ -241,11 +241,11 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 
 | コマンド | 説明 |
 |---|---|
-| `ssp show <FILE>` | PNG・JPEG・GIF・WebP の画像を表示します。 |
+| `ssp show <FILE>` | PNG・JPEG・GIF・WebP の画像を表示します。アニメーション GIF・APNG・WebP は、ファイルに書かれた速さで繰り返し再生します。 |
 | `  --fit contain` | （既定）画像全体を収め、余白は黒にします。 |
 | `  --fit cover` | 画面全体を埋め、はみ出した部分は切り取ります。 |
 | `  --fit stretch` | 画面全体を埋めます。必要なら画像を引き伸ばします。 |
-| `  --persist` | ディスプレイにも画像を保存し、電源を切っても残るようにします（フラッシュに書き込みます）。 |
+| `  --persist` | ディスプレイにも画像を保存し、電源を切っても残るようにします（フラッシュに書き込みます）。アニメーションの場合は最初のコマを保存します。 |
 | `ssp clock` | 組み込みの時計を表示します。指定しなかった項目は設定ファイルの `[clock]` に従います。 |
 | `  --no-seconds` | 秒を表示しません。 |
 | `  --format <FMT>` | 時刻の書式。例: `"%H:%M"`、`"%I:%M %p"`（[strftime 形式](https://docs.rs/jiff/latest/jiff/fmt/strtime/)）。 |

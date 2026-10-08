@@ -18,7 +18,7 @@ use tokio::sync::watch;
 
 use crate::config::{ClockConfig, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
-use crate::sources::{Clock, Content};
+use crate::sources::{Clock, Content, Picture};
 use types::{
     BrightnessRequest, CapabilitiesView, ClockRequest, DashboardRequest, DisplayView, ErrorBody,
     Health, ImageQuery, PowerRequest, StatsView,
@@ -210,19 +210,17 @@ async fn show_image(
 ) -> Result<StatusCode, ApiError> {
     let fit = query.fit.unwrap_or_default().into();
     blocking(move || {
-        let image = image::load_from_memory(&body)
-            .map_err(|e| ApiError::bad_request(format!("cannot decode image: {e}")))?;
-        let image = Arc::new(image);
+        let picture = Picture::decode(&body).map_err(ApiError::bad_request)?;
         if query.persist {
+            // The device holds one picture: an animation stores its first frame.
             let device = app.manager.device(&id)?;
             let panel = device.presenter.info().panel;
             app.manager.set_content(&id, Content::Nothing)?;
             device
                 .presenter
-                .save(Frame::fit(&image, panel.width, panel.height, fit))?;
+                .save(Frame::fit(picture.first(), panel.width, panel.height, fit))?;
         }
-        app.manager
-            .set_content(&id, Content::Image { image, fit })?;
+        app.manager.set_content(&id, picture.into_content(fit))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

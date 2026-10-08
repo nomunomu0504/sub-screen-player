@@ -89,7 +89,7 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Show an image file (PNG, JPEG, GIF or WebP)
+    /// Show an image file (PNG, JPEG, GIF or WebP); animations play in a loop
     Show {
         /// The image
         path: PathBuf,

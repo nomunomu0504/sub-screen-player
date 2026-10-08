@@ -250,11 +250,11 @@ These work with every command.
 
 | Command | Description |
 |---|---|
-| `ssp show <FILE>` | Show a PNG, JPEG, GIF or WebP image. |
+| `ssp show <FILE>` | Show a PNG, JPEG, GIF or WebP image. Animated GIF, APNG and WebP play in a loop at their own speed. |
 | `  --fit contain` | (default) Fit the whole image and fill the rest with black. |
 | `  --fit cover` | Fill the screen and cut off what sticks out. |
 | `  --fit stretch` | Fill the screen, distorting the image if needed. |
-| `  --persist` | Also store the image on the display so it survives power loss (writes flash memory). |
+| `  --persist` | Also store the image on the display so it survives power loss (writes flash memory). For an animation, the first frame is stored. |
 | `ssp clock` | Show the built-in clock. Options not given come from `[clock]` in the config. |
 | `  --no-seconds` | Hide the seconds. |
 | `  --format <FMT>` | Format of the time, e.g. `"%H:%M"` or `"%I:%M %p"` ([strftime syntax](https://docs.rs/jiff/latest/jiff/fmt/strtime/)). |

@@ -16,7 +16,7 @@ use ssp_core::{
 };
 
 use crate::config::{Config, DisplayConfig, StartupShow};
-use crate::sources::{Clock, Content, Source};
+use crate::sources::{Clock, Content, Picture, Source};
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
@@ -369,12 +369,11 @@ fn startup_content(config: &Config) -> Result<Content, String> {
                 .image
                 .as_ref()
                 .ok_or("startup.image is not set")?;
-            let image = image::open(path)
-                .map_err(|e| format!("cannot load startup image {}: {e}", path.display()))?;
-            Ok(Content::Image {
-                image: Arc::new(image),
-                fit: config.startup.fit.into(),
-            })
+            let bytes = std::fs::read(path)
+                .map_err(|e| format!("cannot read startup image {}: {e}", path.display()))?;
+            let picture = Picture::decode(&bytes)
+                .map_err(|e| format!("startup image {}: {e}", path.display()))?;
+            Ok(picture.into_content(config.startup.fit.into()))
         }
     }
 }

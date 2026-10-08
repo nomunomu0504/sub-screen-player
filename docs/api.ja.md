@@ -73,18 +73,19 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`animation`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数です。
 
 ### `POST /displays/{id}/image`
 
-ボディは PNG・JPEG・GIF・WebP の画像ファイルです（64 MiB まで）。クエリパラメータ:
+ボディは PNG・JPEG・GIF・WebP の画像ファイルです（64 MiB まで）。アニメーション GIF・APNG・WebP は、コマごとの間隔で
+繰り返し再生します（このときディスプレイの `content` は `animation` になります）。クエリパラメータ:
 
 | パラメータ | 値 | 既定値 |
 |---|---|---|
 | `fit` | `contain`（全体を収めて余白は黒）、`cover`（はみ出しを切り取り）、`stretch`（引き伸ばし） | `contain` |
-| `persist` | `true` でデバイスにも保存（電源を切っても残る。フラッシュに書き込みます） | `false` |
+| `persist` | `true` でデバイスにも保存（電源を切っても残る。フラッシュに書き込みます）。アニメーションは最初のコマ | `false` |
 
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"

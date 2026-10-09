@@ -5,3 +5,5 @@ dist/
 src/content/docs/
 # Copied by scripts/sync-docs.ts from the repository's docs/images/.
 src/assets/screens/
+# Local state of `wrangler dev`.
+.wrangler/

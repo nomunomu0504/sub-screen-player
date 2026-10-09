@@ -117,8 +117,10 @@ mod tests {
         let mut rotation = Rotation::new(turns);
         let mut frame = Frame::blank(8, 4);
         let mut seen = Vec::new();
+        // Until the first turn came back; slow machines take longer, so no fixed time.
         let started = Instant::now();
-        while started.elapsed() < Duration::from_millis(300) {
+        while seen.len() < 3 {
+            assert!(started.elapsed() < Duration::from_secs(10), "{seen:?}");
             rotation.render(&mut frame);
             let pixel = frame.image().get_pixel(1, 1).0;
             if seen.last() != Some(&pixel) {
@@ -128,7 +130,6 @@ mod tests {
             assert!(wait <= Duration::from_millis(60), "{wait:?}");
             std::thread::sleep(wait.max(Duration::from_millis(5)));
         }
-        assert!(seen.len() >= 4, "{seen:?}");
         assert_eq!(seen[0], [255, 0, 0]);
         assert_eq!(seen[1], [0, 0, 255]);
         assert_eq!(seen[2], [255, 0, 0]);

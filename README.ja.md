@@ -158,6 +158,21 @@ powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 
 お使いの環境向けの最新リリースをダウンロードし、SHA-256 チェックサムを確認してから `ssp` を `PATH` の通った場所に置きます。
 
+### Homebrew（macOS・Linux）と Scoop（Windows）
+
+```sh
+brew install nomunomu0504/tap/ssp
+```
+
+```powershell
+scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket
+scoop install nomunomu0504/ssp
+```
+
+リリースと同じバイナリをインストールし、`brew upgrade ssp` や `scoop update ssp` で更新できます。更新したら
+デーモンを再起動してください（[自動起動](docs/cli.ja.md#自動起動)を参照）。Windows では、実行中の `ssp.exe` は
+`scoop update` で置き換えられないため、先に終了してください。
+
 ### ビルド済みバイナリ
 
 [最新のリリース](https://github.com/nomunomu0504/sub-screen-player/releases/latest)から使っている環境のアーカイブを

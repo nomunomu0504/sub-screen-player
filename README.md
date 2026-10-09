@@ -164,6 +164,21 @@ powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 It downloads the latest release for your system, checks its SHA-256 checksum and puts `ssp` on
 your `PATH`.
 
+### Homebrew (macOS, Linux) and Scoop (Windows)
+
+```sh
+brew install nomunomu0504/tap/ssp
+```
+
+```powershell
+scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket
+scoop install nomunomu0504/ssp
+```
+
+They install the same release binaries, and update them with `brew upgrade ssp` or
+`scoop update ssp`. Restart the daemon after updating (see [Autostart](docs/cli.md#autostart));
+on Windows, end `ssp.exe` before `scoop update`, which cannot replace it while it runs.
+
 ### Prebuilt binaries
 
 Download the archive for your platform from the

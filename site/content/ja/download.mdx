@@ -18,6 +18,26 @@ import InstallCommand from '../../../components/InstallCommand.astro';
 	</TabItem>
 </Tabs>
 
+パッケージマネージャーを使うと、あとの更新もそれで行えます。
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+
+```sh
+brew install nomunomu0504/tap/ssp
+```
+
+	</TabItem>
+	<TabItem label="Windows">
+
+```powershell
+scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket
+scoop install nomunomu0504/ssp
+```
+
+	</TabItem>
+</Tabs>
+
 アーカイブをダウンロードする場合は、展開して `ssp`（Windows では `ssp.exe`）を `PATH` の通った場所に置いてください。
 
 <Download lang="ja" />

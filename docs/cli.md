@@ -251,6 +251,12 @@ Code usage, and the CPU, memory, network and disk figures. The daemon gives each
 a token that only reads (`window.ssp`); see "Pages shown with `ssp web`" in the
 [API guide](api.md). [contrib/web/system.html](../contrib/web/system.html) shows how.
 
+The [screen gallery](https://subscreen.dev/screens/) has ready-made pages of this kind, served
+from the website: `ssp web https://subscreen.dev/screens/system/` shows the time with the CPU,
+memory, disk and network, `/screens/claude-code/` the Claude Code usage and `/screens/metrics/`
+your metrics. The page and its fonts come from the internet; the figures come from your own
+daemon and stay on your computer.
+
 **Headless Chrome** is not part of `ssp`. The first `ssp web` asks to download it (about 100 MB,
 from Google's [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/)) into
 `~/Library/Application Support/sub-screen-player/chrome` (macOS),

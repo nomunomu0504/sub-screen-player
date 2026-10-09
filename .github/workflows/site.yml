@@ -166,6 +166,15 @@ jobs:
           Get-Content site/public/install.ps1 -Raw | Invoke-Expression
           & "$env:SSP_INSTALL_DIR\ssp.exe" --version
 
+      - name: install.ps1 in PowerShell 7
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SSP_INSTALL_DIR: ${{ runner.temp }}\ssp-pwsh
+        run: |
+          Get-Content site/public/install.ps1 -Raw | Invoke-Expression
+          & "$env:SSP_INSTALL_DIR\ssp.exe" --version
+
       # The command the website shows, run from the Command Prompt against the published script.
       - name: One-line command from cmd
         if: runner.os == 'Windows'

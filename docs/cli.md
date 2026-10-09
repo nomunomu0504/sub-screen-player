@@ -485,6 +485,24 @@ ssp serve --listen 127.0.0.1:8000        # another port (then use --url for othe
 ssp serve --log-file ~/ssp.log           # log to a file
 ```
 
+### Keep ssp up to date
+
+`ssp status` tells you when a newer version is out, and when the daemon still runs a version
+older than the `ssp` you installed:
+
+```
+ssp 0.7.1 is out (this is 0.7.0): https://subscreen.dev/download/
+Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restart the daemon.
+```
+
+Update the way you installed (run the installer again, `brew upgrade ssp` or `scoop update ssp`),
+then restart the daemon (see [Autostart](#autostart)). To know, `ssp status` reads
+<https://subscreen.dev/latest.json> at most once a day: a plain `GET` with
+`User-Agent: ssp/<version>`, and nothing else is sent. It waits 2 seconds at most, remembers
+the answer in the data folder, and says nothing when its error output is not a terminal (in
+scripts). The daemon never asks. To turn it off, set `check_updates = false` in the config or
+`SSP_NO_UPDATE_CHECK=1` in the environment.
+
 ## Command reference
 
 ### Global options

@@ -720,7 +720,7 @@ async fn shows_and_dismisses_notifications() {
     // Over nothing: drawn on black at once, and black again when it ends.
     let (status, body) = api
         .send(notify(
-            r#"{"text": "CI failed", "detail": "main", "seconds": 1, "color": "red"}"#,
+            r#"{"text": "CI failed", "detail": "main", "seconds": 4, "color": "red"}"#,
         ))
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
@@ -731,7 +731,12 @@ async fn shows_and_dismisses_notifications() {
         (shown.text.as_str(), shown.color.as_str(), shown.sticky),
         ("CI failed", "#dc2626", false)
     );
-    assert_eq!(shown.seconds_left, Some(1));
+    // Rounded up, and less the time it took to ask.
+    assert!(
+        matches!(shown.seconds_left, Some(1..=4)),
+        "{:?}",
+        shown.seconds_left
+    );
     wait_until(|| shows(&api.log) > 0);
     let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
     assert_eq!(display.notification, None);

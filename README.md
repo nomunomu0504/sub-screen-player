@@ -46,7 +46,8 @@ device-specific protocol has to be written; everything else is shared.
 - **Web pages**: any HTML/CSS/JavaScript page or URL, drawn by headless Chrome (downloaded on
   first use) and sent whenever it repaints.
 - **Notifications**: `ssp notify` shows a message over whatever is on the screen for a while, then
-  goes back; Claude Code hooks and CI jobs can call it.
+  goes back; `ssp claude-code hooks --install` makes Claude Code use it when it needs you or is
+  done, and CI jobs can call it too.
 - **Layouts**: the clock, a video and a metric panel side by side, each zone running on its own,
   without a browser.
 - **Schedules**: change what is shown, the brightness and the screen at set times of day, or show

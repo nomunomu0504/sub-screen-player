@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use ssp_server::api::types::{
@@ -152,9 +152,35 @@ impl Client {
         }
         let body = response.body_mut().read_to_string().unwrap_or_default();
         let message = serde_json::from_str::<ErrorBody>(&body).map_or(body, |e| e.error);
-        Err(anyhow!("{message} (HTTP {})", status.as_u16()))
-            .context("the daemon refused the request")
+        Err(anyhow::Error::new(Refused {
+            status: status.as_u16(),
+            message,
+        }))
+        .context("the daemon refused the request")
     }
+}
+
+/// The daemon answered with an error status.
+#[derive(Debug)]
+pub struct Refused {
+    status: u16,
+    message: String,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (HTTP {})", self.message, self.status)
+    }
+}
+
+impl std::error::Error for Refused {}
+
+/// The daemon is not running, or has no display connected to act on.
+pub fn is_unavailable(err: &anyhow::Error) -> bool {
+    is_unreachable(err)
+        || err
+            .downcast_ref::<Refused>()
+            .is_some_and(|r| r.status == 503)
 }
 
 /// The daemon is not running (or not at this address).

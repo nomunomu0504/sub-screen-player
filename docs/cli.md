@@ -154,23 +154,34 @@ that is off stays off unless `--wake` is given; then it goes off again when the 
 ends. The notification stays when the content changes and while the display is unplugged;
 `ssp status` shows it with the time left, and `ssp clear` ends it.
 
-**Claude Code** runs hooks when it needs you and when it finishes. Add them to
-`~/.claude/settings.json`:
+**Claude Code** runs hooks when it needs you and when it finishes. One command adds two that
+notify on the display:
+
+```sh
+ssp claude-code hooks --install    # adds them to ~/.claude/settings.json
+ssp claude-code hooks              # only shows them
+ssp claude-code hooks --uninstall  # removes them again
+```
+
+`--install` adds the hooks to Claude Code's settings (`$CLAUDE_CONFIG_DIR/settings.json` if set),
+keeps everything else in the file and the old file as `settings.json.bak`, and does nothing if
+they are there already. New Claude Code sessions use them. The hooks are:
 
 ```json
 {
   "hooks": {
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60" }] }
+      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60 --if-running" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green" }] }
+      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green --if-running" }] }
     ]
   }
 }
 ```
 
-With `--stdin`, `ssp notify` reads what the hook gets: the message ("Claude needs your permission
+(with the full path of `ssp`). `--if-running` keeps Claude Code quiet when the daemon is not
+running or no display is connected. With `--stdin`, `ssp notify` reads what the hook gets: the message ("Claude needs your permission
 to use Bash") becomes the text, and the project folder and the first line of Claude's last
 reply the detail. Plain text works too: the first line is the text, the rest the detail.
 
@@ -559,7 +570,11 @@ These work with every command.
 | `  --color <COLOR>` | `red`, `orange`, `yellow`, `green`, `blue` (default), `gray` or `#rrggbb`. |
 | `  --wake` | Switch the screen on if it is off, and off again after. |
 | `  --stdin` | Read the message from standard input: text, or the JSON of a Claude Code hook. |
+| `  --if-running` | Do nothing, without an error, when the daemon is not running or no display is connected (for hooks). |
 | `ssp notify --dismiss` | End the notification. |
+| `ssp claude-code hooks` | Show the Claude Code hooks that notify on the display. |
+| `  --install` | Add them to Claude Code's `settings.json` (the old file is kept as `settings.json.bak`). |
+| `  --uninstall` | Remove the hooks added by `--install`. |
 | `ssp schedule` | Show the last and the next entries of the schedule (`[[schedule]]` in the config). |
 | `ssp schedule pause` | Stop changing the screen at set times, until `resume`. |
 | `ssp schedule resume` | Apply what the schedule says now, and change at set times again. |

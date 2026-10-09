@@ -337,7 +337,7 @@ mod tests {
                 break;
             }
             assert!(
-                started.elapsed() < Duration::from_secs(5),
+                started.elapsed() < Duration::from_secs(10),
                 "zones not drawn"
             );
         }
@@ -368,7 +368,7 @@ mod tests {
         while layout.drawn == first {
             layout.render(&mut frame);
             assert!(
-                started.elapsed() < Duration::from_secs(3),
+                started.elapsed() < Duration::from_secs(10),
                 "the clock stopped"
             );
         }

@@ -9,6 +9,7 @@ macro_rules! say {
     };
 }
 
+mod claude;
 mod client;
 mod selftest;
 mod service;
@@ -183,6 +184,15 @@ enum Cmd {
         /// End the notification being shown
         #[arg(long, conflicts_with_all = ["text", "stdin", "detail", "seconds", "sticky", "wake"])]
         dismiss: bool,
+        /// Do nothing, quietly, when the daemon is not running or no display is connected
+        /// (for hooks)
+        #[arg(long)]
+        if_running: bool,
+    },
+    /// Claude Code: notifications on the display when it needs you or is done
+    ClaudeCode {
+        #[command(subcommand)]
+        action: ClaudeCodeCmd,
     },
     /// Show several things side by side: dashboard panels, a picture or video, a web page
     Layout {
@@ -297,6 +307,19 @@ enum MetricCmd {
     Rm {
         /// The metric's id
         id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClaudeCodeCmd {
+    /// Show the hooks that notify on the display, or add them to Claude Code's settings
+    Hooks {
+        /// Add them to Claude Code's settings.json (the old file is kept as settings.json.bak)
+        #[arg(long)]
+        install: bool,
+        /// Remove the hooks added by --install
+        #[arg(long, conflicts_with = "install")]
+        uninstall: bool,
     },
 }
 
@@ -531,11 +554,16 @@ fn run(cli: Cli) -> Result<()> {
             wake,
             stdin,
             dismiss,
+            if_running,
         } => {
             let client = cli_client(&cli.url, &cli.token, &config_path)?;
             let path = format!("{display}/notify");
+            let quiet = |result: Result<()>| match result {
+                Err(err) if if_running && client::is_unavailable(&err) => Ok(()),
+                other => other,
+            };
             if dismiss {
-                return client.delete(&path);
+                return quiet(client.delete(&path));
             }
             let (text, detail) = if stdin {
                 let mut input = String::new();
@@ -544,7 +572,7 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 (text.expect("required by clap"), detail)
             };
-            client.post_json(
+            quiet(client.post_json(
                 &path,
                 &NotifyRequest {
                     text,
@@ -555,7 +583,46 @@ fn run(cli: Cli) -> Result<()> {
                     color: Some(color),
                     wake,
                 },
-            )
+            ))
+        }
+        Cmd::ClaudeCode {
+            action: ClaudeCodeCmd::Hooks { install, uninstall },
+        } => {
+            // Not resolved through links: a package manager's link stays valid after updates.
+            let program = std::env::current_exe().context("cannot find this program")?;
+            let path = claude::settings_path()?;
+            if !install && !uninstall {
+                say!(
+                    "Add these hooks to {} (or run `ssp claude-code hooks --install`):\n\n{}",
+                    path.display(),
+                    claude::snippet(&program)
+                );
+                return Ok(());
+            }
+            let mut settings = claude::read(&path)?;
+            let changed = if install {
+                claude::add(&mut settings, &program)
+            } else {
+                claude::remove(&mut settings)
+            };
+            if !changed {
+                say!("Nothing to change in {}.", path.display());
+                return Ok(());
+            }
+            claude::write(&path, &settings)?;
+            let (what, then) = if install {
+                ("Added the hooks to", "New Claude Code sessions use them.")
+            } else {
+                (
+                    "Removed the hooks from",
+                    "New Claude Code sessions do without them.",
+                )
+            };
+            say!(
+                "{what} {} (the old file is settings.json.bak).\n{then}",
+                path.display()
+            );
+            Ok(())
         }
         Cmd::Layout {
             zones,

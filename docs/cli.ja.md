@@ -144,22 +144,34 @@ ssp notify --dismiss
 消灯中の画面は、`--wake` を付けたときだけ点灯し、通知が終わるとまた消灯します。通知は表示内容を切り替えても、
 ディスプレイを抜いている間も残ります。`ssp status` で残り時間とともに確認でき、`ssp clear` で消えます。
 
-**Claude Code** は、入力を待つときと作業を終えたときにフックを実行します。`~/.claude/settings.json` に次を足します。
+**Claude Code** は、入力を待つときと作業を終えたときにフックを実行します。ディスプレイに通知を出すフック2つを、
+コマンド1つで追加できます。
+
+```sh
+ssp claude-code hooks --install    # ~/.claude/settings.json に追加する
+ssp claude-code hooks              # 表示するだけ
+ssp claude-code hooks --uninstall  # 追加したものを取り除く
+```
+
+`--install` は、Claude Code の設定ファイル（`$CLAUDE_CONFIG_DIR` があれば `$CLAUDE_CONFIG_DIR/settings.json`）にフックを
+足します。ファイルのほかの内容はそのまま残し、元のファイルを `settings.json.bak` として取っておきます。すでにあれば何も
+しません。新しく始めた Claude Code のセッションから使われます。追加されるフックは次のとおりです。
 
 ```json
 {
   "hooks": {
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60" }] }
+      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60 --if-running" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green" }] }
+      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green --if-running" }] }
     ]
   }
 }
 ```
 
-`--stdin` を付けると、`ssp notify` はフックが受け取った内容を読みます。メッセージ（「Claude needs your permission to use
+（`ssp` はフルパスで書かれます。）`--if-running` を付けると、デーモンが動いていないときやディスプレイがつながっていない
+ときに、Claude Code にエラーを出しません。`--stdin` を付けると、`ssp notify` はフックが受け取った内容を読みます。メッセージ（「Claude needs your permission to use
 Bash」など）が本文に、プロジェクトのフォルダ名と Claude の最後の返答の1行目が2行目になります。ふつうのテキストも読めます
 （1行目が本文、残りが2行目）。
 
@@ -533,7 +545,11 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --color <COLOR>` | `red`・`orange`・`yellow`・`green`・`blue`（既定）・`gray`、または `#rrggbb`。 |
 | `  --wake` | 消灯中なら点灯し、終わったらまた消灯します。 |
 | `  --stdin` | メッセージを標準入力から読みます。テキストか、Claude Code のフックの JSON。 |
+| `  --if-running` | デーモンが動いていないときやディスプレイがつながっていないときは、エラーにせず何もしません（フック向け）。 |
 | `ssp notify --dismiss` | 通知を消します。 |
+| `ssp claude-code hooks` | ディスプレイに通知を出す Claude Code のフックを表示します。 |
+| `  --install` | それを Claude Code の `settings.json` に追加します（元のファイルは `settings.json.bak` として残します）。 |
+| `  --uninstall` | `--install` で追加したフックを取り除きます。 |
 | `ssp schedule` | スケジュール（設定ファイルの `[[schedule]]`）の直前と次のエントリーを表示します。 |
 | `ssp schedule pause` | 時刻による自動の切り替えを、`resume` まで止めます。 |
 | `ssp schedule resume` | 今の時点でスケジュールが示す状態を当てはめ、自動の切り替えを再開します。 |

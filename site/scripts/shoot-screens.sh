@@ -1,5 +1,6 @@
 #!/bin/sh
-# Draws each screen of the gallery (public/screens/<name>/) with its example figures into
+# Draws each screen of the gallery (public/screens/<name>/) with its example figures (?example for
+# screens that read the internet; the others show them without the daemon) into
 # src/assets/gallery/<name>.png at the panel's size, for the gallery page. Uses the headless
 # Chrome that `ssp web --install` downloaded, or the program in $CHROME.
 #
@@ -22,6 +23,6 @@ for name in $names; do
 	[ -f "$page" ] || { echo "no screen $name" >&2; exit 1; }
 	# The example figures move every second; a few seconds fill the graphs.
 	"$chrome" --headless --hide-scrollbars --window-size=1920,462 --virtual-time-budget=12000 \
-		--screenshot="$PWD/src/assets/gallery/$name.png" "file://$page?clean" > /dev/null 2>&1
+		--screenshot="$PWD/src/assets/gallery/$name.png" "file://$page?clean&example" > /dev/null 2>&1
 	echo "src/assets/gallery/$name.png"
 done

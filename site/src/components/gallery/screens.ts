@@ -6,6 +6,7 @@ import type { Lang } from '../landing/copy';
 import system from '../../assets/gallery/system.png';
 import claudeCode from '../../assets/gallery/claude-code.png';
 import metrics from '../../assets/gallery/metrics.png';
+import weather from '../../assets/gallery/weather.png';
 import day from '../../assets/gallery/day.png';
 
 export interface Screen {
@@ -50,6 +51,17 @@ export const screens: Screen[] = [
 			ja: 'スクリプトから送った数値（ssp metric set）を、グラフ付きのタイルで最大 8 つ。?ids= で選んで並べ替えられます。',
 		},
 		variant: 'ssp web "https://subscreen.dev/screens/metrics/?ids=ci,deploy,queue"',
+	},
+	{
+		name: 'weather',
+		image: weather,
+		reads: [],
+		title: { en: 'Weather', ja: '天気' },
+		text: {
+			en: 'The weather now, the next 24 hours and the next days, from Open-Meteo (free, no key). Give your place with ?lat=, ?lon= and ?name= (Tokyo if not); ?f for Fahrenheit. Only the place goes to Open-Meteo.',
+			ja: 'いまの天気と、この先 24 時間・数日の予報。Open-Meteo（無料・キー不要）から読みます。場所は ?lat=・?lon=・?name= で指定し（省略すると東京）、?f で華氏になります。Open-Meteo に送るのは場所だけです。',
+		},
+		variant: 'ssp web "https://subscreen.dev/screens/weather/?lat=34.69&lon=135.50&name=Osaka"',
 	},
 	{
 		name: 'day',

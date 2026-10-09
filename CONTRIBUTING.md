@@ -17,7 +17,8 @@ request needs.
   have notes on how a display works, open an issue with them; someone else may write the driver.
 - **Add a screen to the [gallery](https://subscreen.dev/screens/).** Write a page for
   1920x462 in `site/public/screens/<name>/index.html` that reads the figures from `window.ssp`
-  and shows example figures without it, so it can be tried in a browser. Draw its picture with
+  and shows example figures without it, so it can be tried in a browser (a screen that reads the
+  internet shows them with `?example`). Draw its picture with
   `sh site/scripts/shoot-screens.sh <name>` and add it to `site/src/components/gallery/screens.ts`.
 - **Improve features or docs.** For anything larger than a small fix, open an issue first so
   we can agree on the approach before you invest time.

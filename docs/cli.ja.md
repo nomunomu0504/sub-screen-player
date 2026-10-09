@@ -264,24 +264,57 @@ reload = 600       # 省略可
 再び何かを表示するには `ssp clock` や `ssp show ...` を実行します。通知（`ssp notify`）は `ssp stop` や `ssp off` の
 あとも残り、`ssp clear` で消えます。
 
-### 夜は画面を暗くする
+### 時刻で表示を切り替える・複数の画面を順番に表示する
 
-`ssp brightness` を定期実行します。cron の場合（macOS・Linux、`crontab -e`）:
+設定ファイルに `[[schedule]]` を書き、デーモンを再起動します。各エントリーは、その時刻（PC のローカル時刻）から、
+書いた項目を設定します。`show`（`url` や `image` など `[startup]` と同じオプション付き）、`brightness`、`power` です。
 
-```text
-0 22 * * * /usr/local/bin/ssp brightness 20
-0 7  * * * /usr/local/bin/ssp brightness 100
+```toml
+# 平日の日中はダッシュボード、夕方からは暗めの時計、夜は消灯
+[[schedule]]
+at = "09:00"
+days = ["mon", "tue", "wed", "thu", "fri"]
+show = "dashboard"
+brightness = 100
+
+[[schedule]]
+at = "19:00"
+show = "clock"
+brightness = 40
+
+[[schedule]]
+at = "01:00"
+power = "off"
+
+# 週末は 9 時から時計
+[[schedule]]
+at = "09:00"
+days = ["sat", "sun"]
+show = "clock"
+brightness = 60
 ```
 
-Windows の場合:
+エントリーが設定した項目は、別のエントリーが設定し直すまでそのまま続きます。ある時点の表示・明るさ・電源は、それぞれを
+設定したエントリーのうち最新のもの（最大1週間さかのぼる）で決まります。そのため、上の週末のエントリーがないと、土曜 01:00
+の消灯が週末ずっと続きます。何かを表示するエントリーは、`power = "off"` と書かない限り画面も点灯します。`days`
+（`"mon"`〜`"sun"`）で曜日を、`display = "<id>"` でディスプレイを限定できます。デーモンの起動時やディスプレイを接続した
+ときは、その時点でスケジュールが示す状態になります。
 
-```bat
-schtasks /Create /SC DAILY /ST 22:00 /TN "ssp dim" /TR "C:\Tools\ssp.exe brightness 20"
-schtasks /Create /SC DAILY /ST 07:00 /TN "ssp bright" /TR "C:\Tools\ssp.exe brightness 100"
+手動での変更（`ssp clock`・`ssp brightness`・`ssp off`・API）は、次のエントリーの時刻まで有効です。`ssp schedule` で
+直前と次のエントリーを確認でき、`ssp schedule pause` で自動の切り替えを止め、`ssp schedule resume` で今の時点の状態を
+当てはめて再開します。
+
+**複数の画面を順番に**: `show = "rotation"`（エントリーに書くか、1日中なら `[startup]` に書きます）で、`[rotation]` の
+画面を順番に表示します。
+
+```toml
+[rotation]
+every = 30               # 1画面あたりの秒数
+show = ["clock", "dashboard", { show = "web", url = "file:///home/me/panel.html", seconds = 60 }]
 ```
 
-定期実行のジョブは `PATH` が最小限なので、`ssp` はフルパスで書いてください。ディスプレイが接続されるたびに明るさを
-設定したい場合は、設定ファイルの `[display]` セクションに `brightness = 80` のように書きます。
+各画面は自分の番の間だけ動きます。Web ページのブラウザは番が来たときに起動し（ページが描けるまで約1秒は前の画面が残ります）、
+番が終わると止まります。
 
 ### 複数のディスプレイを使う
 
@@ -466,6 +499,9 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --wake` | 消灯中なら点灯し、終わったらまた消灯します。 |
 | `  --stdin` | メッセージを標準入力から読みます。テキストか、Claude Code のフックの JSON。 |
 | `ssp notify --dismiss` | 通知を消します。 |
+| `ssp schedule` | スケジュール（設定ファイルの `[[schedule]]`）の直前と次のエントリーを表示します。 |
+| `ssp schedule pause` | 時刻による自動の切り替えを、`resume` まで止めます。 |
+| `ssp schedule resume` | 今の時点でスケジュールが示す状態を当てはめ、自動の切り替えを再開します。 |
 
 ### 自動起動
 

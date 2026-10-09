@@ -73,6 +73,9 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `GET` | `/metrics/{id}` | | One metric |
 | `DELETE` | `/metrics/{id}` | | Removes a metric |
 | `GET` | `/system` | | CPU, memory, network and disk figures (see below) |
+| `GET` | `/schedule` | | The last and the next schedule entries (see below) |
+| `POST` | `/schedule/pause` | | Stops the changes at set times |
+| `POST` | `/schedule/resume` | | Applies the schedule now and starts the changes again |
 
 ### `GET /health`
 
@@ -110,7 +113,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard`, `rotation` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed; `partial` counts frames sent as
@@ -180,6 +183,24 @@ clock panel uses the formats of `[clock]`.
 `widgets` lists the panels from left to right (1 to 6 of `clock`, `cpu`, `memory`, `network`,
 `disk`, `claude-code` and `metric:<id>`; see the [CLI guide](cli.md#show-how-much-claude-code-you-have-used)
 for `claude-code`). `accent` is the color of the graphs.
+
+### `GET /schedule`, `POST /schedule/pause`, `POST /schedule/resume`
+
+The schedule of the config (`[[schedule]]`, see the [command line guide](cli.md)):
+
+```json
+{
+  "entries": 4,
+  "paused": false,
+  "last": { "at": "2026-10-09T19:00:00+09:00", "entries": [2], "does": ["show clock, brightness 40"] },
+  "next": { "at": "2026-10-10T01:00:00+09:00", "entries": [3], "does": ["power off"] }
+}
+```
+
+`entries` in `last` and `next` are positions in the config, from 1; `at` is local time. Without
+a schedule, `entries` is 0 and `last` and `next` are missing. `pause` stops the changes at set
+times; `resume` applies what the schedule says now to every display and starts them again. Both
+answer `409` without a schedule.
 
 ### `POST /displays/{id}/notify`, `DELETE /displays/{id}/notify`
 

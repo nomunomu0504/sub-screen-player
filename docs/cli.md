@@ -281,25 +281,59 @@ reload = 600       # optional
 Start something again with `ssp clock` or `ssp show ...`. A notification (`ssp notify`) stays
 over `ssp stop` and `ssp off`; `ssp clear` ends it.
 
-### Dim the screen at night
+### Change the screen by time of day, or show screens in turn
 
-Schedule `ssp brightness`. With cron (macOS and Linux, `crontab -e`):
+Add `[[schedule]]` entries to the config file and restart the daemon. Each entry sets what it
+names from its local time on: `show` (with the options of `[startup]`, such as `url` or
+`image`), `brightness` and `power`:
 
-```text
-0 22 * * * /usr/local/bin/ssp brightness 20
-0 7  * * * /usr/local/bin/ssp brightness 100
+```toml
+# Weekdays: the dashboard while working. Evenings: the clock, dimmer. Night: off.
+[[schedule]]
+at = "09:00"
+days = ["mon", "tue", "wed", "thu", "fri"]
+show = "dashboard"
+brightness = 100
+
+[[schedule]]
+at = "19:00"
+show = "clock"
+brightness = 40
+
+[[schedule]]
+at = "01:00"
+power = "off"
+
+# Weekends: the clock, from nine.
+[[schedule]]
+at = "09:00"
+days = ["sat", "sun"]
+show = "clock"
+brightness = 60
 ```
 
-On Windows:
+What an entry sets stays until another entry sets it again: at any moment, each of show,
+brightness and power is what the latest entry setting it said, looking back up to a week. So
+without the weekend entry above, the screen would stay off all weekend after Saturday 01:00. An
+entry that shows something also switches the screen on, unless it says `power = "off"`. `days`
+(`"mon"` to `"sun"`) limits an entry to some days, and `display = "<id>"` to one display. When
+the daemon starts or a display connects, it gets what the schedule says at that moment.
 
-```bat
-schtasks /Create /SC DAILY /ST 22:00 /TN "ssp dim" /TR "C:\Tools\ssp.exe brightness 20"
-schtasks /Create /SC DAILY /ST 07:00 /TN "ssp bright" /TR "C:\Tools\ssp.exe brightness 100"
+Changes by hand (`ssp clock`, `ssp brightness`, `ssp off`, the API) last until the next entry.
+`ssp schedule` shows the last and the next entries; `ssp schedule pause` stops the changes, and
+`ssp schedule resume` applies what the schedule says now and starts them again.
+
+**Screens in turn**: `show = "rotation"` (in an entry, or in `[startup]` to rotate all day) shows
+the screens of `[rotation]` one after another:
+
+```toml
+[rotation]
+every = 30               # seconds per screen
+show = ["clock", "dashboard", { show = "web", url = "file:///home/me/panel.html", seconds = 60 }]
 ```
 
-Use the full path of `ssp`, since scheduled jobs run with a minimal `PATH`. To set the
-brightness every time a display connects, use `brightness = 80` in the `[display]` section of
-the config file.
+A screen runs only during its turn: a web page's browser starts when its turn comes (the
+previous picture stays until the page is drawn, about a second) and stops after it.
 
 ### Several displays
 
@@ -489,6 +523,9 @@ These work with every command.
 | `  --wake` | Switch the screen on if it is off, and off again after. |
 | `  --stdin` | Read the message from standard input: text, or the JSON of a Claude Code hook. |
 | `ssp notify --dismiss` | End the notification. |
+| `ssp schedule` | Show the last and the next entries of the schedule (`[[schedule]]` in the config). |
+| `ssp schedule pause` | Stop changing the screen at set times, until `resume`. |
+| `ssp schedule resume` | Apply what the schedule says now, and change at set times again. |
 
 ### Autostart
 

@@ -15,13 +15,11 @@ use ssp_core::{
     Display, DisplayInfo, Found, Frame, Presenter, PresenterOptions, PresenterStats, Registry,
 };
 
-use crate::config::{Config, DisplayConfig, StartupShow};
+use crate::config::{Config, DisplayConfig};
 use crate::metrics::Metrics;
 use crate::notify::{Notification, Overlay, Shown};
-use crate::sources::video::{self, VideoFile};
-use crate::sources::web::WebPage;
-use crate::sources::{Clock, Content, Picture, Source};
-use crate::web::Web;
+use crate::schedule::{Schedule, State};
+use crate::sources::{Content, Source};
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
@@ -96,6 +94,8 @@ pub struct Manager {
     registry: Registry,
     display: DisplayConfig,
     startup: Content,
+    /// Decides what connecting displays show, if the config has a schedule.
+    schedule: Mutex<Option<Arc<Schedule>>>,
     inner: Mutex<Inner>,
 }
 
@@ -124,8 +124,42 @@ impl Manager {
             registry,
             display: config.display.clone(),
             startup: startup_content(config, metrics)?,
+            schedule: Mutex::default(),
             inner: Mutex::default(),
         })
+    }
+
+    /// Lets `schedule` decide what displays show, how bright they are and whether their screens
+    /// are on when they connect.
+    pub fn set_schedule(&self, schedule: Arc<Schedule>) {
+        *self.schedule.lock().unwrap_or_else(|p| p.into_inner()) = Some(schedule);
+    }
+
+    /// The schedule, if the config has one.
+    pub fn schedule(&self) -> Option<Arc<Schedule>> {
+        self.schedule
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    /// Ids of all displays seen since the daemon started.
+    pub fn ids(&self) -> Vec<String> {
+        self.lock().entries.keys().cloned().collect()
+    }
+
+    /// Applies what a schedule says: shows its content (also on an unplugged display, which
+    /// shows it when it is back), and sets the brightness and the screen of a connected one.
+    pub fn apply(&self, id: &str, state: &State) {
+        if let Some(content) = &state.show
+            && let Err(err) = self.set_content(id, content.clone())
+        {
+            tracing::warn!(display = %id, "schedule: {err}");
+        }
+        let Ok(device) = self.device(id) else {
+            return;
+        };
+        set_screen(&device.presenter, id, state.brightness, state.power);
     }
 
     /// Ids of the drivers in use.
@@ -209,11 +243,6 @@ impl Manager {
             partial_updates: self.display.partial_updates,
         };
         let presenter = Presenter::spawn(display, options);
-        if let Some(percent) = self.display.brightness
-            && let Err(err) = presenter.set_brightness(percent)
-        {
-            tracing::warn!(display = %info.id(), "cannot set brightness: {err}");
-        }
         let mut inner = self.lock();
         // Two devices without serial numbers share an id; number the later ones.
         let base = info.id();
@@ -230,10 +259,17 @@ impl Manager {
             firmware = info.firmware.as_deref().unwrap_or("unknown"),
             "connected"
         );
-        let entry = inner.entries.entry(id).or_insert_with(|| Entry {
+        let state = self
+            .schedule()
+            .map(|s| s.state(&id, &jiff::Zoned::now()))
+            .unwrap_or_default();
+        let brightness = state.brightness.or(self.display.brightness);
+        // A display seen before carries on with its content; a new one starts with the
+        // schedule's, else the startup content.
+        let entry = inner.entries.entry(id.clone()).or_insert_with(|| Entry {
             info: info.clone(),
             device: None,
-            content: self.startup.clone(),
+            content: state.show.clone().unwrap_or_else(|| self.startup.clone()),
             generation: Arc::default(),
             player: None,
             overlay: Overlay::new(),
@@ -245,9 +281,11 @@ impl Manager {
         });
         entry.overlay.attach(&device);
         entry.info = info;
-        entry.device = Some(device);
+        entry.device = Some(device.clone());
         entry.generation.fetch_add(1, Ordering::SeqCst);
         start(entry);
+        drop(inner);
+        set_screen(&device.presenter, &id, brightness, state.power);
     }
 
     /// Runs [`Manager::scan`] every `every` on a background thread.
@@ -393,6 +431,23 @@ impl Manager {
     }
 }
 
+/// Sets the backlight and switches the screen on or off, as far as they are given.
+fn set_screen(presenter: &Presenter, id: &str, brightness: Option<u8>, on: Option<bool>) {
+    if let Some(percent) = brightness
+        && let Err(err) = presenter.set_brightness(percent)
+    {
+        tracing::warn!(display = %id, "cannot set brightness: {err}");
+    }
+    let result = match on {
+        Some(true) if presenter.is_asleep() => presenter.wake(),
+        Some(false) if !presenter.is_asleep() => presenter.sleep(),
+        _ => Ok(()),
+    };
+    if let Err(err) = result {
+        tracing::warn!(display = %id, "cannot switch the screen: {err}");
+    }
+}
+
 /// Starts the entry's content on its device, if both exist.
 fn start(entry: &mut Entry) {
     let (Some(device), Some(source)) = (&entry.device, entry.content.source()) else {
@@ -404,66 +459,7 @@ fn start(entry: &mut Entry) {
 }
 
 fn startup_content(config: &Config, metrics: Metrics) -> Result<Content, String> {
-    match config.startup.show {
-        StartupShow::Nothing => Ok(Content::Nothing),
-        StartupShow::Clock => {
-            Clock::validate(&config.clock)?;
-            Ok(Content::Clock(config.clock.clone()))
-        }
-        StartupShow::Dashboard => {
-            Clock::validate(&config.clock)?;
-            config.dashboard.validate()?;
-            Ok(Content::Dashboard(
-                config.dashboard.clone(),
-                config.clock.clone(),
-                metrics,
-            ))
-        }
-        StartupShow::Web => {
-            let url = config
-                .startup
-                .url
-                .as_deref()
-                .ok_or("startup.url is not set")?;
-            let page = WebPage::new(url, config.startup.reload)
-                .map_err(|e| format!("startup.url: {e}"))?;
-            Ok(Content::Web {
-                page,
-                web: Web::new(&config.web).with_api(config.listen),
-            })
-        }
-        StartupShow::Image => {
-            let path = config
-                .startup
-                .image
-                .as_ref()
-                .ok_or("startup.image is not set")?;
-            let fit = config.startup.fit.into();
-            if starts_like_a_video(path) {
-                let ffmpeg = video::find_ffmpeg(config.video.ffmpeg.as_deref())?;
-                let video = VideoFile::open(path.clone(), ffmpeg, false)
-                    .map_err(|e| format!("startup video {}: {e}", path.display()))?;
-                return Ok(Content::Video {
-                    video: Arc::new(video),
-                    fit,
-                });
-            }
-            let bytes = std::fs::read(path)
-                .map_err(|e| format!("cannot read startup image {}: {e}", path.display()))?;
-            let picture = Picture::decode(&bytes)
-                .map_err(|e| format!("startup image {}: {e}", path.display()))?;
-            Ok(picture.into_content(fit))
-        }
-    }
-}
-
-/// Whether the file at `path` starts like a video (see [`video::is_video`]).
-fn starts_like_a_video(path: &std::path::Path) -> bool {
-    use std::io::Read;
-    let mut head = Vec::new();
-    std::fs::File::open(path)
-        .and_then(|file| file.take(256).read_to_end(&mut head))
-        .is_ok_and(|_| video::is_video(&head) && image::guess_format(&head).is_err())
+    Content::from_spec(config.startup.spec(), config, &metrics).map_err(|e| format!("startup: {e}"))
 }
 
 /// The background thread of [`Manager::spawn_scanner`].
@@ -530,7 +526,8 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ClockConfig;
+    use crate::config::{ClockConfig, StartupShow};
+    use crate::sources::video;
     use ssp_core::testing::{Call, CallLog, FakeDisplay};
 
     fn manager(show: StartupShow) -> Manager {

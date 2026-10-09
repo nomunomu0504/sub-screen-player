@@ -30,11 +30,35 @@ partial_updates = true   # send only the changed parts of a frame (D92), e.g. a 
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
-show = "clock"           # "clock", "dashboard", "image", "web" or "nothing"
+show = "clock"           # "clock", "dashboard", "image", "web", "rotation" or "nothing"
 # image = "/path/to/picture.png"   # a video works too (needs ffmpeg, see [video])
 # url = "https://example.com/panel.html"   # for show = "web" (see [web])
 # reload = 600           # reload the web page every this many seconds
 fit = "contain"          # "contain", "cover" or "stretch"
+
+# Change the screen by itself at set times (local time). Each entry sets what it names from
+# its time on: `show` (with the options of [startup]; it also switches the screen on),
+# `brightness` and `power`. `days` limits it to some days ("mon" .. "sun"), `display` to one
+# display. Changes by hand last until the next entry.
+# [[schedule]]
+# at = "09:00"
+# days = ["mon", "tue", "wed", "thu", "fri"]
+# show = "dashboard"
+# brightness = 100
+#
+# [[schedule]]
+# at = "19:00"
+# show = "clock"
+# brightness = 40
+#
+# [[schedule]]
+# at = "01:00"
+# power = "off"
+
+# Screens shown in turn, for show = "rotation" (in [startup] or a schedule entry).
+# [rotation]
+# every = 30             # seconds per screen, unless a screen says `seconds`
+# show = ["clock", "dashboard", { show = "web", url = "file:///home/me/panel.html", seconds = 60 }]
 
 [clock]
 seconds = true
@@ -87,6 +111,11 @@ pub struct Config {
     pub display: DisplayConfig,
     /// What a display shows when it is connected.
     pub startup: StartupConfig,
+    /// Changes at set times (`[[schedule]]`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub schedule: Vec<ScheduleEntry>,
+    /// Screens shown in turn for `show = "rotation"`.
+    pub rotation: RotationConfig,
     /// Look of the built-in clock.
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
@@ -108,6 +137,8 @@ impl Default for Config {
             token: None,
             display: DisplayConfig::default(),
             startup: StartupConfig::default(),
+            schedule: Vec::new(),
+            rotation: RotationConfig::default(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
             web: WebConfig::default(),
@@ -273,6 +304,261 @@ pub enum StartupShow {
     Image,
     /// `startup.url`.
     Web,
+    /// The screens of `[rotation]`, in turn.
+    Rotation,
+}
+
+impl StartupConfig {
+    /// What to show, as for a schedule entry or a turn of a rotation.
+    pub fn spec(&self) -> ShowSpec<'_> {
+        ShowSpec {
+            show: self.show,
+            image: self.image.as_deref(),
+            url: self.url.as_deref(),
+            reload: self.reload,
+            fit: self.fit,
+        }
+    }
+}
+
+/// What to show: `[startup]`, a `[[schedule]]` entry or a turn of `[rotation]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShowSpec<'a> {
+    /// The kind of screen.
+    pub show: StartupShow,
+    /// Image or video file for `image`.
+    pub image: Option<&'a Path>,
+    /// Page for `web`.
+    pub url: Option<&'a str>,
+    /// Reload the page every this many seconds.
+    pub reload: Option<u64>,
+    /// How an image or video is fitted.
+    pub fit: FitName,
+}
+
+impl ShowSpec<'_> {
+    /// Checks that the options the kind needs are there; `rotation` says whether `[rotation]`
+    /// has screens.
+    fn validate(&self, rotation: bool) -> Result<(), String> {
+        match self.show {
+            StartupShow::Image if self.image.is_none() => {
+                Err("show = \"image\" needs image".into())
+            }
+            StartupShow::Web if self.url.is_none() => Err("show = \"web\" needs url".into()),
+            StartupShow::Rotation if !rotation => {
+                Err("show = \"rotation\" needs screens in [rotation] show".into())
+            }
+            _ if self.reload == Some(0) => Err("reload must be at least 1".into()),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// `power` of a schedule entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Power {
+    /// Switch the screen on.
+    On,
+    /// Switch the screen off.
+    Off,
+}
+
+/// One `[[schedule]]` entry: what changes at a time of day.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScheduleEntry {
+    /// Local time, `"HH:MM"`.
+    pub at: String,
+    /// Days it applies on, `"mon"` to `"sun"`; every day when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub days: Vec<String>,
+    /// The id of the display it applies to; every display when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    /// What to show from then on (as `[startup] show`). Also switches the screen on, unless
+    /// `power` says otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show: Option<StartupShow>,
+    /// Image or video file for `show = "image"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<PathBuf>,
+    /// Page for `show = "web"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Reload the page every this many seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<u64>,
+    /// How an image or video is fitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<FitName>,
+    /// Backlight in percent from then on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brightness: Option<u8>,
+    /// Screen on or off from then on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power: Option<Power>,
+}
+
+impl ScheduleEntry {
+    /// What it shows, if it shows something.
+    pub fn spec(&self) -> Option<ShowSpec<'_>> {
+        Some(ShowSpec {
+            show: self.show?,
+            image: self.image.as_deref(),
+            url: self.url.as_deref(),
+            reload: self.reload,
+            fit: self.fit.unwrap_or_default(),
+        })
+    }
+
+    /// The time of day as hour and minute.
+    pub fn time(&self) -> Result<(i8, i8), String> {
+        let invalid = || format!("at = {:?} is not a time like \"07:30\"", self.at);
+        let (hour, minute) = self.at.split_once(':').ok_or_else(invalid)?;
+        let hour: i8 = hour.parse().map_err(|_| invalid())?;
+        let minute: i8 = minute.parse().map_err(|_| invalid())?;
+        if !(0..24).contains(&hour) || !(0..60).contains(&minute) || self.at.len() != 5 {
+            return Err(invalid());
+        }
+        Ok((hour, minute))
+    }
+
+    /// The days it applies on, Monday = 0; all of them when `days` is empty.
+    pub fn weekdays(&self) -> Result<[bool; 7], String> {
+        if self.days.is_empty() {
+            return Ok([true; 7]);
+        }
+        let mut on = [false; 7];
+        for day in &self.days {
+            let i = WEEKDAYS
+                .iter()
+                .position(|d| d.eq_ignore_ascii_case(day))
+                .ok_or_else(|| format!("{day:?} is not a day: use {}", WEEKDAYS.join(", ")))?;
+            on[i] = true;
+        }
+        Ok(on)
+    }
+
+    fn validate(&self, rotation: bool) -> Result<(), String> {
+        self.time()?;
+        self.weekdays()?;
+        if self.show.is_none()
+            && (self.image.is_some() || self.url.is_some() || self.reload.is_some())
+        {
+            return Err("image, url and reload need show".into());
+        }
+        if self.show.is_none() && self.brightness.is_none() && self.power.is_none() {
+            return Err("says nothing to do: give show, brightness or power".into());
+        }
+        if self.brightness.is_some_and(|b| b > 100) {
+            return Err("brightness must be 0..=100".into());
+        }
+        self.spec().map_or(Ok(()), |spec| spec.validate(rotation))
+    }
+}
+
+/// Day names of schedule entries, from Monday.
+pub const WEEKDAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+/// Screens shown in turn (`[rotation]`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RotationConfig {
+    /// Seconds each screen is shown, unless it says otherwise.
+    pub every: u64,
+    /// The screens, in order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub show: Vec<RotationItem>,
+}
+
+impl Default for RotationConfig {
+    fn default() -> Self {
+        Self {
+            every: 30,
+            show: Vec::new(),
+        }
+    }
+}
+
+impl RotationConfig {
+    fn validate(&self) -> Result<(), String> {
+        if self.every == 0 {
+            return Err("rotation.every must be at least 1".into());
+        }
+        for item in &self.show {
+            let (spec, seconds) = item.spec();
+            if spec.show == StartupShow::Rotation {
+                return Err("a rotation cannot show a rotation".into());
+            }
+            spec.validate(true).map_err(|e| format!("rotation: {e}"))?;
+            if seconds == Some(0) {
+                return Err("rotation: seconds must be at least 1".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A screen of `[rotation]`: a name such as `"clock"`, or a table with options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RotationItem {
+    /// Just the kind, e.g. `"clock"`.
+    Name(StartupShow),
+    /// The kind with options, e.g. `{ show = "web", url = "...", seconds = 60 }`.
+    Spec(RotationSpec),
+}
+
+impl RotationItem {
+    /// What it shows, and its own number of seconds if it has one.
+    pub fn spec(&self) -> (ShowSpec<'_>, Option<u64>) {
+        match self {
+            Self::Name(show) => (
+                ShowSpec {
+                    show: *show,
+                    image: None,
+                    url: None,
+                    reload: None,
+                    fit: FitName::default(),
+                },
+                None,
+            ),
+            Self::Spec(spec) => (
+                ShowSpec {
+                    show: spec.show,
+                    image: spec.image.as_deref(),
+                    url: spec.url.as_deref(),
+                    reload: spec.reload,
+                    fit: spec.fit.unwrap_or_default(),
+                },
+                spec.seconds,
+            ),
+        }
+    }
+}
+
+/// See [`RotationItem::Spec`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RotationSpec {
+    /// The kind of screen.
+    pub show: StartupShow,
+    /// Image or video file for `show = "image"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<PathBuf>,
+    /// Page for `show = "web"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Reload the page every this many seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<u64>,
+    /// How an image or video is fitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<FitName>,
+    /// Seconds this screen is shown, instead of `every`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u64>,
 }
 
 /// Serializable [`Fit`].
@@ -543,8 +829,16 @@ impl Config {
         if self.display.max_fps == 0 {
             return invalid("display.max_fps must be at least 1".into());
         }
-        if self.startup.show == StartupShow::Image && self.startup.image.is_none() {
-            return invalid("startup.show = \"image\" needs startup.image".into());
+        let rotation = !self.rotation.show.is_empty();
+        self.startup
+            .spec()
+            .validate(rotation)
+            .map_err(|e| ConfigError::Invalid(format!("startup: {e}")))?;
+        self.rotation.validate().map_err(ConfigError::Invalid)?;
+        for (n, entry) in self.schedule.iter().enumerate() {
+            entry.validate(rotation).map_err(|e| {
+                ConfigError::Invalid(format!("schedule entry {} ({}): {e}", n + 1, entry.at))
+            })?;
         }
         for color in [&self.clock.color, &self.clock.background] {
             if parse_color(color).is_none() {
@@ -572,6 +866,71 @@ pub fn parse_color(text: &str) -> Option<[u8; 3]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_a_schedule_and_a_rotation() {
+        // The commented example of the template, uncommented.
+        let example: String = TEMPLATE
+            .lines()
+            .skip_while(|l| !l.starts_with("# [[schedule]]"))
+            .take_while(|l| !l.starts_with("[clock]"))
+            .filter(|l| l.starts_with("# ") && !l.contains("Screens shown in turn"))
+            .map(|l| format!("{}\n", &l[2..]))
+            .collect();
+        let config: Config = toml::from_str(&example).unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.schedule.len(), 3);
+        assert_eq!(
+            config.schedule[0].weekdays().unwrap(),
+            [true, true, true, true, true, false, false]
+        );
+        assert_eq!(config.schedule[2].power, Some(Power::Off));
+        assert_eq!(config.rotation.show.len(), 3);
+        let (spec, seconds) = config.rotation.show[2].spec();
+        assert_eq!(
+            (spec.show, spec.url.is_some(), seconds),
+            (StartupShow::Web, true, Some(60))
+        );
+    }
+
+    #[test]
+    fn refuses_bad_schedules() {
+        for (toml, expected) in [
+            (
+                "[[schedule]]\nat = \"7:30\"\nshow = \"clock\"",
+                "not a time",
+            ),
+            (
+                "[[schedule]]\nat = \"24:00\"\nshow = \"clock\"",
+                "not a time",
+            ),
+            (
+                "[[schedule]]\nat = \"07:30\"\ndays = [\"monday\"]\nshow = \"clock\"",
+                "not a day",
+            ),
+            ("[[schedule]]\nat = \"07:30\"", "nothing to do"),
+            ("[[schedule]]\nat = \"07:30\"\nshow = \"web\"", "needs url"),
+            (
+                "[[schedule]]\nat = \"07:30\"\nurl = \"https://a.b\"",
+                "need show",
+            ),
+            ("[[schedule]]\nat = \"07:30\"\nbrightness = 101", "0..=100"),
+            (
+                "[[schedule]]\nat = \"07:30\"\nshow = \"rotation\"",
+                "[rotation]",
+            ),
+            (
+                "[rotation]\nshow = [\"rotation\"]",
+                "a rotation cannot show a rotation",
+            ),
+            ("[rotation]\nevery = 0\nshow = [\"clock\"]", "at least 1"),
+            ("[startup]\nshow = \"rotation\"", "[rotation]"),
+        ] {
+            let config: Config = toml::from_str(toml).unwrap_or_else(|e| panic!("{toml}: {e}"));
+            let err = config.validate().unwrap_err().to_string();
+            assert!(err.contains(expected), "{toml}: {err}");
+        }
+    }
 
     #[test]
     fn empty_file_gives_defaults() {

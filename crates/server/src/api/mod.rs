@@ -33,7 +33,7 @@ use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
     ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, NotificationView, NotifyRequest,
-    PowerRequest, StatsView, SystemView, WebRequest,
+    PowerRequest, ScheduleEventView, ScheduleView, StatsView, SystemView, WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -99,6 +99,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/web/chrome", get(chrome_status).post(install_chrome))
         .route("/system", get(system))
+        .route("/schedule", get(schedule))
+        .route("/schedule/pause", post(pause_schedule))
+        .route("/schedule/resume", post(resume_schedule))
         .route("/metrics", get(list_metrics))
         .route(
             "/metrics/{id}",
@@ -256,6 +259,50 @@ fn view(state: DisplayState) -> DisplayView {
         }),
         id: state.id,
     }
+}
+
+async fn schedule(State(app): State<AppState>) -> Json<ScheduleView> {
+    let Some(schedule) = app.manager.schedule() else {
+        return Json(ScheduleView {
+            entries: 0,
+            paused: false,
+            last: None,
+            next: None,
+        });
+    };
+    let status = schedule.status(&jiff::Zoned::now());
+    let event = |e: crate::schedule::Event| ScheduleEventView {
+        at: e.at.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(),
+        entries: e.entries,
+        does: e.does,
+    };
+    Json(ScheduleView {
+        entries: status.entries,
+        paused: status.paused,
+        last: status.last.map(event),
+        next: status.next.map(event),
+    })
+}
+
+fn no_schedule() -> ApiError {
+    ApiError::new(
+        StatusCode::CONFLICT,
+        "the config has no [[schedule]] entries",
+    )
+}
+
+async fn pause_schedule(State(app): State<AppState>) -> Result<StatusCode, ApiError> {
+    app.manager.schedule().ok_or_else(no_schedule)?.pause();
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn resume_schedule(State(app): State<AppState>) -> Result<StatusCode, ApiError> {
+    let schedule = app.manager.schedule().ok_or_else(no_schedule)?;
+    blocking(move || {
+        schedule.resume(&app.manager);
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
 }
 
 async fn show_notification(

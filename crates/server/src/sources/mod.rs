@@ -8,6 +8,7 @@ mod animation;
 mod clock;
 mod dashboard;
 pub(crate) use dashboard::number;
+mod rotation;
 pub mod stats;
 pub mod video;
 pub mod web;
@@ -20,8 +21,9 @@ use ssp_core::{Animation, Fit, Frame};
 
 pub use clock::Clock;
 pub use dashboard::Dashboard;
+pub use rotation::Turn;
 
-use crate::config::{ClockConfig, DashboardConfig};
+use crate::config::{ClockConfig, Config, DashboardConfig, ShowSpec, StartupShow};
 use crate::metrics::Metrics;
 
 /// Something that draws a picture and knows when it changes.
@@ -73,6 +75,8 @@ pub enum Content {
     Dashboard(DashboardConfig, ClockConfig, Metrics),
     /// Frames from a WebSocket client.
     Stream,
+    /// Several contents in turn.
+    Rotation(Arc<Vec<Turn>>),
 }
 
 impl Content {
@@ -87,6 +91,7 @@ impl Content {
             Self::Clock(_) => "clock",
             Self::Dashboard(..) => "dashboard",
             Self::Stream => "stream",
+            Self::Rotation(_) => "rotation",
         }
     }
 
@@ -109,8 +114,96 @@ impl Content {
                 clock.clone(),
                 metrics.clone(),
             ))),
+            Self::Rotation(turns) => Some(Box::new(rotation::Rotation::new(turns.clone()))),
         }
     }
+
+    /// The content `spec` describes, with the looks, browser and player settings of `config`.
+    /// Files are read (and checked) now; a rotation takes its turns from `[rotation]`.
+    pub fn from_spec(
+        spec: ShowSpec<'_>,
+        config: &Config,
+        metrics: &Metrics,
+    ) -> Result<Self, String> {
+        match spec.show {
+            StartupShow::Nothing => Ok(Self::Nothing),
+            StartupShow::Clock => {
+                Clock::validate(&config.clock)?;
+                Ok(Self::Clock(config.clock.clone()))
+            }
+            StartupShow::Dashboard => {
+                Clock::validate(&config.clock)?;
+                config.dashboard.validate()?;
+                Ok(Self::Dashboard(
+                    config.dashboard.clone(),
+                    config.clock.clone(),
+                    metrics.clone(),
+                ))
+            }
+            StartupShow::Web => {
+                let url = spec.url.ok_or("url is not set")?;
+                let page = web::WebPage::new(url, spec.reload).map_err(|e| format!("url: {e}"))?;
+                Ok(Self::Web {
+                    page,
+                    web: crate::web::Web::new(&config.web).with_api(config.listen),
+                })
+            }
+            StartupShow::Image => {
+                let path = spec.image.ok_or("image is not set")?;
+                let fit = spec.fit.into();
+                if starts_like_a_video(path) {
+                    let ffmpeg = video::find_ffmpeg(config.video.ffmpeg.as_deref())?;
+                    let file = video::VideoFile::open(path.to_owned(), ffmpeg, false)
+                        .map_err(|e| format!("video {}: {e}", path.display()))?;
+                    return Ok(Self::Video {
+                        video: Arc::new(file),
+                        fit,
+                    });
+                }
+                let bytes = std::fs::read(path)
+                    .map_err(|e| format!("cannot read image {}: {e}", path.display()))?;
+                let picture = Picture::decode(&bytes)
+                    .map_err(|e| format!("image {}: {e}", path.display()))?;
+                Ok(picture.into_content(fit))
+            }
+            StartupShow::Rotation => {
+                let every = Duration::from_secs(config.rotation.every.max(1));
+                let turns = config
+                    .rotation
+                    .show
+                    .iter()
+                    .enumerate()
+                    .map(|(n, item)| {
+                        let (spec, seconds) = item.spec();
+                        if spec.show == StartupShow::Rotation {
+                            return Err(format!(
+                                "rotation screen {}: a rotation in a rotation",
+                                n + 1
+                            ));
+                        }
+                        Ok(Turn {
+                            content: Self::from_spec(spec, config, metrics)
+                                .map_err(|e| format!("rotation screen {}: {e}", n + 1))?,
+                            duration: seconds.map_or(every, Duration::from_secs),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                if turns.is_empty() {
+                    return Err("[rotation] show has no screens".into());
+                }
+                Ok(Self::Rotation(Arc::new(turns)))
+            }
+        }
+    }
+}
+
+/// Whether the file at `path` starts like a video (see [`video::is_video`]).
+fn starts_like_a_video(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(256).read_to_end(&mut head))
+        .is_ok_and(|_| video::is_video(&head) && image::guess_format(&head).is_err())
 }
 
 /// Shows one image.

@@ -5,7 +5,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use ssp_server::api::types::{ChromeView, DisplayView, ErrorBody, Health, MetricView};
+use ssp_server::api::types::{
+    ChromeView, DisplayView, ErrorBody, Health, MetricView, ScheduleView,
+};
 use ureq::http::Response;
 
 pub struct Client {
@@ -55,6 +57,10 @@ impl Client {
 
     pub fn displays(&self) -> Result<Vec<DisplayView>> {
         self.get("/displays")
+    }
+
+    pub fn schedule(&self) -> Result<ScheduleView> {
+        self.get("/schedule")
     }
 
     pub fn metrics(&self) -> Result<Vec<MetricView>> {

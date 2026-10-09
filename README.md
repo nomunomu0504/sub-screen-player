@@ -47,6 +47,8 @@ device-specific protocol has to be written; everything else is shared.
   first use) and sent whenever it repaints.
 - **Notifications**: `ssp notify` shows a message over whatever is on the screen for a while, then
   goes back; Claude Code hooks and CI jobs can call it.
+- **Schedules**: change what is shown, the brightness and the screen at set times of day, or show
+  several screens in turn.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.
 - **Autostart** at login (launchd, systemd user unit or the Windows `Run` key).

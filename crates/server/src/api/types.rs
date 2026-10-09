@@ -304,3 +304,29 @@ pub struct SystemView {
     /// Size of the system disk in bytes, if found.
     pub disk_total: Option<u64>,
 }
+
+/// `GET /api/v1/schedule`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduleView {
+    /// Number of `[[schedule]]` entries; 0 without a schedule.
+    pub entries: usize,
+    /// Whether applying is paused (`POST /schedule/pause`).
+    pub paused: bool,
+    /// The latest entries that happened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<ScheduleEventView>,
+    /// The next entries to happen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<ScheduleEventView>,
+}
+
+/// Entries happening at one time, in [`ScheduleView`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduleEventView {
+    /// Local time with its offset, e.g. `"2026-10-09T19:00:00+09:00"`.
+    pub at: String,
+    /// Positions of the entries in the config, from 1.
+    pub entries: Vec<usize>,
+    /// What each does, e.g. `"show clock, brightness 40"`.
+    pub does: Vec<String>,
+}

@@ -21,7 +21,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ssp_server::Config;
 use ssp_server::api::types::{
     BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, MetricUpdate, MetricView,
-    NotifyRequest, NotifyStyle, PowerRequest, WebRequest,
+    NotifyRequest, NotifyStyle, PowerRequest, ScheduleView, WebRequest,
 };
 use ssp_server::config::Widget;
 
@@ -184,6 +184,11 @@ enum Cmd {
         #[arg(long, conflicts_with_all = ["text", "stdin", "detail", "seconds", "sticky", "wake"])]
         dismiss: bool,
     },
+    /// Show the schedule of the config ([[schedule]]), or pause and resume it
+    Schedule {
+        #[command(subcommand)]
+        action: Option<ScheduleCmd>,
+    },
     /// Set the backlight
     Brightness {
         /// Percent, 0-100
@@ -276,6 +281,16 @@ enum MetricCmd {
         /// The metric's id
         id: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ScheduleCmd {
+    /// Show the last and the next entries (the default)
+    Status,
+    /// Stop changing the screen at set times, until `resume`
+    Pause,
+    /// Apply what the schedule says now, and change at set times again
+    Resume,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -525,6 +540,17 @@ fn run(cli: Cli) -> Result<()> {
                 },
             )
         }
+        Cmd::Schedule { action } => {
+            let client = cli_client(&cli.url, &cli.token, &config_path)?;
+            match action.unwrap_or(ScheduleCmd::Status) {
+                ScheduleCmd::Status => {
+                    print_schedule(&client.schedule()?, "");
+                    Ok(())
+                }
+                ScheduleCmd::Pause => client.post_empty("/schedule/pause"),
+                ScheduleCmd::Resume => client.post_empty("/schedule/resume"),
+            }
+        }
         Cmd::Brightness { percent } => cli_client(&cli.url, &cli.token, &config_path)?.post_json(
             &format!("{display}/brightness"),
             &BrightnessRequest { percent },
@@ -696,9 +722,36 @@ fn local_scan(client: &Client, drivers: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Prints the schedule, each line after `indent`.
+fn print_schedule(schedule: &ScheduleView, indent: &str) {
+    if schedule.entries == 0 {
+        say!("{indent}No schedule: add [[schedule]] entries to the config.");
+        return;
+    }
+    let paused = if schedule.paused {
+        " (paused: `ssp schedule resume`)"
+    } else {
+        ""
+    };
+    say!("{indent}schedule  {} entries{paused}", schedule.entries);
+    for (name, event) in [("last", &schedule.last), ("next", &schedule.next)] {
+        if let Some(event) = event {
+            // "2026-10-09T19:00:00+09:00" -> "10-09 19:00"
+            let at = event.at.get(5..16).unwrap_or(&event.at).replace('T', " ");
+            say!("{indent}  {name}    {at}  {}", event.does.join("; "));
+        }
+    }
+}
+
 fn status(client: &Client) -> Result<()> {
     let health = client.health()?;
     say!("Daemon {} at {}", health.version, client.base());
+    // Daemons before 0.5.0 have no schedule.
+    if let Ok(schedule) = client.schedule()
+        && schedule.entries > 0
+    {
+        print_schedule(&schedule, "");
+    }
     for d in client.displays()? {
         let state = if d.connected {
             "connected"

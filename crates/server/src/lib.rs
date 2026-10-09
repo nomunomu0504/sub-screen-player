@@ -19,6 +19,7 @@ pub mod drivers;
 pub mod manager;
 pub mod metrics;
 pub mod notify;
+pub mod schedule;
 pub mod sources;
 pub mod text;
 pub mod web;
@@ -48,6 +49,10 @@ pub async fn serve(
     claude_code::register(&metrics, config.claude_code.clone());
     let manager =
         Arc::new(Manager::new(registry, &config, metrics.clone()).map_err(anyhow::Error::msg)?);
+    let schedule = schedule::Schedule::new(&config, &metrics).map_err(anyhow::Error::msg)?;
+    if let Some(schedule) = &schedule {
+        manager.set_schedule(schedule.clone());
+    }
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .with_context(|| {
@@ -59,6 +64,7 @@ pub async fn serve(
     tracing::info!("API listening on http://{}", listener.local_addr()?);
 
     let scanner = manager.spawn_scanner(SCAN_INTERVAL);
+    let scheduler = schedule.map(|s| s.spawn(manager.clone()));
     // Browsers a killed daemon left running; looking at all processes takes a moment.
     let _ = std::thread::Builder::new()
         .name("ssp-cleanup".into())
@@ -78,6 +84,9 @@ pub async fn serve(
         .await;
 
     tokio::task::spawn_blocking(move || {
+        if let Some(scheduler) = scheduler {
+            scheduler.stop();
+        }
         scanner.stop();
         manager.shutdown();
     })

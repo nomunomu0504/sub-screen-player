@@ -71,6 +71,9 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `GET` | `/metrics/{id}` | | 1つのメトリクス |
 | `DELETE` | `/metrics/{id}` | | メトリクスを削除 |
 | `GET` | `/system` | | CPU・メモリ・通信・ディスクの数値（後述） |
+| `GET` | `/schedule` | | スケジュールの直前と次のエントリー（後述） |
+| `POST` | `/schedule/pause` | | 時刻による切り替えを止める |
+| `POST` | `/schedule/resume` | | 今の状態を当てはめて切り替えを再開する |
 
 ### `GET /health`
 
@@ -108,7 +111,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`rotation`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数、`partial` は変わった部分だけを送った数です（`[display] partial_updates`）。
 - `notification` は通知を出している間だけ入ります（後述）:
@@ -172,6 +175,23 @@ Windows では WinGet・Scoop・Chocolatey のフォルダ）の順に探しま�
 
 `widgets` は左から並べるパネルです（`clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>` から1〜6個。
 `claude-code` は [CLI ガイド](cli.ja.md#claude-code-の使用量を表示する)を参照）。`accent` はグラフの色です。
+
+### `GET /schedule`・`POST /schedule/pause`・`POST /schedule/resume`
+
+設定ファイルのスケジュール（`[[schedule]]`。[コマンドラインガイド](cli.ja.md)を参照）です。
+
+```json
+{
+  "entries": 4,
+  "paused": false,
+  "last": { "at": "2026-10-09T19:00:00+09:00", "entries": [2], "does": ["show clock, brightness 40"] },
+  "next": { "at": "2026-10-10T01:00:00+09:00", "entries": [3], "does": ["power off"] }
+}
+```
+
+`last` と `next` の `entries` は設定ファイルでの順番（1 から）、`at` はローカル時刻です。スケジュールがなければ `entries`
+は 0 で、`last` と `next` はありません。`pause` で時刻による切り替えを止め、`resume` で今の時点の状態をすべての
+ディスプレイに当てはめて再開します。スケジュールがないときは、どちらも `409` を返します。
 
 ### `POST /displays/{id}/notify`・`DELETE /displays/{id}/notify`
 

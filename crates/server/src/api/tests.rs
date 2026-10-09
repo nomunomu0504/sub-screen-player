@@ -18,11 +18,12 @@ use ssp_core::testing::{Call, CallLog, FakeDisplay};
 use tokio::sync::watch;
 use tower::ServiceExt;
 
-use super::types::{DisplayView, ErrorBody, Health, MetricView, SystemView};
+use super::types::{DisplayView, ErrorBody, Health, MetricView, ScheduleView, SystemView};
 use super::{AppState, router};
-use crate::config::{Config, StartupConfig, StartupShow};
+use crate::config::{Config, RotationItem, ScheduleEntry, StartupConfig, StartupShow};
 use crate::manager::Manager;
 use crate::metrics::Metrics;
+use crate::schedule::Schedule;
 use crate::sources::video::{self, Videos};
 use crate::web::page_token::PageToken;
 
@@ -50,6 +51,10 @@ impl Api {
         let videos = Videos::new(config.video.ffmpeg.clone(), dir.join("uploads")).unwrap();
         let metrics = Metrics::default();
         let manager = Arc::new(Manager::new(Registry::new(), &config, metrics.clone()).unwrap());
+        // As the daemon does: the schedule decides what a display shows when it connects.
+        if let Some(schedule) = Schedule::new(&config, &metrics).unwrap() {
+            manager.set_schedule(schedule);
+        }
         let (display, log) = FakeDisplay::new();
         manager.attach(Box::new(display), c"fake".to_owned());
         // Only WebSocket streams watch for the daemon stopping, and these tests open none.
@@ -776,4 +781,82 @@ async fn refuses_bad_notifications() {
     let unknown = json_request("POST", "/api/v1/displays/nope/notify", r#"{"text": "a"}"#);
     assert_eq!(api.send(unknown).await.0, StatusCode::NOT_FOUND);
     assert!(api.log.take().is_empty());
+}
+
+/// A schedule entry at midnight every day, so it has always happened in the last day.
+fn midnight(show: StartupShow, brightness: u8) -> ScheduleEntry {
+    ScheduleEntry {
+        at: "00:00".into(),
+        days: Vec::new(),
+        display: None,
+        show: Some(show),
+        image: None,
+        url: None,
+        reload: None,
+        fit: None,
+        brightness: Some(brightness),
+        power: None,
+    }
+}
+
+#[tokio::test]
+async fn follows_the_schedule() {
+    let api = Api::new(Config {
+        schedule: vec![midnight(StartupShow::Dashboard, 30)],
+        ..config()
+    });
+    // A display that connects shows what the schedule says, at its brightness.
+    assert_eq!(api.content().await, "dashboard");
+    wait_until(|| api.log.calls().contains(&Call::Brightness(30)));
+
+    let schedule: ScheduleView = api.get("/api/v1/schedule").await;
+    assert_eq!((schedule.entries, schedule.paused), (1, false));
+    let last = schedule.last.expect("midnight has passed");
+    assert!(
+        last.at.ends_with(&last.at[19..]) && last.at.contains("T00:00:00"),
+        "{}",
+        last.at
+    );
+    assert_eq!(last.does, ["show dashboard, brightness 30"]);
+    assert!(schedule.next.is_some());
+
+    // A change by hand stays until the next entry, or until the schedule is resumed.
+    let (status, _) = api
+        .send(post(&format!("/api/v1/displays/{DISPLAY}/clock"), ""))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(api.content().await, "clock");
+    let pause = post("/api/v1/schedule/pause", "");
+    assert_eq!(api.send(pause).await.0, StatusCode::NO_CONTENT);
+    let schedule: ScheduleView = api.get("/api/v1/schedule").await;
+    assert!(schedule.paused);
+    let resume = post("/api/v1/schedule/resume", "");
+    assert_eq!(api.send(resume).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(api.content().await, "dashboard");
+}
+
+#[tokio::test]
+async fn reports_no_schedule() {
+    let api = Api::new(config());
+    let schedule: ScheduleView = api.get("/api/v1/schedule").await;
+    assert_eq!(
+        (schedule.entries, schedule.last, schedule.next),
+        (0, None, None)
+    );
+    let (status, body) = api.send(post("/api/v1/schedule/pause", "")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(error(&body).contains("[[schedule]]"), "{body}");
+}
+
+#[tokio::test]
+async fn rotates_between_screens() {
+    let mut config = config();
+    config.startup.show = StartupShow::Rotation;
+    config.rotation.show = vec![
+        RotationItem::Name(StartupShow::Clock),
+        RotationItem::Name(StartupShow::Dashboard),
+    ];
+    let api = Api::new(config);
+    assert_eq!(api.content().await, "rotation");
+    wait_until(|| !api.log.calls().is_empty());
 }

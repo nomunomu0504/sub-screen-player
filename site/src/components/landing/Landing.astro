@@ -1,0 +1,495 @@
+---
+// The landing page, in English (/) or Japanese (/ja/). Design: the subscreen.dev canvas made
+// with Claude Design (landing, tokens and components). Text: ./copy.ts. Styles:
+// ../../styles/landing.css. The pictures are the repository's docs/images (copied to
+// src/assets/screens by scripts/sync-docs.ts).
+import { Image, getImage } from 'astro:assets';
+import '../../styles/landing.css';
+import { copy, type Heading, type Lang } from './copy';
+import clock from '../../assets/screens/clock.png';
+import clockJa from '../../assets/screens/clock-ja.png';
+import dashboard from '../../assets/screens/dashboard.png';
+import claudeCode from '../../assets/screens/dashboard-claude-code.png';
+import metrics from '../../assets/screens/dashboard-metrics.png';
+import web from '../../assets/screens/web-day.png';
+import video from '../../assets/screens/video.jpg';
+import notify from '../../assets/screens/notify.png';
+import layout from '../../assets/screens/layout.png';
+
+interface Props {
+	lang: Lang;
+}
+
+const { lang } = Astro.props;
+const t = copy[lang];
+const other: Lang = lang === 'en' ? 'ja' : 'en';
+const screens = { clock, clockJa, dashboard, claudeCode, metrics, web, video, notify, layout };
+type ScreenName = keyof typeof screens;
+const screen = (name: string) => screens[name as ScreenName];
+
+const repo = 'https://github.com/nomunomu0504/sub-screen-player';
+// Links follow wherever the site is deployed (a custom domain or <owner>.github.io/<repo>).
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const page = (path: string, to: Lang = lang) => `${base}/${to === 'ja' ? 'ja/' : ''}${path}`;
+const origin = Astro.site?.origin ?? 'https://subscreen.dev';
+const installUrl = (file: string) => `${origin}${base}/${file}`;
+const install = {
+	unix: `curl -fsSL ${installUrl('install.sh')} | sh`,
+	win: `powershell -c "irm ${installUrl('install.ps1')} | iex"`,
+};
+const canonical = new URL(page(''), origin).href;
+const alternate = new URL(page('', other), origin).href;
+const ogImage = await getImage({ src: notify, format: 'png', width: 1200 });
+const phrases = (heading: Heading) => (Array.isArray(heading) ? heading : [heading]);
+// Pictures in full-width frames and in cards.
+const wide = { widths: [960, 1440, 1920], sizes: '(min-width: 1240px) 1160px, 100vw' };
+const narrow = { widths: [640, 960, 1280], sizes: '(min-width: 1000px) 560px, 100vw' };
+const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3" y="20" width="58" height="24" rx="5" fill="#0b0e14" stroke="#6ee7b7" stroke-width="3"/><g fill="#f0f2f8"><rect x="11" y="27" width="4" height="10" rx="1"/><rect x="18" y="27" width="4" height="10" rx="1"/><rect x="26" y="29" width="2.5" height="2.5" rx="1"/><rect x="26" y="33.5" width="2.5" height="2.5" rx="1"/><rect x="32" y="27" width="4" height="10" rx="1"/><rect x="39" y="27" width="4" height="10" rx="1"/><rect x="47" y="27" width="6" height="10" rx="1" fill="#6ee7b7"/></g></svg>`;
+---
+
+<!doctype html>
+<html lang={t.htmlLang} data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{t.title}</title>
+		<meta name="description" content={t.description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="alternate" hreflang={lang} href={canonical} />
+		<link rel="alternate" hreflang={other} href={alternate} />
+		<link rel="alternate" hreflang="x-default" href={new URL(page('', 'en'), origin).href} />
+		<link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={t.title} />
+		<meta property="og:description" content={t.description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={new URL(ogImage.src, origin).href} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="theme-color" content="#070a10" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+		/>
+		<script is:inline>
+			// The same choice as the docs (Starlight keeps it in localStorage), else the system's.
+			(() => {
+				let theme = 'dark';
+				try {
+					const saved = localStorage.getItem('starlight-theme');
+					theme =
+						saved === 'light' || saved === 'dark'
+							? saved
+							: matchMedia('(prefers-color-scheme: light)').matches
+								? 'light'
+								: 'dark';
+				} catch {}
+				document.documentElement.dataset.theme = theme;
+			})();
+		</script>
+	</head>
+	<body>
+		<div class="ssp" lang={t.htmlLang}>
+			<header class="site-header">
+				<div class="wrap">
+					<a class="brand" href={page('')} aria-label={t.nav.home}>
+						<Fragment set:html={logo.replace('<svg ', '<svg width="34" height="34" ')} />
+						<span class="mono" lang="en">sub-screen-player</span>
+					</a>
+					<nav class="nav-links" aria-label={t.nav.sections}>
+						<a href="#screens">{t.nav.screens}</a>
+						<a href="#claude-code">Claude Code</a>
+						<a href="#how">{t.nav.how}</a>
+						<a href="#api">API</a>
+						<a href={page('getting-started/')}>{t.nav.docs}</a>
+					</nav>
+					<div class="lang">
+						{
+							lang === 'en' ? (
+								<>
+									<span aria-current="true">EN</span>
+									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
+									<a href={page('', 'ja')} lang="ja" hreflang="ja">日本語</a>
+								</>
+							) : (
+								<>
+									<a href={page('', 'en')} lang="en" hreflang="en">EN</a>
+									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
+									<span aria-current="true">日本語</span>
+								</>
+							)
+						}
+						<a class="btn btn-secondary btn-sm" href={repo} style="margin-left: 6px">GitHub</a>
+					</div>
+				</div>
+			</header>
+
+			<main id="top">
+				<!-- Hero -->
+				<section class="wrap" style="padding-top: clamp(48px, 7cqi, 96px); padding-bottom: clamp(56px, 7cqi, 104px)">
+					<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: clamp(32px, 5cqi, 64px)">
+						<div class="stack" style="flex: 1 1 520px; min-width: 0; gap: 22px">
+							<p class="eyebrow">{t.hero.eyebrow}</p>
+							<h1 class="h1">{phrases(t.hero.title).map((p) => <span class="ph">{p}</span>)}</h1>
+							<p class="lead" style={`max-width: ${lang === 'ja' ? 34 : 36}em`}>
+								{t.hero.lead[0]}<code class="mono" style="color: var(--text)">ssp</code>{t.hero.lead[1]}
+							</p>
+							<div class="btn-row" style="padding-top: 6px">
+								<a class="btn btn-primary" href={page('getting-started/')}>{t.hero.start}</a>
+								<a class="btn btn-secondary" href={page('download/')}>{t.hero.download}</a>
+								<a class="btn btn-ghost" href={repo}>GitHub <span aria-hidden="true">↗</span></a>
+							</div>
+						</div>
+
+						<div class="stack" style="flex: 1 1 400px; min-width: 0; gap: 10px" data-install>
+							<div class="term">
+								<div class="term-bar" style="padding: 0 6px 0 4px">
+									<div role="tablist" aria-label={t.hero.os} style="display: flex; align-items: center">
+										<button class="tab" role="tab" type="button" id="tab-unix" data-os="unix" aria-controls="install-unix" aria-selected="true">macOS · Linux</button>
+										<button class="tab" role="tab" type="button" id="tab-win" data-os="win" aria-controls="install-win" aria-selected="false" tabindex="-1">Windows</button>
+									</div>
+									<button class="copy" type="button" aria-live="polite">
+										<span class="ready" style="display: contents">
+											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+											<span>{t.hero.copy}</span>
+										</span>
+										<span class="done">
+											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+											<span>{t.hero.copied}</span>
+										</span>
+									</button>
+								</div>
+								<div role="tabpanel" id="install-unix" aria-labelledby="tab-unix" data-cmd="unix" style="min-height: 96px; display: flex; align-items: center">
+									<div class="cmd" style="padding: 18px 16px; font-size: 15px"><span class="p" aria-hidden="true">$</span><code>{install.unix}</code></div>
+								</div>
+								<div role="tabpanel" id="install-win" aria-labelledby="tab-win" data-cmd="win" hidden style="min-height: 96px; align-items: center">
+									<div class="cmd" style="padding: 18px 16px; font-size: 15px"><span class="p" aria-hidden="true">&gt;</span><code>{install.win}</code></div>
+								</div>
+							</div>
+							<p class="small">
+								{t.hero.note[0]}<code class="mono">ssp</code>{t.hero.note[1]}<code class="mono" style="color: var(--text)">ssp serve</code>{t.hero.note[2]}
+							</p>
+						</div>
+					</div>
+
+					<div class="stack" style="margin-top: clamp(40px, 6cqi, 80px); gap: 18px">
+						<div class="dsp">
+							<div class="dsp-stack">
+								<Image src={lang === 'ja' ? clockJa : clock} alt={t.hero.alts[0]} loading="eager" {...wide} />
+								<Image class="rot-2" src={dashboard} alt={t.hero.alts[1]} loading="eager" {...wide} />
+								<Image class="rot-3" src={notify} alt={t.hero.alts[2]} loading="eager" {...wide} />
+							</div>
+						</div>
+						<div aria-hidden="true" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; font: 500 13px/1 var(--font-mono); color: var(--muted)">
+							<span style="display: inline-flex; align-items: center; gap: 8px"><span class="strip"><i class="rot-1"></i></span>ssp clock</span>
+							<span style="display: inline-flex; align-items: center; gap: 8px"><span class="strip"><i class="rot-2"></i></span>ssp dashboard</span>
+							<span style="display: inline-flex; align-items: center; gap: 8px"><span class="strip"><i class="rot-3"></i></span>ssp notify</span>
+						</div>
+					</div>
+				</section>
+
+				<!-- Screens -->
+				<section id="screens" class="sec sec-line">
+					<div class="wrap stack" style="gap: clamp(28px, 4cqi, 48px)">
+						<div class="intro">
+							<p class="eyebrow">{t.screens.eyebrow}</p>
+							<h2 class="h2">{phrases(t.screens.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.screens.text}</p>
+						</div>
+
+						<article class="card" style="padding: clamp(14px, 2cqi, 24px); gap: 18px">
+							<div class="dsp"><Image src={layout} alt={t.screens.layout.alt} {...wide} /></div>
+							<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 32px">
+								<div class="card-text" style="flex: 1 1 300px; min-width: 0">
+									<h3 class="h3">{t.screens.layout.title}</h3>
+									<p class="body body-sm">{t.screens.layout.text}</p>
+								</div>
+								<div class="term" style="flex: 1 1 420px; min-width: 0"><div class="cmd"><span class="p" aria-hidden="true">$</span><code>{t.screens.layout.command}</code></div></div>
+							</div>
+						</article>
+
+						<div class="cards">
+							{
+								t.screens.cards.map((card) => (
+									<article class="card">
+										<div class="dsp dsp-sm"><Image src={screen(card.image)} alt={card.alt} {...narrow} /></div>
+										<div class="card-text">
+											<h3 class="h3">{card.title}</h3>
+											<p class="body body-sm">{card.text}</p>
+										</div>
+										<div class="term" style="margin-top: auto"><div class="cmd"><span class="p" aria-hidden="true">$</span><code>{card.command}</code></div></div>
+									</article>
+								))
+							}
+						</div>
+
+						<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding: 18px 20px; border: 1px dashed var(--line-strong); border-radius: 12px">
+							<h3 class="h3" style="flex: none">{t.screens.schedulesTitle}</h3>
+							<p class="body body-sm" style="flex: 1 1 320px">{t.screens.schedulesText}</p>
+						</div>
+					</div>
+				</section>
+
+				<!-- Claude Code -->
+				<section id="claude-code" class="sec sec-line sec-alt">
+					<div class="wrap" style="display: flex; flex-wrap: wrap; align-items: center; gap: clamp(32px, 5cqi, 72px)">
+						<div class="stack" style="flex: 1 1 420px; min-width: 0; gap: 18px">
+							<p class="eyebrow">{t.claude.eyebrow}</p>
+							<h2 class="h2">{phrases(t.claude.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.claude.text}</p>
+							<div class="term"><div class="cmd cmd-lg"><span class="p" aria-hidden="true">$</span><code>ssp claude-code hooks --install</code></div></div>
+							<ul class="stack" style="gap: 10px; color: var(--muted); font-size: 15px">
+								{
+									t.claude.items.map(([name, text], i) => (
+										<li style="display: flex; gap: 12px">
+											<span
+												class={lang === 'en' ? 'mono' : undefined}
+												style={`flex: none; width: ${lang === 'en' ? 5.5 : 4}em; font-weight: ${lang === 'en' ? 500 : 700}; color: ${['var(--blue)', 'var(--mint)', 'var(--text)'][i]}`}
+											>
+												{name}
+											</span>
+											<span>{text}</span>
+										</li>
+									))
+								}
+							</ul>
+							<p class="small" style="padding-top: 6px; border-top: 1px solid var(--line)">{t.claude.note}</p>
+						</div>
+						<div class="stack" style="flex: 1.3 1 480px; min-width: 0; gap: 22px">
+							<figure class="stack" style="gap: 10px">
+								<div class="dsp"><Image src={notify} alt={t.claude.notifyAlt} {...wide} /></div>
+								<figcaption class="small">{t.claude.notifyCaption}</figcaption>
+							</figure>
+							<figure class="stack" style="gap: 10px">
+								<div class="dsp"><Image src={claudeCode} alt={t.claude.usageAlt} {...wide} /></div>
+								<figcaption class="small">{t.claude.usageCaption}</figcaption>
+							</figure>
+						</div>
+					</div>
+				</section>
+
+				<!-- How it works -->
+				<section id="how" class="sec sec-line">
+					<div class="wrap stack" style="gap: clamp(28px, 4cqi, 48px)">
+						<div class="intro">
+							<p class="eyebrow">{t.how.eyebrow}</p>
+							<h2 class="h2">{phrases(t.how.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.how.text}</p>
+						</div>
+						<div style="display: flex; flex-wrap: wrap; gap: 20px">
+							<div class="card" style="flex: 1.2 1 420px; min-width: 0; padding: clamp(18px, 2.4cqi, 28px); gap: 20px">
+								<div class="stack" style="gap: 6px">
+									<h3 class="h3">{t.how.partialTitle}</h3>
+									<p class="body body-sm">{t.how.partialText}</p>
+								</div>
+								<div role="img" aria-label={t.how.partialAria} class="stack" style="gap: 14px">
+									<div class="stack" style="gap: 6px">
+										<div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--muted)"><span>{t.how.whole}</span><span class="mono">{t.how.about} 50 KB</span></div>
+										<div style="height: 14px; border-radius: 4px; background: var(--line-strong)"></div>
+									</div>
+									<div class="stack" style="gap: 6px">
+										<div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text)"><span>{t.how.parts}</span><span class="mono" style="color: var(--mint); font-weight: 700">{t.how.about} 3.5 KB</span></div>
+										<div style="height: 14px; border-radius: 4px; background: var(--mint-soft)"><div style="width: 7%; height: 100%; border-radius: 4px; background: var(--mint)"></div></div>
+									</div>
+								</div>
+								<p class="small">{t.how.partialNote}</p>
+							</div>
+							<div style="flex: 2 1 520px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 20px">
+								{
+									t.how.cards.map(([title, text]) => (
+										<div class="card" style="gap: 6px; padding: 20px">
+											<h3 class="h3">{title}</h3>
+											<p class="body body-sm">{text}</p>
+										</div>
+									))
+								}
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<!-- For developers -->
+				<section id="api" class="sec sec-line sec-alt">
+					<div class="wrap stack" style="gap: clamp(28px, 4cqi, 48px)">
+						<div class="intro">
+							<p class="eyebrow">{t.api.eyebrow}</p>
+							<h2 class="h2">{phrases(t.api.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.api.text}</p>
+						</div>
+						<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); gap: 20px; align-items: start">
+							<div class="stack" style="gap: 12px; min-width: 0">
+								<h3 class="h3">{t.api.sendTitle}</h3>
+								<div class="term">
+									<div class="term-bar"><span>sh</span><span>PUT /api/v1/metrics/&#123;id&#125;</span></div>
+									<pre><span class="t-m">curl</span> -X PUT http://127.0.0.1:7920/api/v1/metrics/ci \
+  -d <span class="t-b">'&#123;"label":"CI","value":2,"unit":"failed"&#125;'</span></pre>
+								</div>
+								<div class="dsp dsp-sm"><Image src={metrics} alt={t.api.sendAlt} {...narrow} /></div>
+							</div>
+							<div class="stack" style="gap: 12px; min-width: 0">
+								<h3 class="h3">{t.api.readTitle}</h3>
+								<div class="term">
+									<div class="term-bar"><span>js</span><span>window.ssp</span></div>
+									<pre><span class="t-c">{t.api.readComment}</span>
+<span class="t-m">const</span> res = <span class="t-m">await</span> fetch(<span class="t-b">`$&#123;ssp.api&#125;/metrics/ci`</span>, &#123;
+  headers: &#123; Authorization: <span class="t-b">`Bearer $&#123;ssp.token&#125;`</span> &#125;,
+&#125;);
+<span class="t-m">const</span> ci = <span class="t-m">await</span> res.json();</pre>
+								</div>
+								<p class="small">{t.api.readNote}</p>
+								<a class="lnk mono" href={page('api/')} style="font-size: 14px; align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center">{t.api.reference}</a>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<!-- Displays -->
+				<section id="displays" class="sec sec-line">
+					<div class="wrap" style="display: flex; flex-wrap: wrap; gap: clamp(28px, 5cqi, 64px)">
+						<div class="stack" style="flex: 1 1 320px; min-width: 0; gap: 14px">
+							<p class="eyebrow">{t.displays.eyebrow}</p>
+							<h2 class="h2">{phrases(t.displays.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.displays.text}</p>
+						</div>
+						<div class="stack" style="flex: 2 1 520px; min-width: 0; gap: 20px">
+							<div style="border: 1px solid var(--line); border-radius: 16px; overflow: hidden">
+								<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 20px 22px; background: var(--surface)">
+									<div class="stack" style="gap: 2px">
+										<a class="mono" href={page('devices/d92/')} style="font-weight: 700; font-size: 17px">upHere D92</a>
+										<span class="small">{t.displays.detail}</span>
+									</div>
+									<span class="badge badge-ok">{t.displays.supported}</span>
+								</div>
+								<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 20px 22px; border-top: 1px dashed var(--line-strong)">
+									<div class="stack" style="flex: 1 1 280px; gap: 2px">
+										<span class={lang === 'en' ? 'mono' : undefined} style="font-weight: 700; font-size: 17px">{t.displays.yoursTitle}</span>
+										<span class="body body-sm">{t.displays.yoursText}</span>
+									</div>
+									<a class="btn btn-secondary" href={page('adding-a-device/')}>{t.displays.adding}</a>
+								</div>
+							</div>
+							<p class="small">{t.displays.trademark}</p>
+						</div>
+					</div>
+				</section>
+
+				<!-- Screen gallery (coming soon) -->
+				<section id="gallery" class="sec sec-line sec-alt">
+					<div class="wrap stack" style="gap: clamp(24px, 4cqi, 40px)">
+						<div class="intro">
+							<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px"><p class="eyebrow">{t.gallery.eyebrow}</p><span class="badge">{t.gallery.soon}</span></div>
+							<h2 class="h2">{phrases(t.gallery.title).map((p) => <span class="ph">{p}</span>)}</h2>
+							<p class="body">{t.gallery.text}</p>
+							<div class="term"><div class="cmd cmd-lg"><span class="p" aria-hidden="true">$</span><code>ssp web https://subscreen.dev/screens/system/</code></div></div>
+						</div>
+						<div aria-hidden="true" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px">
+							<div class="slot">/screens/system/</div>
+							<div class="slot slot-text">{t.gallery.yours}</div>
+							<div class="slot slot-text">{t.gallery.yours}</div>
+						</div>
+					</div>
+				</section>
+
+				<!-- Closing -->
+				<section class="sec sec-line">
+					<div class="wrap stack" style="align-items: center; gap: 22px; text-align: center">
+						<Fragment set:html={logo.replace('<svg ', '<svg width="72" height="72" ')} />
+						<h2 class="h2">{phrases(t.closing.title).map((p) => <span class="ph">{p}</span>)}</h2>
+						<div class="term" style="max-width: 100%; text-align: left"><div class="cmd" style="padding: 14px 18px"><span class="p" aria-hidden="true">$</span><code>{install.unix}</code></div></div>
+						<div class="btn-row" style="justify-content: center; width: 100%">
+							<a class="btn btn-primary" href={page('getting-started/')}>{t.hero.start}</a>
+							<a class="btn btn-secondary" href={page('download/')}>{t.hero.download}</a>
+						</div>
+					</div>
+				</section>
+			</main>
+
+			<footer class="site-footer">
+				<div class="wrap" style="display: flex; flex-wrap: wrap; gap: 32px 64px; padding-block: 48px">
+					<div class="stack" style="flex: 2 1 280px; gap: 10px">
+						<span class="mono" lang="en" style="font-weight: 700">sub-screen-player</span>
+						<p class="small" style="max-width: 30em">{t.footer.about}</p>
+					</div>
+					<nav class="foot-nav" aria-label={t.footer.project}>
+						<span class="foot-h">{t.footer.project}</span>
+						<a href={repo}>GitHub</a>
+						<a href={page('download/')}>{t.hero.download}</a>
+						<a href={`${repo}#license`}>{t.footer.license}</a>
+					</nav>
+					<nav class="foot-nav" aria-label={t.footer.docs}>
+						<span class="foot-h">{t.footer.docs}</span>
+						<a href={page('getting-started/')}>{t.hero.start}</a>
+						<a href={page('cli/')}>{t.footer.cliGuide}</a>
+						<a href={page('api/')}>HTTP / WebSocket API</a>
+						<a href={page('adding-a-device/')}>{t.displays.adding.replace(' →', '')}</a>
+					</nav>
+					<nav class="foot-nav" aria-label={t.nav.language}>
+						<span class="foot-h">{t.nav.language}</span>
+						{
+							lang === 'en' ? (
+								<>
+									<span aria-current="true">English</span>
+									<a href={page('', 'ja')} lang="ja" hreflang="ja">日本語</a>
+								</>
+							) : (
+								<>
+									<a href={page('', 'en')} lang="en" hreflang="en">English</a>
+									<span aria-current="true">日本語</span>
+								</>
+							)
+						}
+					</nav>
+				</div>
+				<div class="wrap" style="padding-block: 18px; border-top: 1px solid var(--line)">
+					<p class="small">{t.footer.privacy}</p>
+				</div>
+			</footer>
+		</div>
+
+		<script>
+			// The install command: tabs for the OS (Windows chosen on Windows) and a copy button.
+			for (const root of document.querySelectorAll<HTMLElement>('[data-install]')) {
+				const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+				const panels = [...root.querySelectorAll<HTMLElement>('[data-cmd]')];
+				const button = root.querySelector<HTMLButtonElement>('.copy');
+				let os = 'unix';
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				const select = (next: string, focus = false) => {
+					os = next;
+					for (const tab of tabs) {
+						const on = tab.dataset.os === os;
+						tab.setAttribute('aria-selected', String(on));
+						tab.tabIndex = on ? 0 : -1;
+						if (on && focus) tab.focus();
+					}
+					for (const panel of panels) {
+						panel.hidden = panel.dataset.cmd !== os;
+						panel.style.display = panel.hidden ? 'none' : 'flex';
+					}
+					button?.removeAttribute('data-copied');
+				};
+				tabs.forEach((tab, i) => {
+					tab.addEventListener('click', () => select(tab.dataset.os ?? 'unix'));
+					tab.addEventListener('keydown', (event) => {
+						if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+						const next = tabs[(i + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+						select(next.dataset.os ?? 'unix', true);
+					});
+				});
+				button?.addEventListener('click', async () => {
+					const text = root.querySelector(`[data-cmd="${os}"] code`)?.textContent ?? '';
+					try {
+						await navigator.clipboard.writeText(text);
+						button.setAttribute('data-copied', '');
+						clearTimeout(timer);
+						timer = setTimeout(() => button.removeAttribute('data-copied'), 1800);
+					} catch {
+						// No clipboard (an insecure page, a denied permission): the command stays selectable.
+					}
+				});
+				if (/Windows/.test(navigator.userAgent)) select('win');
+			}
+		</script>
+	</body>
+</html>

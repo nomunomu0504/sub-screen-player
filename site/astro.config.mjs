@@ -25,6 +25,37 @@ export default defineConfig({
 				ja: { label: '日本語', lang: 'ja' },
 			},
 			social: [{ icon: 'github', label: 'GitHub', href: repo }],
+			// The look of the landing page (src/styles/tokens.css): fonts, colors, headings, asides.
+			customCss: ['./src/styles/starlight.css'],
+			head: [
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
+				{
+					tag: 'link',
+					attrs: {
+						rel: 'stylesheet',
+						href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap',
+					},
+				},
+			],
+			// Terminals and code stay dark in both themes, like the landing page's.
+			expressiveCode: {
+				themes: ['starlight-dark'],
+				styleOverrides: {
+					borderRadius: '12px',
+					borderColor: '#1c2431',
+					codeFontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
+					codeBackground: '#0b0e14',
+					frames: {
+						editorBackground: '#0b0e14',
+						editorTabBarBackground: '#10151e',
+						editorActiveTabBackground: '#0b0e14',
+						terminalBackground: '#0b0e14',
+						terminalTitlebarBackground: '#10151e',
+						frameBoxShadowCssValue: 'none',
+					},
+				},
+			},
 			lastUpdated: true,
 			sidebar: [
 				{

@@ -1,0 +1,51 @@
+/* Design tokens of subscreen.dev, shared by the landing page and the Starlight docs.
+   Dark is the default; `data-theme="light"` on <html> (set like Starlight does) switches.
+   Displays and terminals stay dark in both themes: they are pictures of real hardware and
+   real shells. */
+
+:root {
+	--ssp-bg: #070a10;
+	--ssp-surface: #0b0e14;
+	--ssp-surface-2: #10151e;
+	--ssp-line: #1c2431;
+	--ssp-line-strong: #2b3545;
+	--ssp-text: #f0f2f8;
+	--ssp-muted: #a7b0bf;
+	--ssp-dim: #8591a3;
+	--ssp-mint: #6ee7b7;
+	--ssp-mint-ink: #04130d;
+	--ssp-mint-soft: rgba(110, 231, 183, 0.1);
+	--ssp-blue: #60a5fa;
+	--ssp-amber: #fbbf24;
+	--ssp-red: #f87171;
+	--ssp-glow: rgba(110, 231, 183, 0.28);
+	--ssp-shadow: rgba(0, 0, 0, 0.75);
+	--ssp-term-bg: #0b0e14;
+	--ssp-term-bar: #10151e;
+	--ssp-term-line: #1c2431;
+	--ssp-term-text: #e6e9f0;
+	--ssp-term-muted: #a7b0bf;
+	--ssp-term-mint: #6ee7b7;
+	--ssp-term-blue: #60a5fa;
+	--ssp-font-mono: 'JetBrains Mono', 'Noto Sans JP', ui-monospace, Menlo, Consolas, monospace;
+	--ssp-font-sans: 'Noto Sans JP', system-ui, -apple-system, 'Hiragino Sans', sans-serif;
+}
+
+:root[data-theme='light'] {
+	--ssp-bg: #f5f6f8;
+	--ssp-surface: #ffffff;
+	--ssp-surface-2: #eceef2;
+	--ssp-line: #d9dde4;
+	--ssp-line-strong: #b9c0cc;
+	--ssp-text: #0d1220;
+	--ssp-muted: #465064;
+	--ssp-dim: #5d6779;
+	--ssp-mint: #0a7453;
+	--ssp-mint-ink: #ffffff;
+	--ssp-mint-soft: rgba(10, 116, 83, 0.08);
+	--ssp-blue: #1d5bbf;
+	--ssp-amber: #8a5a00;
+	--ssp-red: #b42318;
+	--ssp-glow: rgba(10, 116, 83, 0.3);
+	--ssp-shadow: rgba(13, 18, 32, 0.4);
+}

@@ -1,6 +1,7 @@
 // Builds src/content/docs/ (Starlight's content folder) from two sources, so every document
 // has exactly one copy in the repository:
-//   - site/content/: pages written for the website (home, getting started, download)
+//   - site/content/: pages written for the website (getting started, download; the home page is
+//     src/pages/index.astro and ja/index.astro)
 //   - the repository's Markdown docs (docs/, CONTRIBUTING.md, SECURITY.md), English and
 //     Japanese (*.ja.md), which stay readable on GitHub as they are.
 // Repository docs get a frontmatter title from their first heading, lose the language switch

@@ -1,0 +1,180 @@
+/* The docs (Starlight) in the look of the landing page: the same tokens (tokens.css), JetBrains
+   Mono headings, mint as the accent, and terminals that stay dark in both themes. */
+@import './tokens.css';
+
+:root {
+	--sl-font: var(--ssp-font-sans);
+	--sl-font-mono: var(--ssp-font-mono);
+	--sl-line-height: 1.75;
+
+	--sl-color-white: #f0f2f8;
+	--sl-color-gray-1: #e2e6ee;
+	--sl-color-gray-2: #a7b0bf;
+	--sl-color-gray-3: #8591a3;
+	--sl-color-gray-4: #4b5565;
+	--sl-color-gray-5: #2b3545;
+	--sl-color-gray-6: #10151e;
+	--sl-color-black: #070a10;
+
+	--sl-color-accent-low: #0e2a20;
+	--sl-color-accent: #6ee7b7;
+	--sl-color-accent-high: #b6f3d9;
+	--sl-color-blue: #60a5fa;
+	--sl-color-orange: #fbbf24;
+	--sl-color-red: #f87171;
+
+	--sl-color-bg-nav: var(--ssp-bg);
+	--sl-color-bg-sidebar: var(--ssp-surface);
+	--sl-color-hairline-light: var(--ssp-line);
+	--sl-color-hairline: var(--ssp-line);
+	--sl-color-bg-inline-code: var(--ssp-surface-2);
+}
+
+:root[data-theme='light'] {
+	--sl-color-white: #0d1220;
+	--sl-color-gray-1: #1c2431;
+	--sl-color-gray-2: #465064;
+	--sl-color-gray-3: #5d6779;
+	--sl-color-gray-4: #8591a3;
+	--sl-color-gray-5: #d9dde4;
+	--sl-color-gray-6: #eceef2;
+	--sl-color-gray-7: #f5f6f8;
+	--sl-color-black: #ffffff;
+
+	--sl-color-accent-low: #d5f0e5;
+	--sl-color-accent: #0a7453;
+	--sl-color-accent-high: #064d37;
+	--sl-color-blue: #1d5bbf;
+	--sl-color-orange: #8a5a00;
+	--sl-color-red: #b42318;
+
+	--sl-color-bg: var(--ssp-bg);
+	--sl-color-bg-nav: var(--ssp-bg);
+	--sl-color-bg-sidebar: var(--ssp-surface);
+}
+
+:root:lang(ja) {
+	--sl-line-height: 1.9;
+}
+:lang(ja) .sl-markdown-content {
+	line-break: strict;
+}
+
+/* Headings and the site title in JetBrains Mono. */
+.site-title,
+h1#_top,
+.sl-markdown-content :is(h2, h3, h4):not(:where(.not-content *)) {
+	font-family: var(--ssp-font-mono);
+	letter-spacing: -0.01em;
+}
+h1#_top {
+	letter-spacing: -0.02em;
+}
+:lang(ja) :is(h1#_top, .sl-markdown-content :is(h2, h3, h4)) {
+	letter-spacing: 0.01em;
+	font-feature-settings: 'palt';
+	word-break: auto-phrase;
+}
+.sl-markdown-content h2:not(:where(.not-content *)) {
+	padding-top: 1.75rem;
+	border-top: 1px solid var(--ssp-line);
+}
+.site-title {
+	font-weight: 700;
+	font-size: 1rem;
+}
+
+/* Links in the text: mint and underlined. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--ssp-mint);
+	text-underline-offset: 4px;
+	text-decoration-thickness: 1px;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+	text-decoration-thickness: 2px;
+}
+:focus-visible {
+	outline: 2px solid var(--ssp-blue);
+	outline-offset: 3px;
+}
+
+/* Sidebar: the current page in mint on a soft fill. */
+.sidebar-content a {
+	border-radius: 8px;
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	color: var(--ssp-mint);
+	background-color: var(--ssp-mint-soft);
+	font-weight: 500;
+}
+.sidebar-content summary .group-label .large {
+	font-family: var(--ssp-font-mono);
+	font-size: 0.75rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ssp-dim);
+}
+
+/* Inline code. */
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
+	border: 1px solid var(--ssp-line);
+	border-radius: 5px;
+	padding: 0.0625rem 0.375rem;
+}
+
+/* Tables. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+	border: 1px solid var(--ssp-line);
+	border-radius: 12px;
+}
+.sl-markdown-content th:not(:where(.not-content *)) {
+	font: 700 0.75rem/1.4 var(--ssp-font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ssp-dim);
+	background: var(--ssp-surface);
+}
+
+/* Asides: a full border in the status color, a light fill, a mono title; the text keeps the
+   normal color so its contrast holds. */
+.starlight-aside {
+	border: 1px solid color-mix(in srgb, var(--sl-color-asides-border) 45%, transparent);
+	border-radius: 12px;
+	padding: 1rem 1.125rem;
+	background-color: color-mix(in srgb, var(--sl-color-asides-border) 7%, transparent);
+}
+.starlight-aside--note {
+	--sl-color-asides-border: var(--ssp-blue);
+	--sl-color-asides-text-accent: var(--ssp-blue);
+}
+.starlight-aside--tip {
+	--sl-color-asides-border: var(--ssp-mint);
+	--sl-color-asides-text-accent: var(--ssp-mint);
+}
+.starlight-aside--caution {
+	--sl-color-asides-border: var(--ssp-amber);
+	--sl-color-asides-text-accent: var(--ssp-amber);
+}
+.starlight-aside--danger {
+	--sl-color-asides-border: var(--ssp-red);
+	--sl-color-asides-text-accent: var(--ssp-red);
+}
+.starlight-aside__title {
+	font: 700 0.8125rem/1 var(--ssp-font-mono);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+.starlight-aside__content {
+	color: var(--ssp-text);
+}
+
+/* Pictures of the screens in a display frame. */
+.sl-markdown-content img[src*='/_astro/'][width='1920'] {
+	padding: 6px;
+	background: #0d1118;
+	border: 1px solid #252e3d;
+	border-radius: 12px;
+	box-shadow: 0 16px 32px -18px var(--ssp-shadow);
+}

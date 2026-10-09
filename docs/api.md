@@ -17,6 +17,32 @@ program can do.
 | No `token` (default; loopback only) | No credentials. Requests whose `Host` or `Origin` header is not loopback get `403`, so web pages cannot use the API through your browser. |
 | `token = "..."` | Send `Authorization: Bearer <token>`, or `?token=<token>` where headers are not possible (browser WebSockets). Otherwise `401`. |
 
+### Pages shown with `ssp web`
+
+A page shown with `ssp web` (or `POST /displays/{id}/web`) can read the daemon's figures, to
+draw its own dashboard. Before the page's scripts run, the daemon gives it
+
+```js
+window.ssp = { api: "http://127.0.0.1:7920/api/v1", token: "..." }
+```
+
+With `Authorization: Bearer <ssp.token>`, the page may `GET` `/health`, `/displays`,
+`/displays/{id}`, `/metrics`, `/metrics/{id}` and `/system`, from whatever origin it has
+(`null` for a file). These answers carry `Access-Control-Allow-Origin`, and preflight requests
+for these paths are answered. Anything else with this token gets `403`: a page cannot change
+what is shown, the backlight or the metrics.
+
+```js
+const response = await fetch(`${ssp.api}/metrics/claude-code`, {
+  headers: { Authorization: `Bearer ${ssp.token}` },
+});
+```
+
+Each page gets a new token, valid while it is shown (a page reloaded with `reload` keeps it). It
+is never written to disk or the log. A page could pass it on to the sites it loads, which could
+then read the same figures while it is shown, so show pages you trust.
+[contrib/web/system.html](../contrib/web/system.html) is an example.
+
 ## Display ids
 
 Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed by
@@ -44,6 +70,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `GET` | `/metrics` | | All metrics |
 | `GET` | `/metrics/{id}` | | One metric |
 | `DELETE` | `/metrics/{id}` | | Removes a metric |
+| `GET` | `/system` | | CPU, memory, network and disk figures (see below) |
 
 ### `GET /health`
 
@@ -200,9 +227,33 @@ are gone after a restart, so send them again (most senders run on a timer anyway
 `text` replaces `value` when set; `max` appears when set. `age` is in seconds.
 `DELETE /metrics/{id}` returns `404` for an unknown id.
 
-While a dashboard shows the `claude-code` panel, the daemon keeps the metric `claude-code` up to
-date itself (tokens in the current 5-hour block, the time it ends and today's total in `detail`,
+Once a dashboard shows the `claude-code` panel or the metric is asked for with
+`GET /metrics/claude-code`, the daemon keeps the metric `claude-code` up to date itself (tokens in the current 5-hour block, the time it ends and today's total in `detail`,
 and tokens per minute over the last hour in `history`).
+
+### `GET /system`
+
+The figures the dashboard draws:
+
+```json
+{
+  "cpu_percent": 12.5,
+  "cpu_count": 10,
+  "load": 2.31,
+  "memory_used": 25769803776,
+  "memory_total": 68719476736,
+  "rx_per_sec": 1250000.0,
+  "tx_per_sec": 84000.0,
+  "disk_used": 512000000000,
+  "disk_total": 994662584320
+}
+```
+
+CPU use (0-100, over all cores) and the network rates (bytes per second over all interfaces but
+loopback) are averaged since the previous request; ask about once a second. Memory and disk are in
+bytes; the disk is the one holding the system (`/`, or `C:\` on Windows). `load` (one-minute load
+average) is `null` on Windows, and `disk_used` and `disk_total` are `null` if the disk is not
+found.
 
 ### `POST /displays/{id}/web`
 

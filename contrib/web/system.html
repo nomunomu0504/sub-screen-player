@@ -1,0 +1,127 @@
+<!doctype html>
+<!--
+  A sample web screen for `ssp web` that reads the daemon's figures: CPU, memory and network
+  from `GET /system`, and the Claude Code usage from the `claude-code` metric. Made for a
+  1920x462 panel; edit it freely.
+
+    ssp web contrib/web/system.html
+
+  `ssp web` gives the page `window.ssp = { api, token }`. The token is valid while the page is
+  shown and only reads: metrics, displays and system figures.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>System</title>
+<style>
+  :root { --text: #eef2fb; --dim: #8b95ab; --track: #172033; --bg: #070b14; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Noto Sans", sans-serif; }
+  main { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; height: 100%;
+    padding: 56px 64px; box-sizing: border-box; }
+  section { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .label { font-size: 30px; color: var(--dim); }
+  .value { font-size: 112px; font-weight: 600; letter-spacing: -2px; line-height: 1.1;
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .value small { font-size: 44px; font-weight: 500; color: var(--dim); margin-left: 6px; letter-spacing: 0; }
+  .bar { height: 18px; border-radius: 9px; background: var(--track); overflow: hidden; margin: 14px 0; }
+  .bar div { height: 100%; width: 0; border-radius: 9px; transition: width .6s ease;
+    background: linear-gradient(90deg, #22d3ee, #6ee7b7); }
+  .detail { font-size: 28px; color: var(--dim); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .net { font-size: 64px; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .net span { color: var(--dim); font-weight: 500; margin-right: 12px; }
+  #message { position: fixed; inset: 0; display: none; place-items: center; font-size: 40px;
+    color: var(--dim); background: var(--bg); text-align: center; padding: 0 80px; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <div class="label">CPU</div>
+    <div class="value" id="cpu">--<small>%</small></div>
+    <div class="bar"><div id="cpu-bar"></div></div>
+    <div class="detail" id="cpu-detail"></div>
+  </section>
+  <section>
+    <div class="label">Memory</div>
+    <div class="value" id="memory">--<small>%</small></div>
+    <div class="bar"><div id="memory-bar"></div></div>
+    <div class="detail" id="memory-detail"></div>
+  </section>
+  <section>
+    <div class="label">Network</div>
+    <div class="net"><span>↓</span><b id="rx">--</b></div>
+    <div class="net"><span>↑</span><b id="tx">--</b></div>
+  </section>
+  <section>
+    <div class="label">Claude Code</div>
+    <div class="value" id="claude">--</div>
+    <div class="detail" id="claude-detail">waiting for figures</div>
+  </section>
+</main>
+<div id="message"></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ssp = window.ssp;
+
+  // GET from the daemon's API with the page's token.
+  async function read(path) {
+    const response = await fetch(`${ssp.api}${path}`, {
+      headers: { Authorization: `Bearer ${ssp.token}` },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error);
+    return body;
+  }
+
+  const gib = (bytes) => (bytes / 2 ** 30).toFixed(1);
+  const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+  function rate(perSec) {
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let unit = 0;
+    while (perSec >= 1000 && unit < units.length - 1) { perSec /= 1000; unit++; }
+    return `${perSec.toFixed(perSec < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
+  }
+  function percent(id, value) {
+    $(id).innerHTML = `${Math.round(value)}<small>%</small>`;
+    $(`${id}-bar`).style.width = `${Math.min(100, value)}%`;
+  }
+
+  async function system() {
+    const s = await read('/system');
+    percent('cpu', s.cpu_percent);
+    $('cpu-detail').textContent = `${s.cpu_count} cores` + (s.load == null ? '' : ` · load ${s.load.toFixed(2)}`);
+    percent('memory', (s.memory_used / s.memory_total) * 100);
+    $('memory-detail').textContent = `${gib(s.memory_used)} / ${gib(s.memory_total)} GB`;
+    $('rx').textContent = rate(s.rx_per_sec);
+    $('tx').textContent = rate(s.tx_per_sec);
+  }
+
+  async function claude() {
+    try {
+      const m = await read('/metrics/claude-code');
+      const value = m.text ?? compact.format(m.value ?? 0);
+      $('claude').textContent = value;
+      $('claude-detail').textContent = [m.unit, m.detail].filter(Boolean).join(' · ');
+    } catch (err) {
+      // The daemon starts reading the usage logs when the metric is first asked for.
+      $('claude-detail').textContent = err.message;
+    }
+  }
+
+  if (!ssp) {
+    $('message').style.display = 'grid';
+    $('message').textContent = 'Show this page with `ssp web` to read the figures.';
+  } else {
+    const every = (ms, update) => {
+      const run = () => update().catch((err) => console.error(err));
+      run();
+      setInterval(run, ms);
+    };
+    every(1000, system);
+    every(5000, claude);
+  }
+</script>
+</body>
+</html>

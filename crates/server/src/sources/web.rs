@@ -17,6 +17,7 @@ use super::Source;
 use crate::text::{TextStyle, builtin_font};
 use crate::web::Web;
 use crate::web::cdp::{Browser, Connection};
+use crate::web::page_token::PageToken;
 
 /// How long [`Page::render`] waits for a new frame before showing the last one again.
 const FRAME_WAIT: Duration = Duration::from_millis(500);
@@ -57,6 +58,8 @@ impl WebPage {
 pub struct Page {
     page: WebPage,
     web: Web,
+    /// Lets the page read the API while it is shown (`window.ssp`).
+    token: PageToken,
     running: Option<Running>,
     shown: u64,
     last: Option<Frame>,
@@ -71,6 +74,7 @@ impl Page {
         Self {
             page,
             web,
+            token: PageToken::issue(),
             running: None,
             shown: 0,
             last: None,
@@ -86,7 +90,12 @@ impl Source for Page {
         if !self.ended && self.running.as_ref().is_none_or(|r| r.size != size) {
             self.running = None;
             self.shown = 0;
-            self.running = Some(Running::start(&self.page, self.web.clone(), size));
+            self.running = Some(Running::start(
+                &self.page,
+                self.web.clone(),
+                self.token.as_str(),
+                size,
+            ));
         }
         if let Some(running) = &self.running {
             let mut slot = running.wait_for(self.shown);
@@ -140,14 +149,15 @@ struct Slot {
 }
 
 impl Running {
-    fn start(page: &WebPage, web: Web, size: (u32, u32)) -> Self {
+    fn start(page: &WebPage, web: Web, token: &str, size: (u32, u32)) -> Self {
         let shared = Arc::new(Shared::default());
         let stop = Arc::new(AtomicBool::new(false));
         let (to_thread, stop_thread, page) = (shared.clone(), stop.clone(), page.clone());
+        let token = token.to_owned();
         let thread = std::thread::Builder::new()
             .name("ssp-web".into())
             .spawn(move || {
-                let result = run(&page, &web, size, &to_thread, &stop_thread);
+                let result = run(&page, &web, &token, size, &to_thread, &stop_thread);
                 let reason = match result {
                     Ok(()) => return,
                     Err(reason) => reason,
@@ -189,6 +199,7 @@ impl Drop for Running {
 fn run(
     page: &WebPage,
     web: &Web,
+    token: &str,
     (width, height): (u32, u32),
     shared: &Shared,
     stop: &AtomicBool,
@@ -231,6 +242,15 @@ fn run(
         session,
     )?;
     cdp.call("Page.enable", json!({}), session)?;
+    // Before the page's own scripts, in every document it loads (also after a reload).
+    if let Some(api) = web.api() {
+        let ssp = json!({ "api": api, "token": token });
+        cdp.call(
+            "Page.addScriptToEvaluateOnNewDocument",
+            json!({ "source": format!("window.ssp = Object.freeze({ssp});") }),
+            session,
+        )?;
+    }
     let navigated = cdp.call("Page.navigate", json!({ "url": page.url }), session)?;
     if let Some(error) = navigated.get("errorText").and_then(|e| e.as_str()) {
         return Err(format!("cannot open {}: {error}", page.url));
@@ -361,6 +381,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::web::page_token;
 
     #[test]
     fn accepts_web_and_file_urls_only() {
@@ -394,10 +415,18 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ssp-web-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let html = dir.join("page.html");
-        std::fs::write(&html, "<body style='margin:0;background:#f00'></body>").unwrap();
+        // Red only if the page got where the API is and its token before its own script ran.
+        let page = "<body style='margin:0;background:#00f'><script>\
+            const ok = window.ssp && ssp.api === 'http://127.0.0.1:7920/api/v1' \
+            && ssp.token.length === 32;\
+            if (ok) document.body.style.background = '#f00';</script></body>";
+        std::fs::write(&html, page).unwrap();
         let url = url::Url::from_file_path(&html).unwrap();
-        let web = Web::with_dir(Some(chrome.into()), dir.clone());
+        let web = Web::with_dir(Some(chrome.into()), dir.clone())
+            .with_api("127.0.0.1:7920".parse().unwrap());
         let mut source = Page::new(WebPage::new(url.as_str(), None).unwrap(), web);
+        let token = source.token.as_str().to_owned();
+        assert!(page_token::is_valid(&token));
         let mut frame = Frame::blank(320, 80);
         let started = Instant::now();
         while frame.image().get_pixel(160, 40).0[0] < 200
@@ -414,6 +443,10 @@ mod tests {
             started.elapsed()
         );
         drop(source);
+        assert!(
+            !page_token::is_valid(&token),
+            "the token ends with the page"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

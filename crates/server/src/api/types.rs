@@ -230,3 +230,27 @@ pub struct MetricView {
     /// Recent values, oldest first.
     pub history: Vec<f32>,
 }
+
+/// `GET /api/v1/system`: the figures the dashboard draws. CPU use and network rates are
+/// averaged since the previous request (requests less than 250 ms apart get the same figures).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SystemView {
+    /// CPU use over all cores, 0-100.
+    pub cpu_percent: f32,
+    /// Number of logical CPUs.
+    pub cpu_count: usize,
+    /// One-minute load average; `null` on Windows.
+    pub load: Option<f64>,
+    /// Memory in use, bytes.
+    pub memory_used: u64,
+    /// Installed memory, bytes.
+    pub memory_total: u64,
+    /// Received bytes per second over all interfaces except loopback.
+    pub rx_per_sec: f64,
+    /// Sent bytes per second over all interfaces except loopback.
+    pub tx_per_sec: f64,
+    /// Used bytes of the system disk, if found.
+    pub disk_used: Option<u64>,
+    /// Size of the system disk in bytes, if found.
+    pub disk_total: Option<u64>,
+}

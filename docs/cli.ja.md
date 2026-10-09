@@ -182,6 +182,10 @@ HTML・CSS・JavaScript で作れるものなら、何でも画面にできま�
 自分では更新しないページには、`--reload` で指定した秒数ごとに読み込み直させます。ファイルは `file://` の URL として
 デーモンに渡すので、別の PC のデーモンを使うときは、ファイルもその PC に置いてください。
 
+ページからデーモンの数値を読んで、自分のダッシュボードを描くこともできます。自分のメトリクス、Claude Code の使用量、
+CPU・メモリ・通信・ディスクの数値です。デーモンは表示するページごとに、読み取り専用のトークンを渡します（`window.ssp`）。
+[API ガイド](api.ja.md)の「`ssp web` で表示するページ」を見てください。[contrib/web/system.html](../contrib/web/system.html) が例です。
+
 **ヘッドレス Chrome** は `ssp` に含まれていません。初めて `ssp web` を使うときに、ダウンロードするか（約 100 MB、Google の
 [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) から）を尋ね、
 `~/Library/Application Support/sub-screen-player/chrome`（macOS）、`~/.local/share/sub-screen-player/chrome`（Linux）、

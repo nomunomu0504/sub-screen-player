@@ -6,7 +6,7 @@ mod stream;
 mod tests;
 pub mod types;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::{Body, BodyDataStream};
@@ -23,13 +23,15 @@ use tokio::sync::watch;
 use crate::config::{ClockConfig, Config, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
+use crate::sources::stats::Stats;
 use crate::sources::video::{self, MAX_VIDEO_BYTES, VideoFile, Videos};
 use crate::sources::web::WebPage;
 use crate::sources::{Clock, Content, Picture};
 use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
-    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView, WebRequest,
+    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView, SystemView,
+    WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -45,6 +47,8 @@ pub struct AppState {
     metrics: Metrics,
     videos: Arc<Videos>,
     web: Web,
+    /// Measures `GET /system`.
+    system: Arc<Mutex<Stats>>,
     shutdown: watch::Receiver<bool>,
 }
 
@@ -65,7 +69,8 @@ impl AppState {
             dashboard: config.dashboard.clone(),
             metrics,
             videos: Arc::new(videos),
-            web: Web::new(&config.web),
+            web: Web::new(&config.web).with_api(config.listen),
+            system: Arc::new(Mutex::new(Stats::new())),
             shutdown,
         }
     }
@@ -87,6 +92,7 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/stream", get(stream::stream))
         .route("/displays/{id}/web", post(show_web))
         .route("/web/chrome", get(chrome_status).post(install_chrome))
+        .route("/system", get(system))
         .route("/metrics", get(list_metrics))
         .route(
             "/metrics/{id}",
@@ -525,6 +531,27 @@ async fn stop(State(app): State<AppState>, Path(id): Path<String>) -> Result<Sta
     .await
 }
 
+async fn system(State(app): State<AppState>) -> Result<Json<SystemView>, ApiError> {
+    let now = tokio::task::spawn_blocking(move || {
+        let mut stats = app.system.lock().unwrap_or_else(|p| p.into_inner());
+        stats.refresh_or_wait();
+        stats.now.clone()
+    })
+    .await
+    .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(SystemView {
+        cpu_percent: now.cpu_percent,
+        cpu_count: now.cpu_count,
+        load: now.load,
+        memory_used: now.memory_used,
+        memory_total: now.memory_total,
+        rx_per_sec: now.rx_per_sec,
+        tx_per_sec: now.tx_per_sec,
+        disk_used: now.disk.map(|(used, _)| used),
+        disk_total: now.disk.map(|(_, total)| total),
+    }))
+}
+
 async fn list_metrics(State(app): State<AppState>) -> Json<Vec<MetricView>> {
     Json(
         app.metrics
@@ -539,6 +566,9 @@ async fn get_metric(
     State(app): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<MetricView>, ApiError> {
+    // A built-in metric (`claude-code`) starts being gathered when it is first asked for, as
+    // when a dashboard first shows its panel; until the first figures are in, it is not found.
+    app.metrics.activate(&id);
     let metric = app
         .metrics
         .get(&id)

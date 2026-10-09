@@ -17,6 +17,30 @@
 | `token` なし（既定。ループバックのみ） | 認証情報は不要です。`Host` または `Origin` ヘッダーがループバックでないリクエストには `403` を返すため、Web ページがブラウザ経由で API を使うことはできません。 |
 | `token = "..."` | `Authorization: Bearer <token>` を送るか、ヘッダーを付けられない場合（ブラウザの WebSocket など）は `?token=<token>` を付けます。なければ `401` です。 |
 
+### `ssp web` で表示するページ
+
+`ssp web`（または `POST /displays/{id}/web`）で表示するページは、デーモンの数値を読んで、自分のダッシュボードを描けます。
+デーモンは、ページのスクリプトが動く前に、次の値をページに渡します。
+
+```js
+window.ssp = { api: "http://127.0.0.1:7920/api/v1", token: "..." }
+```
+
+ページは `Authorization: Bearer <ssp.token>` を付けて、`/health`・`/displays`・`/displays/{id}`・`/metrics`・
+`/metrics/{id}`・`/system` を `GET` できます。ページのオリジンは問いません（ファイルなら `null`）。これらの応答には
+`Access-Control-Allow-Origin` が付き、これらのパスへのプリフライトリクエストにも応答します。このトークンでそれ以外を
+リクエストすると `403` です。ページから、表示する内容・明るさ・メトリクスを変えることはできません。
+
+```js
+const response = await fetch(`${ssp.api}/metrics/claude-code`, {
+  headers: { Authorization: `Bearer ${ssp.token}` },
+});
+```
+
+トークンはページごとに新しく作り、表示している間だけ有効です（`reload` で読み込み直しても同じトークンのままです）。
+ディスクやログには書きません。ページが読み込む別のサイトにトークンを渡すと、そのサイトも表示中は同じ数値を読めるので、
+信頼できるページを表示してください。[contrib/web/system.html](../contrib/web/system.html) が例です。
+
 ## ディスプレイ ID
 
 ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のような形で、`GET /displays` で一覧できます。
@@ -44,6 +68,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `GET` | `/metrics` | | すべてのメトリクス |
 | `GET` | `/metrics/{id}` | | 1つのメトリクス |
 | `DELETE` | `/metrics/{id}` | | メトリクスを削除 |
+| `GET` | `/system` | | CPU・メモリ・通信・ディスクの数値（後述） |
 
 ### `GET /health`
 
@@ -192,8 +217,31 @@ curl -X PUT http://127.0.0.1:7920/api/v1/metrics/ci \
 `text` を設定したときは `value` の代わりに `text` が入り、`max` は設定したときだけ入ります。`age` の単位は秒です。
 `DELETE /metrics/{id}` は、存在しない id に `404` を返します。
 
-ダッシュボードに `claude-code` パネルを表示している間は、デーモン自身がメトリクス `claude-code` を更新し続けます（今の5時間
+ダッシュボードに `claude-code` パネルを表示するか、`GET /metrics/claude-code` でメトリクスを読むと、それ以降はデーモン自身がメトリクス `claude-code` を更新し続けます（今の5時間
 ブロックのトークン数、`detail` にブロックの終わる時刻と今日の合計、`history` に直近1時間の1分ごとのトークン数）。
+
+### `GET /system`
+
+ダッシュボードが描く数値です。
+
+```json
+{
+  "cpu_percent": 12.5,
+  "cpu_count": 10,
+  "load": 2.31,
+  "memory_used": 25769803776,
+  "memory_total": 68719476736,
+  "rx_per_sec": 1250000.0,
+  "tx_per_sec": 84000.0,
+  "disk_used": 512000000000,
+  "disk_total": 994662584320
+}
+```
+
+CPU 使用率（0〜100、全コア）と通信速度（ループバックを除く全インターフェースの毎秒のバイト数）は、前回のリクエストからの
+平均です。1秒に1回くらい読んでください。メモリとディスクの単位はバイトで、ディスクはシステムのあるもの（`/`、Windows では
+`C:\`）です。`load`（1分間のロードアベレージ）は Windows では `null`、ディスクが見つからないときは `disk_used` と
+`disk_total` が `null` です。
 
 ### `POST /displays/{id}/web`
 

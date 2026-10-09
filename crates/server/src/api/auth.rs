@@ -5,17 +5,45 @@
 //! - Without a token the daemon only listens on loopback (enforced by the config). Requests
 //!   whose `Host` or `Origin` is not loopback are refused, so web pages cannot reach the API
 //!   through the user's browser (CSRF, DNS rebinding).
+//! - A page shown with `ssp web` gets a token of its own (`window.ssp.token`). It only reads
+//!   ([`page_readable`]), from any origin: those answers carry CORS headers for the page's
+//!   origin. Preflight requests for these paths are answered without a token, as browsers send
+//!   them without credentials.
 
 use std::net::IpAddr;
 
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use super::{ApiError, AppState};
+use crate::web::page_token;
 
 pub async fn guard(State(app): State<AppState>, request: Request, next: Next) -> Response {
+    let origin = request.headers().get(header::ORIGIN).cloned();
+    let readable = page_readable(request.uri().path());
+    if request.method() == Method::OPTIONS
+        && readable
+        && request
+            .headers()
+            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD)
+    {
+        return preflight(request.headers(), origin);
+    }
+    if presented_token(&request).is_some_and(page_token::is_valid) {
+        let mut response = if readable && request.method() == Method::GET {
+            next.run(request).await
+        } else {
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                "a page token can only read metrics, displays and system figures",
+            )
+            .into_response()
+        };
+        allow_origin(&mut response, origin);
+        return response;
+    }
     let allowed = match &app.token {
         Some(token) => {
             presented_token(&request).is_some_and(|t| same(t.as_bytes(), token.as_bytes()))
@@ -48,6 +76,59 @@ fn presented_token(request: &Request) -> Option<&str> {
             .split('&')
             .find_map(|pair| pair.strip_prefix("token="))
     })
+}
+
+/// Paths a page token may `GET`: `/health`, `/displays`, `/displays/{id}`, `/metrics`,
+/// `/metrics/{id}` and `/system`.
+pub fn page_readable(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/v1/") else {
+        return false;
+    };
+    let mut parts = rest.split('/');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("health" | "displays" | "metrics" | "system"), None, None) => true,
+        (Some("displays" | "metrics"), Some(id), None) => !id.is_empty(),
+        _ => false,
+    }
+}
+
+/// The answer to a CORS preflight for a [`page_readable`] path.
+fn preflight(headers: &HeaderMap, origin: Option<HeaderValue>) -> Response {
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    let set = response.headers_mut();
+    set.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET"),
+    );
+    set.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("authorization"),
+    );
+    set.insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("600"),
+    );
+    // Chrome asks before a page from the internet or the local network reaches loopback.
+    if headers
+        .get("access-control-request-private-network")
+        .is_some_and(|v| v == "true")
+    {
+        set.insert(
+            "access-control-allow-private-network",
+            HeaderValue::from_static("true"),
+        );
+    }
+    allow_origin(&mut response, origin);
+    response
+}
+
+/// Lets the page at `origin` (`null` for a file) read `response`.
+fn allow_origin(response: &mut Response, origin: Option<HeaderValue>) {
+    let set = response.headers_mut();
+    set.insert(header::VARY, HeaderValue::from_static("Origin"));
+    if let Some(origin) = origin {
+        set.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
 }
 
 /// Compares without an early exit, so timing does not reveal the token.
@@ -113,6 +194,31 @@ mod tests {
         assert!(!is_loopback_origin("null"));
         assert!(!is_loopback_origin("https://evil.example"));
         assert!(!is_loopback_origin("file://localhost"));
+    }
+
+    #[test]
+    fn pages_read_only_some_paths() {
+        for path in [
+            "/api/v1/health",
+            "/api/v1/displays",
+            "/api/v1/displays/d92-1",
+            "/api/v1/metrics",
+            "/api/v1/metrics/claude-code",
+            "/api/v1/system",
+        ] {
+            assert!(page_readable(path), "{path}");
+        }
+        for path in [
+            "/api/v1/displays/d92-1/stream",
+            "/api/v1/displays/d92-1/image",
+            "/api/v1/web/chrome",
+            "/api/v1/metrics/",
+            "/api/v1/health/x",
+            "/api/v2/metrics",
+            "/metrics",
+        ] {
+            assert!(!page_readable(path), "{path}");
+        }
     }
 
     #[test]

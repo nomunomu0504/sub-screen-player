@@ -1453,6 +1453,7 @@ dependencies = [
  "directories",
  "fontdb",
  "futures-util",
+ "getrandom",
  "image",
  "jiff",
  "memchr",

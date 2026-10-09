@@ -134,9 +134,12 @@ A `Display` is only ever used by its device thread, so drivers need no locking.
 - Without a token, requests whose `Host` or `Origin` header is not loopback are rejected.
   This stops web pages in the user's browser from driving the display (CSRF, DNS rebinding).
 - With a token, every request needs `Authorization: Bearer <token>` or `?token=<token>`.
+- A page shown with `ssp web` gets a random token of its own (`window.ssp`), valid while it is
+  shown and kept in memory only. It only reads (metrics, displays, system figures), from any
+  origin, with CORS headers for that origin; everything else with it gets `403`.
 - The daemon reads no files of the user's beyond its config and the images it is told to show,
   except Claude Code's session logs for the `claude-code` panel, and only once a dashboard shows
-  that panel. Only token counts and times are kept, in memory; they are visible to API clients as
+  that panel or the metric is asked for. Only token counts and times are kept, in memory; they are visible to API clients as
   the metric `claude-code`.
 - Web pages run in headless Chrome with a new, empty profile, deleted when the page is replaced.
   Any API client can make the daemon open a URL, `file://` included, so a daemon reachable from

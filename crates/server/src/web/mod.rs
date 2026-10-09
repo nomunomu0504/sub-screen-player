@@ -5,7 +5,9 @@
 //! `[web] chrome`. [`cdp`] drives it over the DevTools protocol.
 
 pub mod cdp;
+pub mod page_token;
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -31,6 +33,8 @@ pub struct Web {
     auto_download: bool,
     /// Folder of downloaded browsers.
     dir: PathBuf,
+    /// Base URL of the API, given to shown pages as `window.ssp.api`.
+    api: Option<String>,
 }
 
 /// The browser in use (`GET /api/v1/web/chrome`).
@@ -61,7 +65,28 @@ impl Web {
             configured: config.chrome.clone(),
             auto_download: config.auto_download,
             dir: dir.join("chrome"),
+            api: None,
         }
+    }
+
+    /// Tells shown pages where the API is (`window.ssp.api`): at `listen`, or on loopback when
+    /// the daemon listens on all addresses.
+    pub fn with_api(mut self, listen: SocketAddr) -> Self {
+        let ip = match listen.ip() {
+            IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+            IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+            ip => ip,
+        };
+        self.api = Some(format!(
+            "http://{}/api/v1",
+            SocketAddr::new(ip, listen.port())
+        ));
+        self
+    }
+
+    /// Base URL of the API for shown pages, if known.
+    pub fn api(&self) -> Option<&str> {
+        self.api.as_deref()
     }
 
     /// Settings for tests: downloads go to `dir`.
@@ -70,6 +95,7 @@ impl Web {
             configured,
             auto_download: false,
             dir,
+            api: None,
         }
     }
 
@@ -295,6 +321,26 @@ mod tests {
     use super::*;
 
     const LIST: &str = r#"{"timestamp":"2026-10-07T21:20:20.783Z","channels":{"Stable":{"channel":"Stable","version":"155.0.8059.39","revision":"1","downloads":{"chrome":[],"chrome-headless-shell":[{"platform":"linux64","url":"https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.39/linux64/chrome-headless-shell-linux64.zip"},{"platform":"mac-arm64","url":"https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.39/mac-arm64/chrome-headless-shell-mac-arm64.zip"}]}},"Beta":{}}}"#;
+
+    #[test]
+    fn tells_pages_where_the_api_is() {
+        let web =
+            |listen: &str| Web::with_dir(None, PathBuf::new()).with_api(listen.parse().unwrap());
+        assert_eq!(
+            web("127.0.0.1:7920").api(),
+            Some("http://127.0.0.1:7920/api/v1")
+        );
+        assert_eq!(
+            web("0.0.0.0:7920").api(),
+            Some("http://127.0.0.1:7920/api/v1")
+        );
+        assert_eq!(web("[::]:7000").api(), Some("http://[::1]:7000/api/v1"));
+        assert_eq!(
+            web("192.168.1.5:7920").api(),
+            Some("http://192.168.1.5:7920/api/v1")
+        );
+        assert_eq!(Web::with_dir(None, PathBuf::new()).api(), None);
+    }
 
     #[test]
     fn picks_the_stable_download() {

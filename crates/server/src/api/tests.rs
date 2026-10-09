@@ -18,12 +18,13 @@ use ssp_core::testing::{Call, CallLog, FakeDisplay};
 use tokio::sync::watch;
 use tower::ServiceExt;
 
-use super::types::{DisplayView, ErrorBody, Health, MetricView};
+use super::types::{DisplayView, ErrorBody, Health, MetricView, SystemView};
 use super::{AppState, router};
 use crate::config::{Config, StartupConfig, StartupShow};
 use crate::manager::Manager;
 use crate::metrics::Metrics;
 use crate::sources::video::{self, Videos};
+use crate::web::page_token::PageToken;
 
 /// The id of the fake display.
 const DISPLAY: &str = "fake-0001";
@@ -575,4 +576,126 @@ async fn refuses_web_pages_without_a_token() {
     assert!(error(&body).contains("web pages"), "{body}");
     let (status, _) = api.send(request("GET", "/api/v1/metrics/ci")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn reports_system_figures() {
+    let api = Api::new(config());
+    let system: SystemView = api.get("/api/v1/system").await;
+    assert!(system.cpu_count > 0);
+    assert!(system.memory_total > 0);
+    assert!((0.0..=100.0).contains(&system.cpu_percent));
+}
+
+#[tokio::test]
+async fn pages_read_with_their_token() {
+    for daemon_token in [None, Some(TOKEN.to_owned())] {
+        let api = Api::new(Config {
+            token: daemon_token.clone(),
+            ..config()
+        });
+        let token = PageToken::issue();
+        let bearer = format!("Bearer {}", token.as_str());
+        let from_page = |request: Request<Body>, origin: &str| {
+            let request = with_header(request, header::ORIGIN, origin);
+            with_header(request, header::AUTHORIZATION, &bearer)
+        };
+        let put = json_request("PUT", "/api/v1/metrics/ci", r#"{"value": 1}"#);
+        let put = match &daemon_token {
+            Some(t) => with_header(put, header::AUTHORIZATION, &format!("Bearer {t}")),
+            None => put,
+        };
+        assert!(api.send(put).await.0.is_success());
+
+        // Reads, from any origin, with CORS headers for it.
+        for (path, origin) in [
+            ("/api/v1/metrics/ci", "https://example.com"),
+            ("/api/v1/metrics", "null"),
+            ("/api/v1/displays", "http://192.168.1.5:8000"),
+            ("/api/v1/system", "null"),
+        ] {
+            let response = api
+                .router
+                .clone()
+                .oneshot(from_page(request("GET", path), origin))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            let allowed = response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN);
+            assert_eq!(allowed.unwrap(), origin, "{path}");
+        }
+
+        // Nothing else, and the request does not reach its handler.
+        for request in [
+            json_request("PUT", "/api/v1/metrics/ci", r#"{"value": 2}"#),
+            post(&format!("/api/v1/displays/{DISPLAY}/clear"), ""),
+            request("GET", "/api/v1/web/chrome"),
+        ] {
+            let (status, body) = api.send(from_page(request, "null")).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+            assert!(error(&body).contains("page token"), "{body}");
+        }
+        assert!(api.log.take().is_empty());
+
+        // A token of a page no longer shown is just a wrong token.
+        drop(token);
+        let (status, _) = api
+            .send(from_page(
+                request("GET", "/api/v1/metrics"),
+                "https://example.com",
+            ))
+            .await;
+        let refused = if daemon_token.is_some() {
+            StatusCode::UNAUTHORIZED
+        } else {
+            StatusCode::FORBIDDEN
+        };
+        assert_eq!(status, refused);
+    }
+}
+
+#[tokio::test]
+async fn answers_preflights_for_pages() {
+    let api = Api::new(Config {
+        token: Some(TOKEN.into()),
+        ..config()
+    });
+    let preflight = |path: &str| {
+        let request = request("OPTIONS", path);
+        let request = with_header(request, header::ORIGIN, "https://example.com");
+        let request = with_header(request, header::ACCESS_CONTROL_REQUEST_METHOD, "GET");
+        let request = with_header(
+            request,
+            header::ACCESS_CONTROL_REQUEST_HEADERS,
+            "authorization",
+        );
+        with_header(
+            request,
+            HeaderName::from_static("access-control-request-private-network"),
+            "true",
+        )
+    };
+    let response = api
+        .router
+        .clone()
+        .oneshot(preflight("/api/v1/metrics/claude-code"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let headers = response.headers();
+    assert_eq!(
+        headers[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+        "https://example.com"
+    );
+    assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_METHODS], "GET");
+    assert_eq!(
+        headers[header::ACCESS_CONTROL_ALLOW_HEADERS],
+        "authorization"
+    );
+    assert_eq!(headers["access-control-allow-private-network"], "true");
+    // Only for what pages may read.
+    let (status, _) = api
+        .send(preflight(&format!("/api/v1/displays/{DISPLAY}/clear")))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

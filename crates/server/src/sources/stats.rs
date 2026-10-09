@@ -119,7 +119,7 @@ impl Stats {
     /// after [`Stats::new`]) are ignored.
     pub fn refresh(&mut self) {
         let elapsed = self.last.elapsed();
-        if elapsed < MIN_SAMPLE_INTERVAL.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL) {
+        if elapsed < min_interval() {
             return;
         }
         let elapsed = elapsed.as_secs_f64();
@@ -155,6 +155,21 @@ impl Stats {
         self.rx.push(self.now.rx_per_sec as f32);
         self.tx.push(self.now.tx_per_sec as f32);
     }
+}
+
+impl Stats {
+    /// Like [`Stats::refresh`], but before the first sample it waits until one can be taken,
+    /// so the figures are never empty.
+    pub fn refresh_or_wait(&mut self) {
+        if self.cpu.0.is_empty() {
+            std::thread::sleep(min_interval().saturating_sub(self.last.elapsed()));
+        }
+        self.refresh();
+    }
+}
+
+fn min_interval() -> Duration {
+    MIN_SAMPLE_INTERVAL.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL)
 }
 
 impl Default for Stats {

@@ -192,6 +192,11 @@ CSS animations and pages that update themselves run as they would in a browser, 
 reloads the page every so many seconds, for pages that do not update themselves. A file is passed
 to the daemon as a `file://` URL, so with a daemon on another computer it has to be there.
 
+A page can also read the daemon's figures and draw its own dashboard: your metrics, the Claude
+Code usage, and the CPU, memory, network and disk figures. The daemon gives each page it shows
+a token that only reads (`window.ssp`); see "Pages shown with `ssp web`" in the
+[API guide](api.md). [contrib/web/system.html](../contrib/web/system.html) shows how.
+
 **Headless Chrome** is not part of `ssp`. The first `ssp web` asks to download it (about 100 MB,
 from Google's [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/)) into
 `~/Library/Application Support/sub-screen-player/chrome` (macOS),

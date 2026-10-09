@@ -381,7 +381,7 @@ fn startup_content(config: &Config, metrics: Metrics) -> Result<Content, String>
                 .map_err(|e| format!("startup.url: {e}"))?;
             Ok(Content::Web {
                 page,
-                web: Web::new(&config.web),
+                web: Web::new(&config.web).with_api(config.listen),
             })
         }
         StartupShow::Image => {

@@ -85,9 +85,12 @@ impl Browser {
         Ok(browser)
     }
 
-    /// Reads the DevTools address the browser writes into its profile once it listens.
+    /// Reads the DevTools address the browser writes into its profile once it listens, or into
+    /// its log: the Chromium snap of Ubuntu has a /tmp of its own, so the profile it writes to
+    /// is not the one this process sees, but its error output still comes to our log file.
     fn wait_for_devtools(&mut self) -> Result<String, String> {
         let file = self.profile.join("DevToolsActivePort");
+        let log = self.profile.join("chrome.log");
         let started = Instant::now();
         loop {
             if let Ok(text) = std::fs::read_to_string(&file) {
@@ -97,6 +100,12 @@ impl Browser {
                 {
                     return Ok(format!("ws://127.0.0.1:{port}{path}"));
                 }
+            }
+            if let Some(url) = std::fs::read_to_string(&log)
+                .ok()
+                .and_then(|text| devtools_from_log(&text))
+            {
+                return Ok(url);
             }
             if let Ok(Some(status)) = self.child.try_wait() {
                 let log =
@@ -127,6 +136,14 @@ impl Drop for Browser {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
+}
+
+/// The address of "DevTools listening on ws://…" in what the browser printed.
+fn devtools_from_log(log: &str) -> Option<String> {
+    log.lines().find_map(|line| {
+        let url = line.trim().strip_prefix("DevTools listening on ")?;
+        url.starts_with("ws://").then(|| url.to_owned())
+    })
 }
 
 /// Stops the browsers, and deletes the profiles, that daemons which did not exit cleanly (killed,
@@ -328,6 +345,17 @@ mod tests {
 
     /// A browser left by a daemon that is gone is stopped and its profile deleted. Uses the
     /// browser in `SSP_TEST_CHROME`, if set.
+    #[test]
+    fn finds_the_devtools_address_in_the_log() {
+        let log = "[1009/203100.1:WARNING] something\n\
+                   \nDevTools listening on ws://127.0.0.1:41235/devtools/browser/0b1c-2d\n";
+        assert_eq!(
+            devtools_from_log(log).as_deref(),
+            Some("ws://127.0.0.1:41235/devtools/browser/0b1c-2d")
+        );
+        assert_eq!(devtools_from_log("Fontconfig error\n"), None);
+    }
+
     #[test]
     fn cleans_up_after_a_killed_daemon() {
         let Some(chrome) = std::env::var_os("SSP_TEST_CHROME") else {

@@ -260,6 +260,8 @@ chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 動かないページなら、描いた後はほとんど負荷がありません。ページを表示できないとき（ネットワークがない、ファイルがない、
 ブラウザが起動しないなど）は、ディスプレイに理由を表示します。Linux では、ダウンロードした Chrome に一般的なブラウザ用の
 ライブラリが必要です。起動しないときは、ディストリビューションの `chromium` を入れて `[web] chrome` に指定してください。
+ARM64 の Linux（Raspberry Pi など）向けにはダウンロードできる Chrome がないので、Chromium を入れてください。Ubuntu では
+`sudo apt install chromium` で snap 版が入り、`chrome = "/snap/bin/chromium"` と指定します。
 デーモンの起動時にページを表示するには、次のように設定します。
 
 ```toml

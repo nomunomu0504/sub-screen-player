@@ -28,7 +28,9 @@ device-specific protocol has to be written; everything else is shared.
 ## Features
 
 - **Live frames at up to 60 fps.** Frames are encoded on one thread and sent on another. If
-  frames arrive faster than the device can take them, only the newest one is sent.
+  frames arrive faster than the device can take them, only the newest one is sent. Where the
+  display allows it (the D92 does), only the changed parts of a frame are sent: a clock moves
+  about 4 KB a second instead of 50 KB.
 - **Built-in clock** with configurable formats and colors, Japanese dates included.
 - **System dashboard**: the time next to CPU, memory, network and disk use, with graphs of the
   last minute.

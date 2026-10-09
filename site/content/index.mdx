@@ -44,8 +44,8 @@ Then run `ssp serve`: the clock appears on your display. More in [Getting starte
 
 <CardGrid>
 	<Card title="Live frames at 60 fps" icon="rocket">
-		Encoding and sending run in parallel. When frames arrive faster than the display takes them,
-		only the newest one is sent.
+		Encoding and sending run in parallel, only the newest frame is sent when they come too fast,
+		and only the parts that changed are sent: a clock moves about 4 KB a second instead of 50 KB.
 	</Card>
 	<Card title="Clock and dashboard" icon="seti:clock">
 		A built-in clock with your own formats and colors, and a dashboard of CPU, memory, network and

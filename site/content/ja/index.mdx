@@ -44,7 +44,7 @@ import ScreenGallery from '../../../components/ScreenGallery.astro';
 
 <CardGrid>
 	<Card title="最大 60fps のライブ表示" icon="rocket">
-		エンコードと送信を並行して行い、ディスプレイが受け取れる速さを超えてフレームが届いたときは最新のものだけを送ります。
+		エンコードと送信を並行して行い、速すぎるときは最新のフレームだけを、さらに変わった部分だけを送ります。時計なら1秒あたり 50 KB ではなく約 4 KB です。
 	</Card>
 	<Card title="時計とダッシュボード" icon="seti:clock">
 		書式や色を変えられる時計と、CPU・メモリ・ネットワーク・ディスクの使用状況を並べるダッシュボードを内蔵しています。

@@ -11,9 +11,9 @@
 		"html_handling": "auto-trailing-slash",
 		"not_found_handling": "404-page"
 	},
-	// Served at <name>.<account>.workers.dev until the domain moves. To serve subscreen.dev, delete
-	// its CNAME to GitHub Pages in the Cloudflare DNS first, then uncomment:
-	// "routes": [{ "pattern": "subscreen.dev", "custom_domain": true }],
+	// subscreen.dev is a custom domain of this Worker (Cloudflare manages its DNS record and
+	// certificate). The workers.dev address stays for checking a deploy.
+	"routes": [{ "pattern": "subscreen.dev", "custom_domain": true }],
 	"workers_dev": true,
 	"preview_urls": true
 }

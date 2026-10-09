@@ -76,4 +76,6 @@ jobs:
           [ "$RUNNER_OS" = Windows ] && exe=ssp.exe
           cp "target/release/$exe" "$dir/$exe"
           "$dir/$exe" update --to v0.7.0
-          "$dir/$exe" --version | tee /dev/stderr | grep -qx "ssp 0.7.0"
+          version=$("$dir/$exe" --version)
+          echo "$version"
+          [ "$version" = "ssp 0.7.0" ]

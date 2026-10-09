@@ -614,9 +614,12 @@ editing the config, `ssp config reload` applies it without a restart (on Linux,
 `ssp config reload` refuses a file with errors (the message says what is wrong), and the daemon
 keeps running as it was. With a good file, the daemon stops its screens and the API for a moment
 and starts again with the new config, in the same process: every setting applies, including
-`listen` and `token`. The displays are not blanked; they show what the new config says at start
-(`[startup]`, or the schedule). What was shown with `ssp show`, `ssp web` and the like is not
-kept, and neither are notifications or a paused schedule; metrics are kept. If the new config
+`listen` and `token`. The displays are not blanked. A display showing what you told it to
+(`ssp show`, `ssp web`, `ssp clock`, `ssp layout` and the like) shows it again: the clock, the
+dashboard, web pages and layouts with the new settings and the options you gave, pictures and
+videos as they were. The others show what the new config says at start (`[startup]`, or the
+schedule); with a schedule, its next change takes over as before. Metrics are kept;
+notifications, a paused schedule and WebSocket streams are not. If the new config
 cannot start (for example, the new `listen` address is taken), the daemon goes back to the one
 before and `ssp config reload` says why.
 

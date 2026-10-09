@@ -27,6 +27,7 @@ use crate::manager::Manager;
 use crate::metrics::Metrics;
 use crate::reload::Reloader;
 use crate::schedule::Schedule;
+use crate::sources::Content;
 use crate::sources::video::{self, Videos};
 use crate::web::page_token::PageToken;
 
@@ -1033,4 +1034,57 @@ async fn reload_needs_a_config_to_read() {
     let api = Api::new(config());
     let (status, _) = api.send(request("POST", "/api/v1/reload")).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+}
+
+#[tokio::test]
+async fn chosen_content_is_built_again_with_the_new_config() {
+    // A "browser" that is a plain file: the page is accepted, and starting it fails without
+    // touching the network.
+    let fake_chrome =
+        std::env::temp_dir().join(format!("ssp-api-fake-chrome-{}", std::process::id()));
+    std::fs::write(&fake_chrome, b"not a browser").unwrap();
+    let mut config = config();
+    config.web.chrome = Some(fake_chrome.clone());
+    let api = Api::new(config);
+    let post = |path: &str, body: &str| {
+        json_request("POST", &format!("/api/v1/displays/{DISPLAY}/{path}"), body)
+    };
+    let mut new = self::config();
+    new.clock.color = "#00FF00".into();
+    new.clock.seconds = false;
+    new.listen = "127.0.0.1:7931".parse().unwrap();
+    let rebuilt = || {
+        let chosen = api.manager.chosen();
+        assert_eq!(chosen.len(), 1);
+        chosen[0].1.content(&new, &Metrics::default()).unwrap()
+    };
+
+    // The clock keeps what the request set, over the new `[clock]`.
+    let (status, body) = api.send(post("clock", r##"{"color": "#FF0000"}"##)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    match rebuilt() {
+        Content::Clock(clock) => {
+            assert_eq!(clock.color, "#FF0000");
+            assert!(!clock.seconds);
+        }
+        other => panic!("{}", other.kind()),
+    }
+
+    // A web page talks to the daemon at its new address.
+    let (status, body) = api
+        .send(post("web", r#"{"url": "https://example.com/"}"#))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    match rebuilt() {
+        Content::Web { web, .. } => {
+            assert_eq!(web.api(), Some("http://127.0.0.1:7931/api/v1"));
+        }
+        other => panic!("{}", other.kind()),
+    }
+
+    // Stopped stays stopped.
+    let (status, _) = api.send(post("stop", "")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(rebuilt().kind(), "nothing");
+    let _ = std::fs::remove_file(fake_chrome);
 }

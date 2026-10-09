@@ -209,23 +209,33 @@ impl SpawnQuietly for Command {
 pub struct Videos {
     ffmpeg: Option<PathBuf>,
     dir: PathBuf,
+    /// Tells this instance's files from those of the instances before it in the process.
+    instance: u64,
     next: AtomicU64,
 }
 
 impl Videos {
-    /// Keeps uploads in `dir`, which no other daemon may use; it is emptied now. `ffmpeg` is
-    /// the configured program, if any.
+    /// Keeps uploads in `dir`, which no other daemon may use. `ffmpeg` is the configured
+    /// program, if any. The first instance in `dir` in this process empties it of what a
+    /// killed daemon left; later ones (after a reload of the config) leave the videos that
+    /// displays still play.
     pub fn new(ffmpeg: Option<PathBuf>, dir: PathBuf) -> std::io::Result<Self> {
-        if dir.exists() {
-            for entry in std::fs::read_dir(&dir)?.flatten() {
-                let _ = std::fs::remove_file(entry.path());
+        static CLEANED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+        static INSTANCES: AtomicU64 = AtomicU64::new(0);
+        let mut cleaned = CLEANED.lock().unwrap_or_else(|p| p.into_inner());
+        if !cleaned.contains(&dir) {
+            if dir.exists() {
+                for entry in std::fs::read_dir(&dir)?.flatten() {
+                    let _ = std::fs::remove_file(entry.path());
+                }
             }
-        } else {
-            std::fs::create_dir_all(&dir)?;
+            cleaned.push(dir.clone());
         }
+        std::fs::create_dir_all(&dir)?;
         Ok(Self {
             ffmpeg,
             dir,
+            instance: INSTANCES.fetch_add(1, Ordering::Relaxed),
             next: AtomicU64::new(0),
         })
     }
@@ -238,7 +248,7 @@ impl Videos {
     /// A new file name for an upload.
     pub fn file(&self) -> PathBuf {
         let n = self.next.fetch_add(1, Ordering::Relaxed);
-        self.dir.join(format!("video-{n}"))
+        self.dir.join(format!("video-{}-{n}", self.instance))
     }
 }
 
@@ -523,6 +533,12 @@ mod tests {
         let videos = Videos::new(None, dir.clone()).unwrap();
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
         assert_ne!(videos.file(), videos.file());
+        // After a reload, the uploads still played stay, and new ones get other names.
+        let playing = videos.file();
+        std::fs::write(&playing, b"still played").unwrap();
+        let again = Videos::new(None, dir.clone()).unwrap();
+        assert!(playing.exists());
+        assert_ne!(again.file(), playing);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -22,7 +22,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
 use crate::config::{ClockConfig, Config, DashboardConfig, LayoutConfig};
-use crate::manager::{DisplayState, LookupError, Manager};
+use crate::manager::{Chosen, DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
 use crate::notify::{self, Notification};
 use crate::reload::Reloader;
@@ -341,7 +341,10 @@ async fn show_layout(
         // Reads image and video files, so off the async threads.
         let content =
             Content::layout(&layout, &app.config, &app.metrics).map_err(ApiError::bad_request)?;
-        app.manager.set_content(&id, content)?;
+        let rebuild =
+            move |config: &Config, metrics: &Metrics| Content::layout(&layout, config, metrics);
+        app.manager
+            .choose(&id, content, Chosen::Rebuild(Arc::new(rebuild)))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -477,7 +480,9 @@ async fn show_image(
                 .presenter
                 .save(Frame::fit(picture.first(), panel.width, panel.height, fit))?;
         }
-        app.manager.set_content(&id, picture.into_content(fit))?;
+        let content = picture.into_content(fit);
+        app.manager
+            .choose(&id, content.clone(), Chosen::same(content))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -515,13 +520,12 @@ async fn show_video(
     }
     blocking(move || {
         let video = VideoFile::open(path, ffmpeg, true).map_err(ApiError::bad_request)?;
-        app.manager.set_content(
-            &id,
-            Content::Video {
-                video: Arc::new(video),
-                fit,
-            },
-        )?;
+        let content = Content::Video {
+            video: Arc::new(video),
+            fit,
+        };
+        app.manager
+            .choose(&id, content.clone(), Chosen::same(content))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -576,13 +580,19 @@ async fn show_web(
         app.web
             .ensure()
             .map_err(|e| ApiError::new(StatusCode::CONFLICT, e))?;
-        app.manager.set_content(
-            &id,
-            Content::Web {
-                page,
-                web: app.web.clone(),
-            },
-        )?;
+        let content = Content::Web {
+            page: page.clone(),
+            web: app.web.clone(),
+        };
+        // Again with the new browser settings and API address.
+        let rebuild = move |config: &Config, _: &Metrics| {
+            Ok(Content::Web {
+                page: page.clone(),
+                web: Web::new(&config.web).with_api(config.listen),
+            })
+        };
+        app.manager
+            .choose(&id, content, Chosen::Rebuild(Arc::new(rebuild)))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -640,7 +650,8 @@ async fn clear(
 ) -> Result<StatusCode, ApiError> {
     blocking(move || {
         let device = app.manager.device(&id)?;
-        app.manager.set_content(&id, Content::Nothing)?;
+        app.manager
+            .choose(&id, Content::Nothing, Chosen::same(Content::Nothing))?;
         device.clear()?;
         Ok(StatusCode::NO_CONTENT)
     })
@@ -653,29 +664,40 @@ async fn clock(
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
     let request: ClockRequest = optional_json(&body)?.unwrap_or_default();
-    let mut config = app.clock.clone();
+    let config = clock_with(&app.clock, &request).map_err(ApiError::bad_request)?;
+    // Again over the new `[clock]`.
+    let rebuild =
+        move |config: &Config, _: &Metrics| clock_with(&config.clock, &request).map(Content::Clock);
+    blocking(move || {
+        app.manager.choose(
+            &id,
+            Content::Clock(config),
+            Chosen::Rebuild(Arc::new(rebuild)),
+        )?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+/// The clock settings `base` with what `request` changes.
+fn clock_with(base: &ClockConfig, request: &ClockRequest) -> Result<ClockConfig, String> {
+    let mut config = base.clone();
     if let Some(seconds) = request.seconds {
         config.seconds = seconds;
         config.time_format = None;
     }
-    config.time_format = request.time_format.or(config.time_format);
-    config.date_format = request.date_format.unwrap_or(config.date_format);
-    config.weekdays = request.weekdays.unwrap_or(config.weekdays);
-    config.color = request.color.unwrap_or(config.color);
-    config.background = request.background.unwrap_or(config.background);
+    config.time_format = request.time_format.clone().or(config.time_format);
+    config.date_format = request.date_format.clone().unwrap_or(config.date_format);
+    config.weekdays = request.weekdays.clone().unwrap_or(config.weekdays);
+    config.color = request.color.clone().unwrap_or(config.color);
+    config.background = request.background.clone().unwrap_or(config.background);
     for color in [&config.color, &config.background] {
         if crate::config::parse_color(color).is_none() {
-            return Err(ApiError::bad_request(format!(
-                "{color:?} is not a #RRGGBB color"
-            )));
+            return Err(format!("{color:?} is not a #RRGGBB color"));
         }
     }
-    Clock::validate(&config).map_err(ApiError::bad_request)?;
-    blocking(move || {
-        app.manager.set_content(&id, Content::Clock(config))?;
-        Ok(StatusCode::NO_CONTENT)
-    })
-    .await
+    Clock::validate(&config)?;
+    Ok(config)
 }
 
 async fn dashboard(
@@ -684,25 +706,43 @@ async fn dashboard(
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
     let request: DashboardRequest = optional_json(&body)?.unwrap_or_default();
-    let mut config = app.dashboard.clone();
-    config.widgets = request.widgets.unwrap_or(config.widgets);
-    config.color = request.color.unwrap_or(config.color);
-    config.accent = request.accent.unwrap_or(config.accent);
-    config.background = request.background.unwrap_or(config.background);
-    config.validate().map_err(ApiError::bad_request)?;
+    let config = dashboard_with(&app.dashboard, &request).map_err(ApiError::bad_request)?;
     let clock = app.clock.clone();
     let metrics = app.metrics.clone();
+    // Again over the new `[dashboard]` and `[clock]`.
+    let rebuild = move |config: &Config, metrics: &Metrics| {
+        dashboard_with(&config.dashboard, &request)
+            .map(|d| Content::Dashboard(d, config.clock.clone(), metrics.clone()))
+    };
     blocking(move || {
-        app.manager
-            .set_content(&id, Content::Dashboard(config, clock, metrics))?;
+        app.manager.choose(
+            &id,
+            Content::Dashboard(config, clock, metrics),
+            Chosen::Rebuild(Arc::new(rebuild)),
+        )?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
 }
 
+/// The dashboard settings `base` with what `request` changes.
+fn dashboard_with(
+    base: &DashboardConfig,
+    request: &DashboardRequest,
+) -> Result<DashboardConfig, String> {
+    let mut config = base.clone();
+    config.widgets = request.widgets.clone().unwrap_or(config.widgets);
+    config.color = request.color.clone().unwrap_or(config.color);
+    config.accent = request.accent.clone().unwrap_or(config.accent);
+    config.background = request.background.clone().unwrap_or(config.background);
+    config.validate()?;
+    Ok(config)
+}
+
 async fn stop(State(app): State<AppState>, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     blocking(move || {
-        app.manager.set_content(&id, Content::Nothing)?;
+        app.manager
+            .choose(&id, Content::Nothing, Chosen::same(Content::Nothing))?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

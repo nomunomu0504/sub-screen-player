@@ -1,8 +1,12 @@
 name: Site
 
-# Builds the website (site/) and publishes it on GitHub Pages. Runs when the site or the docs it
-# includes change, and when a release is published (the download page lists the latest release;
-# the run started by the release only restarts this workflow on main, see rebuild-on-main).
+# Builds the website (site/) and publishes it. Runs when the site or the docs it includes change,
+# and when a release is published (the download page lists the latest release; the run started by
+# the release only restarts this workflow on main, see rebuild-on-main).
+#
+# Where it goes is set by the repository variable SITE_HOST: GitHub Pages when it is not set,
+# Cloudflare Workers (site/wrangler.jsonc) as well with "both", Cloudflare only with
+# "cloudflare". Cloudflare needs the secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 on:
   push:
     branches: [main]
@@ -71,11 +75,19 @@ jobs:
         run: mise run site:build
 
       - uses: actions/upload-pages-artifact@v5
+        if: vars.SITE_HOST != 'cloudflare'
         with:
           path: site/dist
 
+      - uses: actions/upload-artifact@v7
+        if: vars.SITE_HOST == 'both' || vars.SITE_HOST == 'cloudflare'
+        with:
+          name: site
+          path: site/dist
+          include-hidden-files: true
+
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && vars.SITE_HOST != 'cloudflare'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -87,6 +99,44 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v5
+
+  # The same build on Cloudflare: deployed from main, and as a preview version (with its own URL)
+  # for pull requests from this repository.
+  cloudflare:
+    if: >-
+      (vars.SITE_HOST == 'both' || vars.SITE_HOST == 'cloudflare')
+      && (github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'cloudflare-preview' || 'cloudflare' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: bun
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: site/dist
+
+      - name: Deploy
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$PR" ]; then
+            bunx wrangler@4 versions upload --preview-alias "pr-$PR" | tee wrangler.log
+          else
+            bunx wrangler@4 deploy | tee wrangler.log
+          fi
+          grep -Eo 'https://[^ ]+' wrangler.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
   installers:
     name: Installer on ${{ matrix.os }}

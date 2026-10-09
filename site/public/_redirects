@@ -1,0 +1,3 @@
+# Cloudflare (Workers static assets) only; GitHub Pages ignores this file.
+# The newest release's files, e.g. /download/latest/SHA256SUMS.txt
+/download/latest/* https://github.com/nomunomu0504/sub-screen-player/releases/latest/download/:splat 302

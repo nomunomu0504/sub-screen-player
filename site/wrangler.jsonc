@@ -1,0 +1,19 @@
+// The website on Cloudflare Workers (static assets only, for now): `wrangler deploy` from site/
+// after `bun run build`. The Site workflow deploys it when the repository variable SITE_HOST is
+// "both" or "cloudflare" (see .github/workflows/site.yml).
+{
+	"$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+	"name": "subscreen",
+	"compatibility_date": "2026-10-09",
+	"assets": {
+		"directory": "./dist",
+		// Astro writes pages as <page>/index.html; serve them at /<page>/.
+		"html_handling": "auto-trailing-slash",
+		"not_found_handling": "404-page"
+	},
+	// Served at <name>.<account>.workers.dev until the domain moves. To serve subscreen.dev, delete
+	// its CNAME to GitHub Pages in the Cloudflare DNS first, then uncomment:
+	// "routes": [{ "pattern": "subscreen.dev", "custom_domain": true }],
+	"workers_dev": true,
+	"preview_urls": true
+}

@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use jiff::tz::TimeZone;
@@ -38,27 +39,49 @@ const LOOKBACK: SignedDuration = SignedDuration::from_hours(10);
 /// Minutes in the graph.
 const GRAPH_MINUTES: usize = 60;
 
+/// The reader's settings, which a reload of the config changes while the reader runs.
+#[derive(Debug, Clone, Default)]
+pub struct Settings(Arc<Mutex<ClaudeCodeConfig>>);
+
+impl Settings {
+    /// Uses `config` from the next scan on.
+    pub fn set(&self, config: ClaudeCodeConfig) {
+        *self.0.lock().unwrap_or_else(|p| p.into_inner()) = config;
+    }
+
+    fn get(&self) -> ClaudeCodeConfig {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+}
+
 /// Registers the reader with `metrics`; it starts when a dashboard first shows the panel.
-pub fn register(metrics: &Metrics, config: ClaudeCodeConfig) {
+pub fn register(metrics: &Metrics, settings: Settings) {
     let store = metrics.clone();
     metrics.provide(METRIC_ID, move || {
         let spawned = std::thread::Builder::new()
             .name("ssp-claude-code".into())
-            .spawn(move || run(&store, &config));
+            .spawn(move || run(&store, &settings));
         if let Err(err) = spawned {
             tracing::warn!("cannot start the Claude Code reader: {err}");
         }
     });
 }
 
-fn run(metrics: &Metrics, config: &ClaudeCodeConfig) {
-    let dirs = match &config.dir {
-        Some(dir) => vec![expand_home(dir)],
-        None => default_dirs(),
-    };
-    tracing::info!(?dirs, "reading Claude Code usage");
+fn run(metrics: &Metrics, settings: &Settings) {
+    let mut read: Option<ClaudeCodeConfig> = None;
+    let mut dirs = Vec::new();
     let mut usage = Usage::default();
     loop {
+        let config = settings.get();
+        if read.as_ref() != Some(&config) {
+            dirs = match &config.dir {
+                Some(dir) => vec![expand_home(dir)],
+                None => default_dirs(),
+            };
+            tracing::info!(?dirs, "reading Claude Code usage");
+            usage = Usage::default();
+            read = Some(config);
+        }
         let now = Timestamp::now();
         let projects: Vec<PathBuf> = dirs
             .iter()

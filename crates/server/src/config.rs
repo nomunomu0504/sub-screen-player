@@ -14,6 +14,7 @@ const MIN_TOKEN_LEN: usize = 16;
 
 /// A commented config file with the default values, written by `ssp config init`.
 pub const TEMPLATE: &str = r##"# sub-screen-player configuration. Every setting is optional.
+# After editing, `ssp config reload` applies it to the running daemon.
 
 # Address of the HTTP/WebSocket API. Listening on anything but loopback
 # (127.0.0.1 / ::1) requires `token`.

@@ -31,7 +31,7 @@ date_format = "%a %-d %b"     # 例: "Wed 7 Oct"。"" にすると日付を表�
 color = "#FFD080"
 ```
 
-編集したら、デーモンが設定を読み直すように[再起動](#自動起動)してください。
+編集したら、`ssp config reload` で反映します（[設定ファイル](#設定ファイル)を参照）。
 
 日付を日本語にする場合は、`weekdays` に日曜日から順に曜日の名前を書くと、`%a`（と `%A`）がその名前になります。
 内蔵フォントにない文字（日本語など）は、OS に入っているフォント（macOS はヒラギノ、Windows は游ゴシックやメイリオ、
@@ -65,7 +65,7 @@ ssp dashboard --widgets clock,cpu,network
 ```
 
 ログイン時に時計の代わりにダッシュボードを表示し、パネルや色の指定も保存しておくには、設定ファイルを編集して
-デーモンを[再起動](#自動起動)します。
+`ssp config reload` で反映します。
 
 ```toml
 [startup]
@@ -98,7 +98,7 @@ uptime | awk '{print $(NF-2)}' | tr -d , | ssp metric set load --value - --label
 
 `--ttl` 秒（既定 300）より古い値は暗く表示され、何分前の値かが出ます。スクリプトが止まっても、古い値が最新のように
 見えることはありません。メトリクスはメモリ上にだけ保持するので、デーモンを再起動すると、次の値が届くまでパネルには
-「waiting for data」と表示されます。GitHub Actions の直近の実行結果を表示する
+「waiting for data」と表示されます（`ssp config reload` では消えません）。GitHub Actions の直近の実行結果を表示する
 [contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) が、そのまま使える例です。
 
 ### Claude Code の使用量を表示する
@@ -314,7 +314,7 @@ gap = 16                 # 領域の間のピクセル数
 
 ### 時刻で表示を切り替える・複数の画面を順番に表示する
 
-設定ファイルに `[[schedule]]` を書き、デーモンを再起動します。各エントリーは、その時刻（PC のローカル時刻）から、
+設定ファイルに `[[schedule]]` を書き、`ssp config reload` を実行します。各エントリーは、その時刻（PC のローカル時刻）から、
 書いた項目を設定します。`show`（`url` や `image` など `[startup]` と同じオプション付き）、`brightness`、`power` です。
 
 ```toml
@@ -566,11 +566,13 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `ssp service install` | LaunchAgent `~/Library/LaunchAgents/dev.sub-screen-player.ssp.plist` | systemd ユーザーユニット `~/.config/systemd/user/sub-screen-player.service` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` の値 `sub-screen-player` |
 | `ssp service uninstall` | デーモンを止めて LaunchAgent を削除 | デーモンを止めてユニットを削除 | 登録を削除（動いているデーモンはサインアウトまで動き続けます） |
 | `ssp service status` | 登録の有無と動作状態 | 登録の有無と動作状態 | 登録の有無 |
-| 再起動（設定を変えたときなど） | もう一度 `ssp service install` | `systemctl --user restart sub-screen-player` | タスクマネージャーで `ssp.exe` を終了してから `ssp service install` |
+| 再起動（`ssp` を更新したときなど） | もう一度 `ssp service install` | `systemctl --user restart sub-screen-player` | タスクマネージャーで `ssp.exe` を終了してから `ssp service install` |
 | ログ | `~/Library/Logs/sub-screen-player.log` | `journalctl --user -u sub-screen-player` | `%LOCALAPPDATA%\sub-screen-player\ssp.log` |
 
 `install` はすぐにデーモンを起動します。登録には、インストールした時点の `ssp` 実行ファイルと設定ファイルのパスが
 記録されるので、どちらかを移動したら `install` をやり直してください。
+設定を編集したら、`ssp config reload` で再起動せずに反映できます（Linux では
+`systemctl --user reload sub-screen-player` からも実行されます）。
 
 ### 設定ファイル
 
@@ -580,6 +582,18 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `ssp config init` | 既定値を書いたコメント付きの設定ファイルを作成します。 |
 | `  --force` | 既存のファイルを上書きします。 |
 | `ssp config show` | 実際に使われる設定（既定値＋ファイルの内容）を表示します。 |
+| `ssp config reload` | 動作中のデーモンに設定ファイルを読み直させて反映し、新しい設定で応答するまで待ちます。 |
+
+`ssp config reload` は、誤りのあるファイルを受け付けません（どこが誤っているかを表示します）。そのときデーモンは
+それまでどおり動き続けます。正しいファイルなら、デーモンは画面と API をいったん止め、同じプロセスのまま新しい設定で
+起動し直します。`listen` や `token` も含め、すべての設定が反映されます。ディスプレイは消灯せず、新しい設定で起動時に
+表示するもの（`[startup]` またはスケジュール）を表示します。`ssp show` や `ssp web` などで表示していた内容、通知、
+スケジュールの一時停止は引き継がれません。メトリクスは引き継がれます。新しい設定で起動できない場合（新しい `listen`
+のアドレスが使用中など）は、デーモンは元の設定に戻り、`ssp config reload` がその理由を表示します。
+
+`ssp config reload` は、ほかのコマンドと同じく設定ファイルからデーモンの場所を知ります。そこで `listen` や `token`
+を変えたときは、動いているデーモンの古い値を渡してください:
+`ssp --url http://127.0.0.1:7920 --token 古いトークン config reload`。その後は新しいアドレスのデーモンを待ちます。
 
 #### 設定ファイルの場所
 

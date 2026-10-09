@@ -61,7 +61,7 @@ device-specific protocol has to be written; everything else is shared.
 ## What it can show
 
 Some of the built-in screens. Settings shown as TOML go in the config file (`ssp config init`
-creates it; restart the daemon after editing).
+creates it; apply your edits with `ssp config reload`).
 
 **The clock** (`ssp clock`), shown by default:
 

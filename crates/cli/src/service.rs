@@ -220,20 +220,31 @@ mod platform {
 
     pub fn install(config: &Path) -> Result<String> {
         let exe = current_exe()?;
-        let mut command = vec![quote(&exe.display().to_string())];
+        let exe = quote(&exe.display().to_string());
+        let mut command = vec![exe.clone()];
         command.extend(serve_args(config).iter().map(|a| quote(a)));
+        // `systemctl --user reload` applies the config again without restarting.
+        let reload = [
+            exe,
+            quote("--config"),
+            quote(&config.display().to_string()),
+            quote("config"),
+            quote("reload"),
+        ];
         let unit = format!(
             "[Unit]\n\
              Description=sub-screen-player daemon\n\
              \n\
              [Service]\n\
              ExecStart={}\n\
+             ExecReload={}\n\
              Restart=on-failure\n\
              RestartSec=3\n\
              \n\
              [Install]\n\
              WantedBy=default.target\n",
-            command.join(" ")
+            command.join(" "),
+            reload.join(" ")
         );
         let path = unit_path()?;
         std::fs::create_dir_all(path.parent().expect("has a parent"))?;

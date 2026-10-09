@@ -2,25 +2,13 @@
 // Download table for the latest release, read from the GitHub API when the site is built
 // (the deploy workflow also runs when a release is published). A small script highlights the
 // visitor's platform.
+import { latestRelease, repo } from '../lib/release';
 interface Props {
 	lang?: 'en' | 'ja';
 }
 
 const { lang = 'en' } = Astro.props;
-const repo = 'nomunomu0504/sub-screen-player';
-
-type Asset = { name: string; browser_download_url: string; size: number };
-type Release = { tag_name: string; html_url: string; published_at: string; assets: Asset[] };
-
-let release: Release | undefined;
-try {
-	const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
-	if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
-	if (response.ok) release = await response.json();
-} catch {
-	// Offline builds still work; the page then links to the releases page.
-}
+const release = await latestRelease();
 
 const text = {
 	en: {

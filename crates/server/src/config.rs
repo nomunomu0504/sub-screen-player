@@ -1034,16 +1034,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_a_schedule_and_a_rotation() {
-        // The commented example of the template, uncommented.
+    fn reads_a_schedule_a_rotation_and_a_layout() {
+        // The commented examples of the template, uncommented: the lines that are TOML, not
+        // explanations.
         let example: String = TEMPLATE
             .lines()
             .skip_while(|l| !l.starts_with("# [[schedule]]"))
             .take_while(|l| !l.starts_with("[clock]"))
-            .filter(|l| l.starts_with("# ") && !l.contains("Screens shown in turn"))
-            .map(|l| format!("{}\n", &l[2..]))
+            .filter_map(|l| l.strip_prefix("# "))
+            .filter(|l| {
+                let key = l.split(" = ").next().unwrap_or_default();
+                l.starts_with('[')
+                    || l.trim_start().starts_with('{')
+                    || l.trim() == "]"
+                    || (!key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+            })
+            .map(|l| format!("{l}\n"))
             .collect();
-        let config: Config = toml::from_str(&example).unwrap();
+        let config: Config = toml::from_str(&example).unwrap_or_else(|e| panic!("{e}\n{example}"));
         config.validate().unwrap();
         assert_eq!(config.schedule.len(), 3);
         assert_eq!(
@@ -1057,6 +1065,8 @@ mod tests {
             (spec.show, spec.url.is_some(), seconds),
             (StartupShow::Web, true, Some(60))
         );
+        assert_eq!(config.layout.zones.len(), 3);
+        assert_eq!(config.layout.zones[1].kind(), Ok(ZoneKind::Image));
     }
 
     #[test]

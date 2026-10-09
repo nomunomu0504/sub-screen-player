@@ -491,12 +491,33 @@ ssp serve --log-file ~/ssp.log           # log to a file
 older than the `ssp` you installed:
 
 ```
-ssp 0.7.1 is out (this is 0.7.0): https://subscreen.dev/download/
-Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restart the daemon.
+ssp 0.8.1 is out (this is 0.8.0): https://subscreen.dev/download/
+`ssp update` installs it and restarts the daemon.
 ```
 
-Update the way you installed (run the installer again, `brew upgrade ssp` or `scoop update ssp`),
-then restart the daemon (see [Autostart](#autostart)). To know, `ssp status` reads
+`ssp update` updates `ssp` the way it was installed and restarts the daemon of the autostart
+entry, then waits until the daemon answers with the new version:
+
+```sh
+ssp update               # to the latest release
+ssp update --check       # only tell whether a newer release is out
+ssp update --to v0.7.1   # a given release, also to go back
+```
+
+- **Installed with the installer** (or by hand): the website's installer runs again into the
+  same folder, for the release asked, and checks its SHA-256. On Windows, the running `ssp.exe`
+  is moved aside as `ssp.exe.old` (and put back if anything fails); a later `ssp` command
+  removes it.
+- **Homebrew**: `brew update` and `brew upgrade ssp`. `--to` is not available, since Homebrew
+  installs its newest version; the tap follows a release within the hour.
+- **Scoop**: Scoop cannot replace `ssp.exe` while it runs, and `ssp update` is one, so it shows
+  the commands to run instead (`taskkill /im ssp.exe /f`, `scoop update ssp`,
+  `ssp service install`).
+
+Only the autostart entry that runs this `ssp` is restarted. A daemon started by hand
+(`ssp serve`) is left alone, and `ssp update` says to restart it.
+
+To know when a newer version is out, `ssp status` reads
 <https://subscreen.dev/latest.json> at most once a day: a plain `GET` with
 `User-Agent: ssp/<version>`, and nothing else is sent. It waits 2 seconds at most, remembers
 the answer in the data folder, and says nothing when its error output is not a terminal (in
@@ -529,6 +550,9 @@ These work with every command.
 | `  --listen <ADDR>` | Address to listen on, e.g. `127.0.0.1:8000`. Overrides `listen` in the config. |
 | `  --log-file <FILE>` | Append logs to a file instead of printing them. |
 | `  --driver <ID>` | Use only this driver (repeatable), e.g. `--driver d92`. Overrides `enable` in the `[drivers]` section of the config. The daemon leaves displays of other drivers alone. |
+| `ssp update` | Update `ssp` to the latest release the way it was installed, and restart the daemon of the autostart entry (see [Keep ssp up to date](#keep-ssp-up-to-date)). |
+| `  --check` | Only tell whether a newer release is out. |
+| `  --to <VERSION>` | Install this release instead, e.g. `v0.7.1` (also to go back). Not with Homebrew. |
 
 ### Displays
 

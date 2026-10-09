@@ -14,7 +14,7 @@
   表示の仕組みについてのメモしかない場合でも、Issue に共有してもらえれば、ほかの人がドライバを書けるかもしれません。
 - **[ギャラリー](https://subscreen.dev/ja/screens/)に画面を追加する**: `site/public/screens/<名前>/index.html` に
   1920x462 のページを書きます。数値は `window.ssp` から読み、`window.ssp` がないときは例の数値を表示して、ブラウザでも
-  試せるようにしてください。`sh site/scripts/shoot-screens.sh <名前>` で画像を作り、`site/src/components/gallery/screens.ts`
+  試せるようにしてください（インターネットから読む画面は `?example` で例の数値にします）。`sh site/scripts/shoot-screens.sh <名前>` で画像を作り、`site/src/components/gallery/screens.ts`
   に追加します。
 - **機能やドキュメントを改善する**: 小さな修正より大きい変更は、まず Issue を立てて進め方を相談してください。
   作業を始める前に方向性を合わせておくと、手戻りを防げます。

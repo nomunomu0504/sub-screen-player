@@ -1,0 +1,251 @@
+<!doctype html>
+<!--
+  sub-screen-player screen gallery: "weather".
+  The weather now, the next 24 hours and the next days, from Open-Meteo (free, no key; it
+  gets the place you give, nothing else). Made for a 1920x462 panel:
+
+    ssp web "https://subscreen.dev/screens/weather/?lat=35.68&lon=139.77&name=Tokyo"
+
+  ?lat=&lon= is the place (default Tokyo), ?name= its name, ?f Fahrenheit and mph. Needs nothing
+  from the daemon. ?example shows example figures (for pictures); ?clean leaves out the label.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=462">
+<title>Weather — sub-screen-player screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg: #05070b; --panel: #0b0f17; --line: #1c2431; --text: #f0f2f8; --muted: #8591a3;
+    --mint: #6ee7b7; --blue: #60a5fa; --amber: #fbbf24; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  main { display: grid; grid-template-columns: 600px 1fr 520px; gap: 24px; height: 100vh; padding: 36px 44px; }
+  .now { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+  .place { display: flex; justify-content: space-between; font-size: 24px; letter-spacing: 3px; color: var(--muted); }
+  .place .clock { letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .temp { display: flex; align-items: center; gap: 22px; }
+  .temp .icon { width: 132px; height: 132px; flex: none; }
+  .temp .deg { font-size: 150px; font-weight: 700; letter-spacing: -6px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .temp .deg small { font-size: 60px; color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+  .cond { font-size: 32px; font-weight: 500; }
+  .more { font-size: 22px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .panel { position: relative; display: flex; flex-direction: column; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 22px; padding: 22px 28px; min-width: 0; }
+  .label { display: flex; justify-content: space-between; font-size: 20px; letter-spacing: 3px; color: var(--muted); }
+  .label .key { letter-spacing: 0; display: flex; gap: 18px; }
+  .label .key i { font-style: normal; }
+  .hours { flex: 1; margin-top: 10px; width: 100%; }
+  .hours text { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .days { flex: 1; display: flex; flex-direction: column; justify-content: space-around; margin-top: 6px; }
+  .day { display: grid; grid-template-columns: 112px 52px 1fr 76px; align-items: center; gap: 14px;
+    font-size: 24px; font-variant-numeric: tabular-nums; }
+  .day .name { color: var(--muted); }
+  .day .icon { width: 48px; height: 48px; }
+  .day .range { display: flex; align-items: center; gap: 12px; }
+  .day .bar { flex: 1; height: 8px; border-radius: 4px; background: var(--line); position: relative; }
+  .day .bar span { position: absolute; top: 0; bottom: 0; border-radius: 4px;
+    background: linear-gradient(90deg, var(--blue), var(--mint), var(--amber)); }
+  .day .rain { color: var(--blue); text-align: right; font-size: 20px; }
+  .icon path, .icon circle, .icon line { fill: none; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+  .message { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; color: var(--muted); background: var(--bg); }
+  .message[hidden] { display: none; }
+  .demo { position: fixed; right: 14px; bottom: 8px; font-size: 14px; color: var(--muted); opacity: .7; }
+</style>
+</head>
+<body>
+<main>
+  <section class="now">
+    <div class="place"><span id="place"></span><span class="clock" id="clock"></span></div>
+    <div class="temp"><svg class="icon" id="icon" viewBox="0 0 100 100"></svg><div class="deg" id="deg">--</div></div>
+    <div class="cond" id="cond"></div>
+    <div class="more" id="more"></div>
+  </section>
+  <section class="panel">
+    <div class="label"><span>NEXT 24 HOURS</span><span class="key"><i style="color: var(--amber)">— temp</i><i style="color: var(--blue)">▮ rain chance</i></span></div>
+    <svg class="hours" id="hours"></svg>
+  </section>
+  <section class="panel">
+    <div class="label"><span>NEXT DAYS</span><span>LOW · HIGH · RAIN</span></div>
+    <div class="days" id="days"></div>
+  </section>
+</main>
+<div class="message" id="message" hidden></div>
+<div class="demo" id="demo" hidden>example figures · ssp web https://subscreen.dev/screens/weather/</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const query = new URLSearchParams(location.search);
+  const number = (key, fallback) => (Number.isFinite(parseFloat(query.get(key))) ? parseFloat(query.get(key)) : fallback);
+  const lat = number('lat', 35.68);
+  const lon = number('lon', 139.77);
+  const given = query.has('lat') && query.has('lon');
+  const name = query.get('name') || (given ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : 'Tokyo');
+  const imperial = query.has('f');
+  const example = query.has('example');
+  const EVERY = 15 * 60 * 1000;
+
+  // WMO weather codes, as Open-Meteo gives them.
+  function kind(code) {
+    if (code <= 1) return 'clear';
+    if (code === 2) return 'partly';
+    if (code === 3) return 'cloud';
+    if (code === 45 || code === 48) return 'fog';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'thunder';
+    return 'rain';
+  }
+  const WORDS = {
+    0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Fog',
+    51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains', 80: 'Light showers', 81: 'Showers',
+    82: 'Heavy showers', 85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm, hail',
+    99: 'Thunderstorm, hail',
+  };
+
+  // Line icons in a 100x100 box.
+  function icon(code, day = true) {
+    const sun = day
+      ? `<circle cx="50" cy="50" r="18" stroke="#fbbf24"/>` + [0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+          const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+          return `<line x1="${50 + 28 * c}" y1="${50 + 28 * s}" x2="${50 + 38 * c}" y2="${50 + 38 * s}" stroke="#fbbf24"/>`;
+        }).join('')
+      : `<path d="M62 22a30 30 0 1 0 18 46a24 24 0 0 1-18-46z" stroke="#c4b5fd"/>`;
+    const cloud = (x = 0, y = 0, color = '#cbd5e1') =>
+      `<path d="M${30 + x} ${78 + y}h44a16 16 0 0 0 0-32a22 22 0 0 0-42-6a18 18 0 0 0-2 38z" stroke="${color}"/>`;
+    switch (kind(code)) {
+      case 'clear': return sun;
+      case 'partly': return `<g transform="translate(-14 -14) scale(.8)">${sun}</g>` + cloud(4, 6);
+      case 'cloud': return cloud(0, -4);
+      case 'fog': return cloud(0, -16) + `<line x1="20" y1="80" x2="80" y2="80" stroke="#94a3b8"/><line x1="28" y1="92" x2="72" y2="92" stroke="#94a3b8"/>`;
+      case 'snow': return cloud(0, -16) + [28, 50, 72].map((x) => `<circle cx="${x}" cy="86" r="3" stroke="#e0f2fe"/>`).join('');
+      case 'thunder': return cloud(0, -16) + `<path d="M54 66l-10 16h12l-8 14" stroke="#fbbf24"/>`;
+      default: return cloud(0, -16) + [32, 50, 68].map((x) => `<line x1="${x}" y1="74" x2="${x - 6}" y2="92" stroke="#60a5fa"/>`).join('');
+    }
+  }
+
+  const unit = imperial ? '°F' : '°';
+  const round = (v) => Math.round(v);
+
+  function showNow(data) {
+    const now = data.current;
+    $('icon').innerHTML = icon(now.weather_code, now.is_day !== 0);
+    $('deg').innerHTML = `${round(now.temperature_2m)}<small>${imperial ? '°F' : '°C'}</small>`;
+    $('cond').textContent = WORDS[now.weather_code] ?? '';
+    $('more').textContent = `feels ${round(now.apparent_temperature)}${unit} · humidity ${round(now.relative_humidity_2m)} % · wind ${round(now.wind_speed_10m)} ${imperial ? 'mph' : 'm/s'}`;
+  }
+
+  function showHours(data) {
+    const h = data.hourly;
+    const hour = data.current.time.slice(0, 13);
+    let from = h.time.findIndex((t) => t.slice(0, 13) === hour);
+    if (from < 0) from = 0;
+    const temps = h.temperature_2m.slice(from, from + 24);
+    const rain = h.precipitation_probability.slice(from, from + 24);
+    const times = h.time.slice(from, from + 24);
+    if (temps.length < 2) return;
+    // Drawn at the box's own size, so the text keeps its shape.
+    const box = $('hours').getBoundingClientRect();
+    const W = Math.round(box.width), H = Math.round(box.height);
+    $('hours').setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const base = H - 34;
+    const lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(hi - lo, 4);
+    const x = (i) => 24 + ((W - 48) * i) / (temps.length - 1);
+    const y = (t) => base - 100 - ((base - 150) * (t - lo)) / span;
+    const step = (W - 48) / (temps.length - 1);
+    let svg = rain.map((p, i) => {
+      const height = 70 * (p ?? 0) / 100;
+      return `<rect x="${x(i) - step * 0.3}" y="${base - height}" width="${step * 0.6}" height="${height}" rx="3" fill="#60a5fa" opacity=".55"/>`;
+    }).join('');
+    svg += `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#1c2431" stroke-width="2"/>`;
+    const line = temps.map((t, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ');
+    svg += `<path d="${line}" fill="none" stroke="#fbbf24" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for (let i = 0; i < temps.length; i += 3) {
+      svg += `<circle cx="${x(i)}" cy="${y(temps[i])}" r="6" fill="#fbbf24"/>`;
+      svg += `<text x="${x(i)}" y="${y(temps[i]) - 18}" font-size="26" fill="#f0f2f8" text-anchor="middle">${round(temps[i])}°</text>`;
+      svg += `<text x="${x(i)}" y="${H - 6}" font-size="22" fill="#8591a3" text-anchor="middle">${times[i].slice(11, 13)}h</text>`;
+    }
+    $('hours').innerHTML = svg;
+  }
+
+  function showDays(data) {
+    const d = data.daily;
+    const n = Math.min(4, d.time.length);
+    const lo = Math.min(...d.temperature_2m_min.slice(0, n)), hi = Math.max(...d.temperature_2m_max.slice(0, n));
+    const span = Math.max(hi - lo, 1);
+    let rows = '';
+    for (let i = 0; i < n; i++) {
+      const date = new Date(`${d.time[i]}T12:00`);
+      const label = i === 0 ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'short' });
+      const min = d.temperature_2m_min[i], max = d.temperature_2m_max[i];
+      const left = (100 * (min - lo)) / span, width = Math.max((100 * (max - min)) / span, 4);
+      rows += `<div class="day"><span class="name">${label}</span><svg class="icon" viewBox="0 0 100 100">${icon(d.weather_code[i])}</svg>` +
+        `<span class="range">${round(min)}°<span class="bar"><span style="left: ${left}%; width: ${width}%"></span></span>${round(max)}°</span>` +
+        `<span class="rain">${round(d.precipitation_probability_max[i] ?? 0)} %</span></div>`;
+    }
+    $('days').innerHTML = rows;
+  }
+
+  function show(data) {
+    $('message').hidden = true;
+    showNow(data);
+    showHours(data);
+    showDays(data);
+  }
+
+  function tick() {
+    const now = new Date();
+    $('clock').textContent = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function update() {
+    if (example) { show(exampleData()); return; }
+    const params = new URLSearchParams({
+      latitude: lat, longitude: lon, timezone: 'auto', forecast_days: 5,
+      current: 'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day',
+      hourly: 'temperature_2m,precipitation_probability',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      wind_speed_unit: imperial ? 'mph' : 'ms',
+      temperature_unit: imperial ? 'fahrenheit' : 'celsius',
+    });
+    try {
+      const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      show(await response.json());
+    } catch (err) {
+      console.error(err);
+      // Keep the last weather; say so only when there is none yet.
+      if ($('deg').textContent === '--') {
+        $('message').textContent = 'The weather cannot be read right now (Open-Meteo).';
+        $('message').hidden = false;
+      }
+    }
+  }
+
+  // Example figures for pictures of the screen (?example).
+  function exampleData() {
+    const hours = Array.from({ length: 30 }, (_, i) => `2026-10-09T${String((14 + i) % 24).padStart(2, '0')}:00`);
+    const temps = hours.map((_, i) => 19 + 5 * Math.cos(((i + 14 - 14) * Math.PI) / 12));
+    const rain = hours.map((_, i) => (i > 12 && i < 20 ? 30 + 10 * (i % 3) : i > 20 ? 60 : 5));
+    return {
+      current: { time: '2026-10-09T14:00', temperature_2m: 22.4, apparent_temperature: 21.8, relative_humidity_2m: 58,
+        weather_code: 2, wind_speed_10m: 3.2, is_day: 1 },
+      hourly: { time: hours, temperature_2m: temps, precipitation_probability: rain },
+      daily: { time: ['2026-10-09', '2026-10-10', '2026-10-11', '2026-10-12'], weather_code: [2, 61, 3, 0],
+        temperature_2m_max: [24, 20, 22, 25], temperature_2m_min: [16, 15, 14, 15], precipitation_probability_max: [10, 70, 20, 0] },
+    };
+  }
+
+  $('place').textContent = name.toUpperCase();
+  $('demo').hidden = !example || query.has('clean');
+  tick();
+  update();
+  setInterval(tick, 1000);
+  setInterval(update, EVERY);
+</script>
+</body>
+</html>

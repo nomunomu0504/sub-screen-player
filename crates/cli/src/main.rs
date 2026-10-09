@@ -13,6 +13,7 @@ mod claude;
 mod client;
 mod selftest;
 mod service;
+mod update;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
@@ -487,7 +488,12 @@ fn run(cli: Cli) -> Result<()> {
             json,
             &drivers,
         ),
-        Cmd::Status => status(&cli_client(&cli.url, &cli.token, &config_path)?),
+        Cmd::Status => {
+            let result = status(&cli_client(&cli.url, &cli.token, &config_path)?);
+            let enabled = Config::load(&config_path).map_or(true, |c| c.check_updates);
+            update::tell(enabled);
+            result
+        }
         Cmd::Selftest {
             drivers,
             frames,
@@ -942,6 +948,20 @@ fn print_schedule(schedule: &ScheduleView, indent: &str) {
 fn status(client: &Client) -> Result<()> {
     let health = client.health()?;
     say!("Daemon {} at {}", health.version, client.base());
+    let mine = env!("CARGO_PKG_VERSION");
+    if update::newer(mine, &health.version) {
+        let restart = if cfg!(target_os = "macos") {
+            "ssp service install"
+        } else if cfg!(windows) {
+            "end ssp.exe, then ssp service install"
+        } else {
+            "systemctl --user restart sub-screen-player"
+        };
+        say!(
+            "  It runs {}, older than this ssp ({mine}): restart it to use {mine} ({restart}).",
+            health.version
+        );
+    }
     // Daemons before 0.5.0 have no schedule.
     if let Ok(schedule) = client.schedule()
         && schedule.entries > 0

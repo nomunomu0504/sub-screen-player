@@ -459,6 +459,22 @@ ssp serve --listen 127.0.0.1:8000        # 別のポート（ほかのコマン�
 ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 ```
 
+### ssp を最新に保つ
+
+`ssp status` は、新しい版が出ているときと、インストールした `ssp` より古い版のデーモンが動いているときに知らせます。
+
+```
+ssp 0.7.1 is out (this is 0.7.0): https://subscreen.dev/download/
+Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restart the daemon.
+```
+
+インストールしたのと同じ方法で更新し（インストーラーをもう一度実行、`brew upgrade ssp`、`scoop update ssp`）、デーモンを
+再起動してください（[自動起動](#自動起動)を参照）。新しい版があるかどうかは、`ssp status` が 1 日に 1 回まで
+<https://subscreen.dev/latest.json> を読んで調べます。送るのは `User-Agent: ssp/<版>` を付けた普通の `GET` だけで、
+ほかには何も送りません。待つのは最大 2 秒で、結果はデータフォルダに覚えておき、エラー出力が端末でないとき（スクリプトの中）
+は何も表示しません。デーモンが問い合わせることはありません。止めるには、設定ファイルで `check_updates = false` にするか、
+環境変数 `SSP_NO_UPDATE_CHECK=1` を設定します。
+
 ## コマンドリファレンス
 
 ### 共通オプション

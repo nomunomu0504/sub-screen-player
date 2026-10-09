@@ -21,6 +21,10 @@ pub const TEMPLATE: &str = r##"# sub-screen-player configuration. Every setting 
 listen = "127.0.0.1:7920"
 # token = "a long random string"
 
+# `ssp status` looks for a newer version at most once a day (a request to
+# https://subscreen.dev/latest.json). false turns it off, as does SSP_NO_UPDATE_CHECK=1.
+check_updates = true
+
 [display]
 # brightness = 80        # percent, applied when a display connects
 max_fps = 60
@@ -122,6 +126,9 @@ pub struct Config {
     /// Bearer token clients must send. Optional on loopback, required otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    /// Whether `ssp status` looks for a newer version (at most once a day). The daemon itself
+    /// never does.
+    pub check_updates: bool,
     /// How displays are driven.
     pub display: DisplayConfig,
     /// What a display shows when it is connected.
@@ -152,6 +159,7 @@ impl Default for Config {
         Self {
             listen: SocketAddr::from(([127, 0, 0, 1], DEFAULT_PORT)),
             token: None,
+            check_updates: true,
             display: DisplayConfig::default(),
             startup: StartupConfig::default(),
             schedule: Vec::new(),

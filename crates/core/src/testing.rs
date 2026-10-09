@@ -23,7 +23,8 @@ pub struct RecordingTransport {
 #[derive(Debug, Default)]
 struct Recording {
     reports: Vec<Vec<u8>>,
-    input_report: Option<Vec<u8>>,
+    /// Answers to input report requests, in turn; the last one is repeated.
+    input_reports: Vec<Vec<u8>>,
     fail_writes: bool,
 }
 
@@ -33,9 +34,10 @@ impl RecordingTransport {
         Self::default()
     }
 
-    /// Makes [`Transport::get_input_report`] return `data`.
+    /// Makes [`Transport::get_input_report`] return `data`, after the answers given before
+    /// (each once); the last answer is repeated.
     pub fn with_input_report(self, data: &[u8]) -> Self {
-        lock(&self.inner).input_report = Some(data.to_vec());
+        lock(&self.inner).input_reports.push(data.to_vec());
         self
     }
 
@@ -61,11 +63,12 @@ impl Transport for RecordingTransport {
     }
 
     fn get_input_report(&mut self, _report_id: u8, buf: &mut [u8]) -> Result<usize> {
-        let rec = lock(&self.inner);
-        let data = rec
-            .input_report
-            .as_deref()
-            .ok_or(Error::Unsupported("input reports"))?;
+        let mut rec = lock(&self.inner);
+        let data = match rec.input_reports.len() {
+            0 => return Err(Error::Unsupported("input reports")),
+            1 => rec.input_reports[0].clone(),
+            _ => rec.input_reports.remove(0),
+        };
         let n = data.len().min(buf.len());
         buf[..n].copy_from_slice(&data[..n]);
         Ok(n)

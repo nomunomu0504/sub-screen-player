@@ -25,6 +25,7 @@ use crate::config::{ClockConfig, Config, DashboardConfig, LayoutConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
 use crate::notify::{self, Notification};
+use crate::reload::Reloader;
 use crate::sources::stats::Stats;
 use crate::sources::video::{self, MAX_VIDEO_BYTES, VideoFile, Videos};
 use crate::sources::web::WebPage;
@@ -33,7 +34,7 @@ use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
     ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, NotificationView, NotifyRequest,
-    PowerRequest, ScheduleEventView, ScheduleView, StatsView, SystemView, WebRequest,
+    PowerRequest, Reloaded, ScheduleEventView, ScheduleView, StatsView, SystemView, WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -54,6 +55,12 @@ pub struct AppState {
     /// Measures `GET /system`.
     system: Arc<Mutex<Stats>>,
     shutdown: watch::Receiver<bool>,
+    /// When this state was made: the daemon started, or applied its config again.
+    started: jiff::Timestamp,
+    /// Reads the config again for `POST /reload`, if the daemon knows where it came from.
+    reload: Option<Reloader>,
+    /// Why the last reload did not take.
+    reload_error: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
@@ -77,7 +84,22 @@ impl AppState {
             web: Web::new(&config.web).with_api(config.listen),
             system: Arc::new(Mutex::new(Stats::new())),
             shutdown,
+            started: jiff::Timestamp::now(),
+            reload: None,
+            reload_error: Arc::default(),
         }
+    }
+
+    /// Lets `POST /reload` apply the config again with `reload`; `error` tells why the last
+    /// reload did not take.
+    pub fn with_reload(
+        mut self,
+        reload: Option<Reloader>,
+        error: Arc<Mutex<Option<String>>>,
+    ) -> Self {
+        self.reload = reload;
+        self.reload_error = error;
+        self
     }
 }
 
@@ -85,6 +107,7 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/health", get(health))
+        .route("/reload", post(reload))
         .route("/displays", get(list))
         .route("/displays/{id}", get(one))
         .route("/displays/{id}/image", post(show_image))
@@ -379,7 +402,31 @@ async fn health(State(app): State<AppState>) -> Json<Health> {
                 .map(String::from)
                 .collect(),
         ),
+        started: Some(app.started.to_string()),
+        reload_error: app
+            .reload_error
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
     })
+}
+
+/// Reads the config file again and, if the daemon can start with it, serves again with it. The
+/// answer comes before the daemon stops; it is back once `GET /health` shows a new `started`.
+async fn reload(State(app): State<AppState>) -> Result<Json<Reloaded>, ApiError> {
+    let reloader = app.reload.as_ref().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_IMPLEMENTED,
+            "this daemon was not started from a config file it can read again",
+        )
+    })?;
+    let listen = reloader
+        .reload()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("{e:#}")))?;
+    Ok(Json(Reloaded {
+        listen: listen.to_string(),
+    }))
 }
 
 async fn list(State(app): State<AppState>) -> Json<Vec<DisplayView>> {

@@ -59,6 +59,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | Method | Path | Body | Does |
 |---|---|---|---|
 | `GET` | `/health` | | Daemon status and version |
+| `POST` | `/reload` | | Reads the config file again and applies it (see below) |
 | `GET` | `/displays` | | All displays seen since the daemon started |
 | `GET` | `/displays/{id}` | | One display |
 | `POST` | `/displays/{id}/image` | image file | Shows an image (see below) |
@@ -87,11 +88,29 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ### `GET /health`
 
 ```json
-{"status": "ok", "version": "0.1.1", "drivers": ["d92"]}
+{"status": "ok", "version": "0.6.0", "drivers": ["d92"], "started": "2026-10-09T06:30:00Z"}
 ```
 
 `drivers` lists the driver ids the daemon uses; it only touches displays of these drivers
-(see `--driver` in the [command line guide](cli.md)). Daemons before 0.1.1 omit it.
+(see `--driver` in the [command line guide](cli.md)). Daemons before 0.1.1 omit it. `started`
+is when the daemon started, or last applied its config again (daemons before 0.6.0 omit it).
+`reload_error`, present only after a reload that did not take, says why the daemon could not
+start with the new config and went back to the one before.
+
+### `POST /reload`
+
+Reads the config file the daemon started with again (with the same command-line options) and,
+if the daemon can start with it, serves again with it in the same process. A file with errors
+gets `400` with the error, and nothing changes. Otherwise the answer comes first:
+
+```json
+{"listen": "127.0.0.1:7920"}
+```
+
+Then the daemon stops its screens and the API for a moment and starts again with the new config,
+listening at `listen`. It is back once `GET /health` shows a new `started`. The displays are not
+blanked and show what the new config says at start; content sent through the API is not kept,
+metrics are. `ssp config reload` does all of this and waits.
 
 ### `GET /displays`
 
@@ -263,7 +282,8 @@ creating a metric needs one of `value`, `text` and `series`.
 
 Numbers of 100,000 or more are shortened on the panel (`123k`, `4.56M`, `7.8B`). Ids are 1 to 32
 of `a-z`, `0-9` and `-`. The daemon keeps at most 64 metrics, in memory only: they
-are gone after a restart, so send them again (most senders run on a timer anyway). A
+are gone after a restart (not after `POST /reload`), so send them again (most senders run on a
+timer anyway). A
 `metric:<id>` panel whose metric has not arrived yet says "waiting for data".
 
 `GET /metrics` returns all metrics sorted by id, and `GET /metrics/{id}` one:

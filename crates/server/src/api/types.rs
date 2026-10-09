@@ -17,6 +17,21 @@ pub struct Health {
     /// Missing from daemons before 0.1.1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drivers: Option<Vec<String>>,
+    /// When the daemon started serving, or last applied its config again (RFC 3339). Missing
+    /// from daemons before 0.6.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started: Option<String>,
+    /// Why the last reload of the config did not take: the daemon could not start with the new
+    /// config and went back to the one before. Missing when the last reload took.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload_error: Option<String>,
+}
+
+/// Answer to `POST /api/v1/reload`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Reloaded {
+    /// Where the daemon listens with the new config, e.g. `127.0.0.1:7920`.
+    pub listen: String,
 }
 
 /// One display in `GET /api/v1/displays`.

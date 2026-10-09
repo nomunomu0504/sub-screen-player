@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use ssp_core::{
     Display, DisplayInfo, Found, Frame, Presenter, PresenterOptions, PresenterStats, Registry,
+    StopAction,
 };
 
 use crate::config::{Config, DisplayConfig};
@@ -416,6 +417,16 @@ impl Manager {
 
     /// Stops all sources and closes every display with the configured exit action.
     pub fn shutdown(&self) {
+        self.stop_all(self.display.on_exit.into());
+    }
+
+    /// Stops all sources and closes every display, leaving its screen as it is: the config is
+    /// being reloaded, and the displays open again right after.
+    pub fn close(&self) {
+        self.stop_all(StopAction::Leave);
+    }
+
+    fn stop_all(&self, action: StopAction) {
         let (players, devices): (Vec<_>, Vec<_>) = self
             .lock()
             .entries
@@ -424,7 +435,7 @@ impl Manager {
             .unzip();
         players.into_iter().flatten().for_each(Player::stop);
         for device in devices.into_iter().flatten() {
-            if let Err(err) = device.presenter.stop(self.display.on_exit.into()) {
+            if let Err(err) = device.presenter.stop(action) {
                 tracing::warn!(display = %device.presenter.info().id(), "on exit: {err}");
             }
         }
@@ -564,6 +575,21 @@ mod tests {
         assert_eq!(displays[0].content, "clock");
         assert!(displays[0].connected);
         manager.shutdown();
+    }
+
+    #[test]
+    fn closing_for_a_reload_leaves_the_screen_alone() {
+        let mut config = Config::default();
+        config.startup.show = StartupShow::Nothing;
+        config.display.on_exit = crate::config::OnExit::Clear;
+        let manager = Manager::new(Registry::new(), &config, Metrics::default()).unwrap();
+        let (log, _) = attach(&manager, "a");
+        manager.close();
+        assert!(!log.calls().contains(&Call::Clear), "{:?}", log.calls());
+        // Shutting down applies `on_exit`.
+        let (log, _) = attach(&manager, "a");
+        manager.shutdown();
+        assert!(log.calls().contains(&Call::Clear), "{:?}", log.calls());
     }
 
     #[test]

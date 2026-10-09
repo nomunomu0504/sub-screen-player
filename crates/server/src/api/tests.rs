@@ -15,14 +15,17 @@ use image::{Delay, Frame as ImageFrame, ImageFormat, Rgba, RgbaImage};
 use serde::de::DeserializeOwned;
 use ssp_core::Registry;
 use ssp_core::testing::{Call, CallLog, FakeDisplay};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tower::ServiceExt;
 
-use super::types::{DisplayView, ErrorBody, Health, MetricView, ScheduleView, SystemView};
+use super::types::{
+    DisplayView, ErrorBody, Health, MetricView, Reloaded, ScheduleView, SystemView,
+};
 use super::{AppState, router};
 use crate::config::{Config, RotationItem, ScheduleEntry, StartupConfig, StartupShow};
 use crate::manager::Manager;
 use crate::metrics::Metrics;
+use crate::reload::Reloader;
 use crate::schedule::Schedule;
 use crate::sources::video::{self, Videos};
 use crate::web::page_token::PageToken;
@@ -44,6 +47,11 @@ struct Api {
 
 impl Api {
     fn new(config: Config) -> Self {
+        Self::with(config, |state, _| state)
+    }
+
+    /// An API whose state `adjust` changes, given the metrics.
+    fn with(config: Config, adjust: impl FnOnce(AppState, &Metrics) -> AppState) -> Self {
         // Tests run in parallel in one process.
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -59,7 +67,8 @@ impl Api {
         manager.attach(Box::new(display), c"fake".to_owned());
         // Only WebSocket streams watch for the daemon stopping, and these tests open none.
         let (_, shutdown) = watch::channel(false);
-        let state = AppState::new(manager.clone(), &config, metrics, videos, shutdown);
+        let state = AppState::new(manager.clone(), &config, metrics.clone(), videos, shutdown);
+        let state = adjust(state, &metrics);
         Self {
             router: router(state),
             manager,
@@ -925,4 +934,103 @@ async fn refuses_bad_layouts() {
         assert!(error(&answer).contains(expected), "{body}: {answer}");
     }
     assert_eq!(api.content().await, "nothing");
+}
+
+/// Reads a config, as the daemon does from its file.
+type ReadConfig = fn() -> anyhow::Result<Config>;
+
+/// An API whose `POST /reload` reads the config with `read`; the configs it hands the daemon to
+/// serve again with arrive in the receiver.
+fn reloading_api(token: Option<String>, read: ReadConfig) -> (Api, mpsc::Receiver<Config>) {
+    let (restart, restarts) = mpsc::channel(1);
+    let api = Api::with(Config { token, ..config() }, |state, metrics| {
+        let reloader = Reloader::new(Arc::new(read), metrics.clone(), restart);
+        state.with_reload(Some(reloader), Arc::default())
+    });
+    (api, restarts)
+}
+
+#[tokio::test]
+async fn reload_hands_the_new_config_to_the_daemon() {
+    let (api, mut restarts) = reloading_api(None, || {
+        Ok(Config {
+            listen: "127.0.0.1:7931".parse().unwrap(),
+            ..config()
+        })
+    });
+    let health: Health = api.get("/api/v1/health").await;
+    assert!(health.started.is_some());
+    assert_eq!(health.reload_error, None);
+
+    let (status, body) = api.send(request("POST", "/api/v1/reload")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let reloaded: Reloaded = serde_json::from_str(&body).unwrap();
+    assert_eq!(reloaded.listen, "127.0.0.1:7931");
+    // Until the daemon has taken it, another reload is refused.
+    let (status, body) = api.send(request("POST", "/api/v1/reload")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error(&body).contains("already reloading"), "{body}");
+    assert_eq!(restarts.try_recv().unwrap().listen.port(), 7931);
+}
+
+#[tokio::test]
+async fn reload_refuses_a_config_the_daemon_cannot_start_with() {
+    let cases: [(ReadConfig, &str); 3] = [
+        (
+            || anyhow::bail!("TOML parse error at line 3"),
+            "TOML parse error",
+        ),
+        (
+            || {
+                let mut config = config();
+                config.drivers.enable = vec!["nope".into()];
+                Ok(config)
+            },
+            "[drivers]",
+        ),
+        (
+            || {
+                let mut config = config();
+                config.startup.show = StartupShow::Image;
+                config.startup.image = Some("/nonexistent/picture.png".into());
+                Ok(config)
+            },
+            "startup",
+        ),
+    ];
+    for (read, expected) in cases {
+        let (api, mut restarts) = reloading_api(None, read);
+        let (status, body) = api.send(request("POST", "/api/v1/reload")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(error(&body).contains(expected), "{expected}: {body}");
+        assert!(restarts.try_recv().is_err(), "{expected}");
+    }
+}
+
+#[tokio::test]
+async fn reload_needs_the_daemons_token() {
+    let (api, mut restarts) = reloading_api(Some(TOKEN.into()), || Ok(config()));
+    let page = PageToken::issue();
+    for bearer in [None, Some(page.as_str())] {
+        let mut request = request("POST", "/api/v1/reload");
+        if let Some(bearer) = bearer {
+            request = with_header(request, header::AUTHORIZATION, &format!("Bearer {bearer}"));
+        }
+        let (status, body) = api.send(request).await;
+        assert!(status.is_client_error(), "{status}: {body}");
+    }
+    assert!(restarts.try_recv().is_err());
+    let request = with_header(
+        request("POST", "/api/v1/reload"),
+        header::AUTHORIZATION,
+        &format!("Bearer {TOKEN}"),
+    );
+    assert_eq!(api.send(request).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn reload_needs_a_config_to_read() {
+    let api = Api::new(config());
+    let (status, _) = api.send(request("POST", "/api/v1/reload")).await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 }

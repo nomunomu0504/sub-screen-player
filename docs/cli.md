@@ -32,7 +32,7 @@ date_format = "%a %-d %b"     # e.g. "Wed 7 Oct"; "" hides the date
 color = "#FFD080"
 ```
 
-Then [restart the daemon](#autostart) so it reads the file.
+Then apply it with `ssp config reload` (see [Config file](#config-file)).
 
 For dates in another language, list the weekday names from Sunday in `weekdays`; `%a` (and `%A`)
 then print those names. Characters the built-in font lacks (e.g. Japanese) are drawn with a font
@@ -68,7 +68,7 @@ ssp dashboard --widgets clock,cpu,network
 ```
 
 To show the dashboard at login instead of the clock, and to keep your panels and colors, edit the
-config file and [restart the daemon](#autostart):
+config file and apply it with `ssp config reload`:
 
 ```toml
 [startup]
@@ -101,7 +101,8 @@ uptime | awk '{print $(NF-2)}' | tr -d , | ssp metric set load --value - --label
 
 A value older than `--ttl` seconds (default 300) is dimmed and says how old it is, so a stopped
 script does not leave a figure that looks current. Metrics are kept in memory only: after the daemon
-restarts, panels say "waiting for data" until the next value arrives.
+restarts, panels say "waiting for data" until the next value arrives (`ssp config reload` keeps
+them).
 [contrib/metrics/github-ci.sh](../contrib/metrics/github-ci.sh) is a complete example that shows
 how the last GitHub Actions runs of a branch went.
 
@@ -333,7 +334,7 @@ over `ssp stop` and `ssp off`; `ssp clear` ends it.
 
 ### Change the screen by time of day, or show screens in turn
 
-Add `[[schedule]]` entries to the config file and restart the daemon. Each entry sets what it
+Add `[[schedule]]` entries to the config file and run `ssp config reload`. Each entry sets what it
 names from its local time on: `show` (with the options of `[startup]`, such as `url` or
 `image`), `brightness` and `power`:
 
@@ -592,11 +593,13 @@ These work with every command.
 | `ssp service install` | LaunchAgent `~/Library/LaunchAgents/dev.sub-screen-player.ssp.plist` | systemd user unit `~/.config/systemd/user/sub-screen-player.service` | Value `sub-screen-player` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
 | `ssp service uninstall` | Stops the daemon and removes the agent | Stops the daemon and removes the unit | Removes the entry (a running daemon keeps running until you sign out) |
 | `ssp service status` | Installed? Running? | Installed? Active? | Installed? |
-| Restart (e.g. after editing the config) | `ssp service install` again | `systemctl --user restart sub-screen-player` | End `ssp.exe` in Task Manager, then `ssp service install` |
+| Restart (e.g. after updating `ssp`) | `ssp service install` again | `systemctl --user restart sub-screen-player` | End `ssp.exe` in Task Manager, then `ssp service install` |
 | Logs | `~/Library/Logs/sub-screen-player.log` | `journalctl --user -u sub-screen-player` | `%LOCALAPPDATA%\sub-screen-player\ssp.log` |
 
 `install` starts the daemon right away. The entry records the path of the `ssp` executable and
-of the config file at the time of installing, so run `install` again after moving either.
+of the config file at the time of installing, so run `install` again after moving either. After
+editing the config, `ssp config reload` applies it without a restart (on Linux,
+`systemctl --user reload sub-screen-player` runs it).
 
 ### Config file
 
@@ -606,6 +609,21 @@ of the config file at the time of installing, so run `install` again after movin
 | `ssp config init` | Write a commented config file with the default values. |
 | `  --force` | Overwrite an existing file. |
 | `ssp config show` | Print the effective configuration (defaults plus the file). |
+| `ssp config reload` | Have the running daemon read the config file again and apply it, then wait until it answers with it. |
+
+`ssp config reload` refuses a file with errors (the message says what is wrong), and the daemon
+keeps running as it was. With a good file, the daemon stops its screens and the API for a moment
+and starts again with the new config, in the same process: every setting applies, including
+`listen` and `token`. The displays are not blanked; they show what the new config says at start
+(`[startup]`, or the schedule). What was shown with `ssp show`, `ssp web` and the like is not
+kept, and neither are notifications or a paused schedule; metrics are kept. If the new config
+cannot start (for example, the new `listen` address is taken), the daemon goes back to the one
+before and `ssp config reload` says why.
+
+`ssp config reload` finds the daemon as other commands do, through the config file. After
+changing `listen` or `token` there, give the running daemon's old ones:
+`ssp --url http://127.0.0.1:7920 --token OLD config reload`. It then follows the daemon to its
+new address.
 
 #### Config file location
 

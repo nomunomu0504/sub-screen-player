@@ -264,6 +264,8 @@ enum ConfigCmd {
     },
     /// Print the effective configuration
     Show,
+    /// Have the running daemon read the config file again and apply it
+    Reload,
 }
 
 #[derive(Subcommand)]
@@ -458,17 +460,27 @@ fn run(cli: Cli) -> Result<()> {
             if detach {
                 return detach_daemon();
             }
-            let mut config = Config::load(&config_path)?;
-            if let Some(listen) = listen {
-                config.listen = listen;
-            }
-            if !drivers.is_empty() {
-                config.drivers.enable = drivers;
-            }
+            // Read again, with the same options, when the config is reloaded.
+            let path = config_path.clone();
+            let load = move || -> Result<Config> {
+                let mut config = Config::load(&path)?;
+                if let Some(listen) = listen {
+                    config.listen = listen;
+                }
+                if !drivers.is_empty() {
+                    config.drivers.enable = drivers.clone();
+                }
+                Ok(config)
+            };
+            let config = load()?;
             init_logging(log_file.as_deref())?;
             tracing::info!(config = %config_path.display(), "starting sub-screen-player {}", env!("CARGO_PKG_VERSION"));
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(ssp_server::serve(config, shutdown_signal()))
+            runtime.block_on(ssp_server::run(
+                config,
+                Some(std::sync::Arc::new(load)),
+                shutdown_signal,
+            ))
         }
         Cmd::Devices { json, drivers } => devices(
             &cli_client(&cli.url, &cli.token, &config_path)?,
@@ -699,6 +711,7 @@ fn run(cli: Cli) -> Result<()> {
                 );
                 Ok(())
             }
+            ConfigCmd::Reload => reload_config(&cli.url, &cli.token, &config_path),
         },
     }
 }
@@ -726,6 +739,79 @@ fn init_config(path: &Path, force: bool) -> Result<()> {
 }
 
 /// A client for the daemon, using the config file for anything not given on the command line.
+/// `ssp config reload`: has the daemon apply its config again, then waits until it answers with
+/// it. The daemon is reached as by other commands (the config file, `--url`, `--token`); after
+/// changing `listen` or `token` in the file, `--url` and `--token` give the running daemon's.
+fn reload_config(url: &Option<String>, token: &Option<String>, config_path: &Path) -> Result<()> {
+    let before = cli_client(url, token, config_path)?;
+    let started = match before.health() {
+        Ok(health) => health.started,
+        Err(err) if client::is_unreachable(&err) || client::is_unauthorized(&err) => {
+            anyhow::bail!(
+                "{err:#}\nIf you changed `listen` or `token` in the config file, give the running \
+                 daemon's with --url and --token, e.g. \
+                 `ssp --url http://127.0.0.1:{} config reload`.",
+                ssp_server::config::DEFAULT_PORT
+            );
+        }
+        Err(err) => return Err(err),
+    };
+    let reloaded = before.reload()?;
+    // The new daemon: on the host used so far, at the new port, with the token of the edited
+    // file or the one given. Or, if it went back to the config before, where it was.
+    let port = reloaded
+        .listen
+        .parse::<std::net::SocketAddr>()
+        .map(|a| a.port())
+        .context("the daemon answered an invalid address")?;
+    let base = with_port(before.base(), port);
+    let mut tokens = vec![token.clone()];
+    if let Ok(config) = Config::load(config_path) {
+        tokens.push(config.token);
+    }
+    tokens.dedup();
+    let mut candidates: Vec<Client> = tokens.into_iter().map(|t| Client::new(&base, t)).collect();
+    candidates.push(before);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        for client in &candidates {
+            let Ok(health) = client.health() else {
+                continue;
+            };
+            if health.started == started {
+                continue;
+            }
+            if let Some(error) = health.reload_error {
+                anyhow::bail!(
+                    "the daemon could not start with the new config and went back to the one \
+                     before: {error}"
+                );
+            }
+            say!(
+                "Reloaded the config; the daemon answers at {}.",
+                client.base()
+            );
+            return Ok(());
+        }
+        if std::time::Instant::now() > deadline {
+            anyhow::bail!(
+                "the daemon did not answer within 30 seconds after reloading its config; see its log"
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+/// `base` (`http://host:port`) with another port; as it is when it names none.
+fn with_port(base: &str, port: u16) -> String {
+    match base.rsplit_once(':') {
+        Some((host, old)) if !old.is_empty() && old.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("{host}:{port}")
+        }
+        _ => base.to_owned(),
+    }
+}
+
 fn cli_client(url: &Option<String>, token: &Option<String>, config_path: &Path) -> Result<Client> {
     let config = Config::load(config_path)?;
     let url = url.clone().unwrap_or_else(|| {
@@ -1183,6 +1269,19 @@ fn detach_daemon() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follows_the_daemon_to_its_new_port() {
+        assert_eq!(
+            with_port("http://127.0.0.1:7920", 7922),
+            "http://127.0.0.1:7922"
+        );
+        assert_eq!(with_port("http://[::1]:7920", 80), "http://[::1]:80");
+        assert_eq!(
+            with_port("https://ssp.example", 7922),
+            "https://ssp.example"
+        );
+    }
 
     #[test]
     fn reads_a_notification_from_standard_input() {

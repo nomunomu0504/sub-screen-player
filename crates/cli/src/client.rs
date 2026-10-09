@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use ssp_server::api::types::{
-    ChromeView, DisplayView, ErrorBody, Health, MetricView, ScheduleView,
+    ChromeView, DisplayView, ErrorBody, Health, MetricView, Reloaded, ScheduleView,
 };
 use ureq::http::Response;
 
@@ -53,6 +53,16 @@ impl Client {
 
     pub fn health(&self) -> Result<Health> {
         self.get("/health")
+    }
+
+    /// Has the daemon read its config file again; answers where it is going to listen.
+    pub fn reload(&self) -> Result<Reloaded> {
+        let mut request = self.agent.post(self.url("/reload"));
+        if let Some(auth) = self.auth() {
+            request = request.header("Authorization", auth);
+        }
+        let mut response = self.check(request.send_empty())?;
+        Ok(response.body_mut().read_json()?)
     }
 
     pub fn displays(&self) -> Result<Vec<DisplayView>> {
@@ -181,6 +191,12 @@ pub fn is_unavailable(err: &anyhow::Error) -> bool {
         || err
             .downcast_ref::<Refused>()
             .is_some_and(|r| r.status == 503)
+}
+
+/// The daemon wants another token.
+pub fn is_unauthorized(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Refused>()
+        .is_some_and(|r| r.status == 401)
 }
 
 /// The daemon is not running (or not at this address).

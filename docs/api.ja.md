@@ -61,6 +61,8 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `POST` | `/displays/{id}/clear` | | 表示中のコンテンツを止めて、画面を消去 |
 | `POST` | `/displays/{id}/stop` | | 表示中のコンテンツを止める（画面は最後の絵のまま） |
 | `GET` | `/displays/{id}/stream` | | ライブフレーム用の WebSocket（後述） |
+| `POST` | `/displays/{id}/notify` | JSON | 画面の上にメッセージをしばらく重ねて出す（後述） |
+| `DELETE` | `/displays/{id}/notify` | | 通知を消す |
 | `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Web ページを表示（後述） |
 | `GET` | `/web/chrome` | | ヘッドレス Chrome の準備ができているか |
 | `POST` | `/web/chrome` | | ヘッドレス Chrome をダウンロード |
@@ -109,6 +111,9 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 - `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数、`partial` は変わった部分だけを送った数です（`[display] partial_updates`）。
+- `notification` は通知を出している間だけ入ります（後述）:
+  `{"text": "CI が失敗しました", "style": "banner", "color": "#dc2626", "seconds_left": 8, "sticky": false}`。
+  2行目があれば `detail` が入り、`sticky` のときは `seconds_left` がありません。
 
 ### `POST /displays/{id}/image`
 
@@ -167,6 +172,29 @@ Windows では WinGet・Scoop・Chocolatey のフォルダ）の順に探しま�
 
 `widgets` は左から並べるパネルです（`clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>` から1〜6個。
 `claude-code` は [CLI ガイド](cli.ja.md#claude-code-の使用量を表示する)を参照）。`accent` はグラフの色です。
+
+### `POST /displays/{id}/notify`・`DELETE /displays/{id}/notify`
+
+表示中の内容の上にメッセージを重ねて出し、そのあと元の表示に戻します。下の内容は動き続けます。新しい通知は今の通知を置き換えます。
+
+```json
+{ "text": "CI が失敗しました", "detail": "main · 41 件中 2 件のジョブ", "seconds": 30, "color": "red" }
+```
+
+| 項目 | 意味 |
+|---|---|
+| `text` | メッセージ（1〜80 文字）。必須です。 |
+| `detail` | その下の小さな行（120 文字まで）。 |
+| `seconds` | 出しておく秒数。1〜86400（既定は 10）。 |
+| `sticky` | `true` なら、`seconds` の代わりに、消すか置き換えるまで出しておきます。 |
+| `style` | `banner`（下3分の1、既定）か `full`（パネル全体）。 |
+| `color` | 背景色。`red`・`orange`・`yellow`・`green`・`blue`（既定）・`gray`、または `#rrggbb`。 |
+| `wake` | `true` なら、消灯中の画面を通知の間だけ点灯し、終わったらまた消灯します。 |
+
+通知は表示内容ではなくディスプレイに属します。表示内容を切り替えても、ディスプレイを抜いている間も残ります（戻ったときに、
+まだ終わっていなければ再び出します）。何も表示していないとき（`content` が `nothing`、または `stop` のあと）は、最後の画面の
+上に描きます（なければ黒の上）。`POST /displays/{id}/clear` で表示内容とともに消え、`DELETE /displays/{id}/notify` ですぐに
+消えます（通知がなくても `204`）。ページ用トークンでは、`GET /displays` で読めますが、通知は出せません。
 
 ### メトリクス
 

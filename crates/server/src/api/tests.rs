@@ -699,3 +699,81 @@ async fn answers_preflights_for_pages() {
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn shows_and_dismisses_notifications() {
+    let api = Api::new(config());
+    let notify =
+        |body: &str| json_request("POST", &format!("/api/v1/displays/{DISPLAY}/notify"), body);
+    let shows = |log: &CallLog| {
+        log.take()
+            .iter()
+            .filter(|c| matches!(c, Call::Show(_) | Call::ShowPart { .. }))
+            .count()
+    };
+
+    // Over nothing: drawn on black at once, and black again when it ends.
+    let (status, body) = api
+        .send(notify(
+            r#"{"text": "CI failed", "detail": "main", "seconds": 1, "color": "red"}"#,
+        ))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    wait_until(|| shows(&api.log) > 0);
+    let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
+    let shown = display.notification.expect("a notification");
+    assert_eq!(
+        (shown.text.as_str(), shown.color.as_str(), shown.sticky),
+        ("CI failed", "#dc2626", false)
+    );
+    assert_eq!(shown.seconds_left, Some(1));
+    wait_until(|| shows(&api.log) > 0);
+    let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
+    assert_eq!(display.notification, None);
+
+    // A sticky one stays until dismissed.
+    let (status, _) = api
+        .send(notify(r#"{"text": "Waiting", "sticky": true}"#))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
+    let shown = display.notification.expect("a notification");
+    assert!(shown.sticky);
+    assert_eq!(shown.seconds_left, None);
+    let dismiss = request("DELETE", &format!("/api/v1/displays/{DISPLAY}/notify"));
+    assert_eq!(api.send(dismiss).await.0, StatusCode::NO_CONTENT);
+    let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
+    assert_eq!(display.notification, None);
+
+    // Clearing the screen ends it too.
+    api.send(notify(r#"{"text": "Waiting", "sticky": true}"#))
+        .await;
+    let clear = post(&format!("/api/v1/displays/{DISPLAY}/clear"), "");
+    assert_eq!(api.send(clear).await.0, StatusCode::NO_CONTENT);
+    let display: DisplayView = api.get(&format!("/api/v1/displays/{DISPLAY}")).await;
+    assert_eq!(display.notification, None);
+}
+
+#[tokio::test]
+async fn refuses_bad_notifications() {
+    let api = Api::new(config());
+    for (body, expected) in [
+        (r#"{"text": ""}"#, "empty"),
+        (r#"{"text": "a", "seconds": 0}"#, "at least 1"),
+        (r#"{"text": "a", "seconds": 5, "sticky": true}"#, "either"),
+        (r#"{"text": "a", "color": "purple"}"#, "not a color"),
+        (r#"{"text": "a", "style": "popup"}"#, "style"),
+        (r#"{"text": "a", "colour": "red"}"#, "colour"),
+    ] {
+        let request = json_request("POST", &format!("/api/v1/displays/{DISPLAY}/notify"), body);
+        let (status, answer) = api.send(request).await;
+        assert!(status.is_client_error(), "{body}: {status}");
+        assert!(error(&answer).contains(expected), "{body}: {answer}");
+    }
+    let long = format!(r#"{{"text": "{}"}}"#, "x".repeat(81));
+    let request = json_request("POST", &format!("/api/v1/displays/{DISPLAY}/notify"), &long);
+    assert_eq!(api.send(request).await.0, StatusCode::BAD_REQUEST);
+    let unknown = json_request("POST", "/api/v1/displays/nope/notify", r#"{"text": "a"}"#);
+    assert_eq!(api.send(unknown).await.0, StatusCode::NOT_FOUND);
+    assert!(api.log.take().is_empty());
+}

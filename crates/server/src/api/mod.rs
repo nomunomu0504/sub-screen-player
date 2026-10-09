@@ -7,6 +7,7 @@ mod tests;
 pub mod types;
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, BodyDataStream};
@@ -23,6 +24,7 @@ use tokio::sync::watch;
 use crate::config::{ClockConfig, Config, DashboardConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
+use crate::notify::{self, Notification};
 use crate::sources::stats::Stats;
 use crate::sources::video::{self, MAX_VIDEO_BYTES, VideoFile, Videos};
 use crate::sources::web::WebPage;
@@ -30,8 +32,8 @@ use crate::sources::{Clock, Content, Picture};
 use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
-    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, PowerRequest, StatsView, SystemView,
-    WebRequest,
+    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, NotificationView, NotifyRequest,
+    PowerRequest, StatsView, SystemView, WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -91,6 +93,10 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/stop", post(stop))
         .route("/displays/{id}/stream", get(stream::stream))
         .route("/displays/{id}/web", post(show_web))
+        .route(
+            "/displays/{id}/notify",
+            post(show_notification).delete(dismiss_notification),
+        )
         .route("/web/chrome", get(chrome_status).post(install_chrome))
         .route("/system", get(system))
         .route("/metrics", get(list_metrics))
@@ -234,8 +240,66 @@ fn view(state: DisplayState) -> DisplayView {
             last_bytes: s.last_bytes,
             quality: s.quality,
         }),
+        notification: state.notification.map(|shown| {
+            let [r, g, b] = shown.notification.color;
+            NotificationView {
+                text: shown.notification.text,
+                detail: shown.notification.detail,
+                style: shown.notification.style,
+                color: format!("#{r:02x}{g:02x}{b:02x}"),
+                // Rounded up, so a notification about to end does not say 0.
+                seconds_left: shown
+                    .left
+                    .map(|d| d.as_secs() + u64::from(d.subsec_nanos() > 0)),
+                sticky: shown.left.is_none(),
+            }
+        }),
         id: state.id,
     }
+}
+
+async fn show_notification(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<NotifyRequest>,
+) -> Result<StatusCode, ApiError> {
+    if request.sticky && request.seconds.is_some() {
+        return Err(ApiError::bad_request(
+            "give either seconds or sticky, not both",
+        ));
+    }
+    let color_name = request.color.as_deref().unwrap_or(notify::DEFAULT_COLOR);
+    let color = notify::parse_color(color_name).ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "{color_name:?} is not a color: use red, orange, yellow, green, blue, gray or #RRGGBB"
+        ))
+    })?;
+    let notification = Notification {
+        text: request.text,
+        detail: request.detail.filter(|d| !d.trim().is_empty()),
+        style: request.style.unwrap_or_default(),
+        color,
+        duration: (!request.sticky)
+            .then(|| Duration::from_secs(request.seconds.unwrap_or(notify::DEFAULT_SECONDS))),
+        wake: request.wake,
+    };
+    notification.validate().map_err(ApiError::bad_request)?;
+    blocking(move || {
+        app.manager.notify(&id, notification)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+async fn dismiss_notification(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    blocking(move || {
+        app.manager.dismiss(&id)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
 }
 
 async fn health(State(app): State<AppState>) -> Json<Health> {
@@ -464,7 +528,7 @@ async fn clear(
     blocking(move || {
         let device = app.manager.device(&id)?;
         app.manager.set_content(&id, Content::Nothing)?;
-        device.presenter.clear()?;
+        device.clear()?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

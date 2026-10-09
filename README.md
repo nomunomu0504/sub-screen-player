@@ -45,6 +45,8 @@ device-specific protocol has to be written; everything else is shared.
   60 fps when [ffmpeg](https://ffmpeg.org/) is installed.
 - **Web pages**: any HTML/CSS/JavaScript page or URL, drawn by headless Chrome (downloaded on
   first use) and sent whenever it repaints.
+- **Notifications**: `ssp notify` shows a message over whatever is on the screen for a while, then
+  goes back; Claude Code hooks and CI jobs can call it.
 - **HTTP + WebSocket API** so scripts and apps in any language can draw on the screen.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.
 - **Autostart** at login (launchd, systemd user unit or the Windows `Run` key).

@@ -17,6 +17,7 @@ use ssp_core::{
 
 use crate::config::{Config, DisplayConfig, StartupShow};
 use crate::metrics::Metrics;
+use crate::notify::{Notification, Overlay, Shown};
 use crate::sources::video::{self, VideoFile};
 use crate::sources::web::WebPage;
 use crate::sources::{Clock, Content, Picture, Source};
@@ -38,9 +39,24 @@ pub enum LookupError {
 
 /// An open display.
 pub struct Device {
-    /// Feeds the display.
+    /// Feeds the display. Frames of contents go through [`Device::submit`] instead, so the
+    /// notification is drawn over them.
     pub presenter: Presenter,
     path: CString,
+    overlay: Arc<Overlay>,
+}
+
+impl Device {
+    /// Queues a frame of the display's content, with the notification (if any) drawn on top.
+    pub fn submit(&self, frame: Frame) -> ssp_core::Result<()> {
+        self.presenter.submit(self.overlay.pass(frame))
+    }
+
+    /// Blanks the screen and ends the notification without showing anything else.
+    pub fn clear(&self) -> ssp_core::Result<()> {
+        self.overlay.forget();
+        self.presenter.clear()
+    }
 }
 
 /// A snapshot of one display for the API.
@@ -56,6 +72,8 @@ pub struct DisplayState {
     pub content: &'static str,
     /// Counters of the current connection.
     pub stats: Option<PresenterStats>,
+    /// The notification being shown.
+    pub notification: Option<Shown>,
 }
 
 /// Proof that a WebSocket stream owns a display; lost when other content is set.
@@ -94,6 +112,8 @@ struct Entry {
     /// Bumped whenever the content changes, so stale players and streams stop.
     generation: Arc<AtomicU64>,
     player: Option<Player>,
+    /// The notification, kept across reconnects.
+    overlay: Arc<Overlay>,
 }
 
 impl Manager {
@@ -194,8 +214,6 @@ impl Manager {
         {
             tracing::warn!(display = %info.id(), "cannot set brightness: {err}");
         }
-        let device = Arc::new(Device { presenter, path });
-
         let mut inner = self.lock();
         // Two devices without serial numbers share an id; number the later ones.
         let base = info.id();
@@ -218,7 +236,14 @@ impl Manager {
             content: self.startup.clone(),
             generation: Arc::default(),
             player: None,
+            overlay: Overlay::new(),
         });
+        let device = Arc::new(Device {
+            presenter,
+            path,
+            overlay: entry.overlay.clone(),
+        });
+        entry.overlay.attach(&device);
         entry.info = info;
         entry.device = Some(device);
         entry.generation.fetch_add(1, Ordering::SeqCst);
@@ -254,6 +279,7 @@ impl Manager {
                 connected: entry.device.is_some(),
                 content: entry.content.kind(),
                 stats: entry.device.as_ref().map(|d| d.presenter.stats()),
+                notification: entry.overlay.current(),
             })
             .collect()
     }
@@ -297,6 +323,28 @@ impl Manager {
     /// Changes what a display shows. Kept across reconnects.
     pub fn set_content(&self, id: &str, content: Content) -> Result<(), LookupError> {
         self.replace_content(id, content).map(|_| ())
+    }
+
+    /// Shows `notification` over what the display shows, in place of the current one. A
+    /// display that is not connected shows it when it connects, if it has not ended by then.
+    pub fn notify(&self, id: &str, notification: Notification) -> Result<(), LookupError> {
+        let overlay = {
+            let inner = self.lock();
+            let id = self.resolve(&inner, id)?;
+            inner.entries[&id].overlay.clone()
+        };
+        overlay.show(notification);
+        Ok(())
+    }
+
+    /// Ends the display's notification. `false` if there was none.
+    pub fn dismiss(&self, id: &str) -> Result<bool, LookupError> {
+        let overlay = {
+            let inner = self.lock();
+            let id = self.resolve(&inner, id)?;
+            inner.entries[&id].overlay.clone()
+        };
+        Ok(overlay.dismiss())
     }
 
     /// Hands the display to a WebSocket stream.
@@ -457,7 +505,7 @@ impl Player {
                     if generation.load(Ordering::SeqCst) != mine {
                         break;
                     }
-                    if let Err(err) = device.presenter.submit(frame) {
+                    if let Err(err) = device.submit(frame) {
                         tracing::debug!("source stopped: {err}");
                         break;
                     }

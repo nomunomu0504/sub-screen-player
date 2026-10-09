@@ -21,7 +21,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ssp_server::Config;
 use ssp_server::api::types::{
     BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, MetricUpdate, MetricView,
-    PowerRequest, WebRequest,
+    NotifyRequest, NotifyStyle, PowerRequest, WebRequest,
 };
 use ssp_server::config::Widget;
 
@@ -151,6 +151,39 @@ enum Cmd {
         #[command(subcommand)]
         action: MetricCmd,
     },
+    /// Show a message over the screen for a while, then go back to what was shown
+    Notify {
+        /// The message (at most 80 characters)
+        #[arg(required_unless_present_any = ["stdin", "dismiss"])]
+        text: Option<String>,
+        /// A smaller line under the message (at most 120 characters)
+        #[arg(long)]
+        detail: Option<String>,
+        /// How long it stays, in seconds [default: 10]
+        #[arg(long = "for", value_name = "SECONDS",
+              value_parser = clap::value_parser!(u64).range(1..=86400))]
+        seconds: Option<u64>,
+        /// Keep it until dismissed or replaced
+        #[arg(long, conflicts_with = "seconds")]
+        sticky: bool,
+        /// Where to draw it
+        #[arg(long, value_enum, default_value_t = NotifyStyleArg::Banner)]
+        style: NotifyStyleArg,
+        /// red, orange, yellow, green, blue, gray or #rrggbb
+        #[arg(long, default_value = "blue")]
+        color: String,
+        /// Switch the screen on if it is off, and off again after
+        #[arg(long)]
+        wake: bool,
+        /// Read the message from standard input: the first line, the rest as the detail. JSON
+        /// from a Claude Code hook gives its message, project and last reply. Long texts are
+        /// shortened; TEXT and --detail win
+        #[arg(long)]
+        stdin: bool,
+        /// End the notification being shown
+        #[arg(long, conflicts_with_all = ["text", "stdin", "detail", "seconds", "sticky", "wake"])]
+        dismiss: bool,
+    },
     /// Set the backlight
     Brightness {
         /// Percent, 0-100
@@ -243,6 +276,79 @@ enum MetricCmd {
         /// The metric's id
         id: String,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum NotifyStyleArg {
+    /// A band across the bottom third
+    Banner,
+    /// The whole panel
+    Full,
+}
+
+impl From<NotifyStyleArg> for NotifyStyle {
+    fn from(style: NotifyStyleArg) -> Self {
+        match style {
+            NotifyStyleArg::Banner => Self::Banner,
+            NotifyStyleArg::Full => Self::Full,
+        }
+    }
+}
+
+/// Text and detail of a notification from standard input, each shortened to what the daemon
+/// takes; `text` and `detail` from the command line win.
+///
+/// Plain text gives its first non-empty line and the other lines joined. A JSON object, as
+/// Claude Code passes to hooks, gives its `message` (or `title`), and as the detail the folder
+/// of `cwd` and the first line of `last_assistant_message`.
+fn message_from(
+    input: &str,
+    text: Option<String>,
+    detail: Option<String>,
+) -> Result<(String, Option<String>)> {
+    let (found_text, found_detail) = match serde_json::from_str(input.trim()) {
+        Ok(serde_json::Value::Object(fields)) => {
+            let field = |name: &str| {
+                fields
+                    .get(name)
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+            };
+            let project = field("cwd")
+                .and_then(|cwd| std::path::Path::new(cwd).file_name())
+                .and_then(|name| name.to_str());
+            let said = field("last_assistant_message")
+                .and_then(|m| m.lines().map(str::trim).find(|l| !l.is_empty()));
+            let detail = [project, said].into_iter().flatten().collect::<Vec<_>>();
+            (
+                field("message").or(field("title")).map(str::to_owned),
+                detail.join(" · "),
+            )
+        }
+        _ => {
+            let mut lines = input.lines().map(str::trim).filter(|l| !l.is_empty());
+            let first = lines.next().map(str::to_owned);
+            (first, lines.collect::<Vec<_>>().join(" "))
+        }
+    };
+    let Some(text) = text.or(found_text) else {
+        anyhow::bail!("no message on standard input");
+    };
+    let detail = detail.or((!found_detail.is_empty()).then_some(found_detail));
+    Ok((
+        shorten(&text, ssp_server::notify::MAX_TEXT),
+        detail.map(|d| shorten(&d, ssp_server::notify::MAX_DETAIL)),
+    ))
+}
+
+/// `text` cut to `max` characters, ending with an ellipsis if it was longer.
+fn shorten(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(max - 1).collect();
+    format!("{}…", kept.trim_end())
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -383,6 +489,42 @@ fn run(cli: Cli) -> Result<()> {
                 .post_json(&format!("{display}/dashboard"), &request)
         }
         Cmd::Metric { action } => metric(&cli_client(&cli.url, &cli.token, &config_path)?, action),
+        Cmd::Notify {
+            text,
+            detail,
+            seconds,
+            sticky,
+            style,
+            color,
+            wake,
+            stdin,
+            dismiss,
+        } => {
+            let client = cli_client(&cli.url, &cli.token, &config_path)?;
+            let path = format!("{display}/notify");
+            if dismiss {
+                return client.delete(&path);
+            }
+            let (text, detail) = if stdin {
+                let mut input = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
+                message_from(&input, text, detail)?
+            } else {
+                (text.expect("required by clap"), detail)
+            };
+            client.post_json(
+                &path,
+                &NotifyRequest {
+                    text,
+                    detail,
+                    seconds,
+                    sticky,
+                    style: Some(style.into()),
+                    color: Some(color),
+                    wake,
+                },
+            )
+        }
         Cmd::Brightness { percent } => cli_client(&cli.url, &cli.token, &config_path)?.post_json(
             &format!("{display}/brightness"),
             &BrightnessRequest { percent },
@@ -583,6 +725,12 @@ fn status(client: &Client) -> Result<()> {
                 s.last_bytes,
                 s.quality
             );
+        }
+        if let Some(n) = &d.notification {
+            let left = n
+                .seconds_left
+                .map_or_else(|| "until dismissed".to_owned(), |s| format!("{s} s left"));
+            say!("  notice    {:?} ({left})", n.text);
         }
     }
     Ok(())
@@ -818,4 +966,58 @@ fn detach_daemon() -> Result<()> {
         .spawn()
         .context("cannot start the daemon in the background")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_notification_from_standard_input() {
+        let read = |input: &str| message_from(input, None, None);
+        let (text, detail) = read("\n  Claude needs your permission  \n\nto use Bash\n").unwrap();
+        assert_eq!(text, "Claude needs your permission");
+        assert_eq!(detail.as_deref(), Some("to use Bash"));
+        let (text, detail) = read("done").unwrap();
+        assert_eq!((text.as_str(), detail), ("done", None));
+        assert!(read(" \n").is_err());
+        // The command line wins.
+        let given = message_from(
+            "from stdin\nmore",
+            Some("given".into()),
+            Some("also".into()),
+        );
+        let (text, detail) = given.unwrap();
+        assert_eq!((text.as_str(), detail.as_deref()), ("given", Some("also")));
+
+        let long = "x".repeat(200);
+        let (text, detail) = read(&format!("{long}\n{long}")).unwrap();
+        assert_eq!(text.chars().count(), ssp_server::notify::MAX_TEXT);
+        assert!(text.ends_with('…'));
+        let detail = detail.unwrap();
+        assert_eq!(detail.chars().count(), ssp_server::notify::MAX_DETAIL);
+    }
+
+    #[test]
+    fn reads_what_claude_code_passes_to_hooks() {
+        let notification = r#"{"session_id": "abc", "cwd": "/Users/me/projects/shop",
+            "hook_event_name": "Notification", "message": "Claude needs your permission to use Bash",
+            "title": "Permission needed", "notification_type": "permission_prompt"}"#;
+        let (text, detail) = message_from(notification, None, None).unwrap();
+        assert_eq!(text, "Claude needs your permission to use Bash");
+        assert_eq!(detail.as_deref(), Some("shop"));
+
+        let stop = r#"{"cwd": "/Users/me/projects/shop", "hook_event_name": "Stop",
+            "last_assistant_message": "\nI've finished the refactoring.\nDetails follow."}"#;
+        let (text, detail) = message_from(stop, Some("Claude Code is done".into()), None).unwrap();
+        assert_eq!(text, "Claude Code is done");
+        assert_eq!(
+            detail.as_deref(),
+            Some("shop · I've finished the refactoring.")
+        );
+        assert!(
+            message_from(stop, None, None).is_err(),
+            "Stop has no message"
+        );
+    }
 }

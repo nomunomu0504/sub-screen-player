@@ -115,6 +115,8 @@ struct State {
     commands: VecDeque<Command>,
     running: bool,
     failure: Option<String>,
+    /// Whether the screen was switched off ([`Presenter::sleep`]) and not on again since.
+    asleep: bool,
     stats: PresenterStats,
 }
 
@@ -167,6 +169,7 @@ impl Presenter {
                 commands: VecDeque::new(),
                 running: true,
                 failure: None,
+                asleep: false,
                 stats: PresenterStats {
                     quality,
                     ..PresenterStats::default()
@@ -256,6 +259,12 @@ impl Presenter {
     /// Counters so far.
     pub fn stats(&self) -> PresenterStats {
         self.shared.lock().stats.clone()
+    }
+
+    /// Whether the screen is switched off: [`Presenter::sleep`] succeeded and
+    /// [`Presenter::wake`] did not since.
+    pub fn is_asleep(&self) -> bool {
+        self.shared.lock().asleep
     }
 
     /// `false` once the presenter stopped, e.g. because the device was unplugged.
@@ -542,8 +551,8 @@ impl Worker {
                     let result = match op {
                         Op::Save(frame) => self.save(&frame),
                         Op::Brightness(percent) => self.display.set_brightness(percent),
-                        Op::Wake => self.display.wake(),
-                        Op::Sleep => self.display.sleep(),
+                        Op::Wake => self.display.wake().inspect(|()| self.set_asleep(false)),
+                        Op::Sleep => self.display.sleep().inspect(|()| self.set_asleep(true)),
                         Op::Clear => self.display.clear(),
                         Op::Stop(action) => {
                             let latest = {
@@ -640,6 +649,10 @@ impl Worker {
     }
 
     /// Marks what the screen shows as unknown, so the next frame is sent whole.
+    fn set_asleep(&self, asleep: bool) {
+        self.shared.lock().asleep = asleep;
+    }
+
     fn forget_screen(&self) {
         let mut state = self.shared.lock();
         state.screen = None;
@@ -908,6 +921,23 @@ mod tests {
         assert!(matches!(calls[1], Call::Show(_)));
         assert_eq!(calls[2], Call::Clear);
         assert!(matches!(&calls[3], Call::Save(d) if Call::Show(d.clone()) == calls[1]));
+    }
+
+    #[test]
+    fn remembers_whether_the_screen_is_off() {
+        let (display, _log) = FakeDisplay::new();
+        let presenter = Presenter::spawn(Box::new(display), PresenterOptions::default());
+        assert!(!presenter.is_asleep());
+        presenter.sleep().unwrap();
+        assert!(presenter.is_asleep());
+        presenter.clear().unwrap();
+        assert!(
+            presenter.is_asleep(),
+            "clearing does not switch the screen on"
+        );
+        presenter.wake().unwrap();
+        assert!(!presenter.is_asleep());
+        presenter.stop(StopAction::Leave).unwrap();
     }
 
     /// `frame(shade)` with a landscape box painted white.

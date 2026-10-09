@@ -80,7 +80,10 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
 ## Life of a frame
 
 1. A frame is produced: a `Source` renders it on the display's player thread, or a
-   WebSocket/HTTP client sends one and the server decodes it.
+   WebSocket/HTTP client sends one and the server decodes it. It then passes the display's
+   overlay (`notify.rs`), which keeps it and draws the notification, if any, on top. When a
+   notification starts or ends, the overlay sends the last frame again with or without it, so a
+   still picture gets it too.
 2. `Presenter::submit` stores it in a one-frame slot and returns at once. A frame still
    waiting in the slot is dropped (counted as `dropped`).
 3. The **encoder thread** takes the frame and rotates it. On displays that take partial images
@@ -114,6 +117,7 @@ order, and the caller waits for the result. Keep-alives are sent on that thread 
 | `ssp-encode-<id>` | 1 per display | Rotates and encodes frames |
 | `ssp-device-<id>` | 1 per display | Owns the `Display`; sends frames, commands and keep-alives |
 | `ssp-player-<id>` | 0–1 per display | Runs the current built-in `Source` (e.g. ticks the clock) |
+| `ssp-notify` | 0–1 per notification | Ends a notification on time |
 
 A `Display` is only ever used by its device thread, so drivers need no locking.
 

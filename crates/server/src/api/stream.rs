@@ -66,7 +66,7 @@ async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: 
                 StreamFormat::Rgb => Frame::from_rgb(width, height, data.to_vec()),
                 StreamFormat::Rgba => Frame::from_rgba(width, height, &data),
             }?;
-            device.presenter.submit(frame)?;
+            device.submit(frame)?;
             Ok(())
         })
         .await;

@@ -18,6 +18,7 @@ pub mod draw;
 pub mod drivers;
 pub mod manager;
 pub mod metrics;
+pub mod notify;
 pub mod sources;
 pub mod text;
 pub mod web;

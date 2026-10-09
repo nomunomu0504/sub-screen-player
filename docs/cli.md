@@ -134,6 +134,49 @@ every 30 seconds. Point it elsewhere with `[claude_code] dir` in the config. The
 available to scripts as the metric `claude-code` (`ssp metric list`,
 [`GET /api/v1/metrics/claude-code`](api.md#metrics)).
 
+### Get notified: Claude Code waiting, a failed CI run
+
+```sh
+ssp notify "Build finished" --color green
+ssp notify "CI failed" --detail "main · 2 of 41 jobs" --color red --sticky
+ssp notify --dismiss
+```
+
+![A notification over the clock](images/notify.png)
+
+`ssp notify` draws a message over whatever the display shows, for 10 seconds (`--for
+<seconds>`, up to a day) or until it is dismissed or replaced (`--sticky`); then the screen goes
+back to what it showed. The content keeps running underneath: the clock keeps ticking above the
+banner, a video keeps playing. A new notification replaces the current one. `--detail` adds a
+smaller line, `--color` sets the background (`red`, `orange`, `yellow`, `green`, `blue`, `gray`
+or `#rrggbb`), and `--style full` covers the whole panel instead of the bottom third. A screen
+that is off stays off unless `--wake` is given; then it goes off again when the notification
+ends. The notification stays when the content changes and while the display is unplugged;
+`ssp status` shows it with the time left, and `ssp clear` ends it.
+
+**Claude Code** runs hooks when it needs you and when it finishes. Add them to
+`~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green" }] }
+    ]
+  }
+}
+```
+
+With `--stdin`, `ssp notify` reads what the hook gets: the message ("Claude needs your permission
+to use Bash") becomes the text, and the project folder and the first line of Claude's last
+reply the detail. Plain text works too: the first line is the text, the rest the detail.
+
+**CI or any script**: run `ssp notify` when a job fails, or send `POST /api/v1/displays/{id}/notify`
+from another computer (see the [API guide](api.md)).
+
 ### Keep a picture on the screen, even when the computer is off
 
 ```sh
@@ -235,7 +278,8 @@ reload = 600       # optional
 | `ssp off` | is kept | off (backlight off) | keeps running |
 | `ssp on` | | on again | |
 
-Start something again with `ssp clock` or `ssp show ...`.
+Start something again with `ssp clock` or `ssp show ...`. A notification (`ssp notify`) stays
+over `ssp stop` and `ssp off`; `ssp clear` ends it.
 
 ### Dim the screen at night
 
@@ -436,6 +480,15 @@ These work with every command.
 | `ssp brightness <0-100>` | Set the backlight in percent. |
 | `ssp on` | Switch the screen on. |
 | `ssp off` | Switch the screen off. What is being shown keeps running. |
+| `ssp notify <TEXT>` | Show a message over the screen for a while, then go back to what was shown. |
+| `  --detail <TEXT>` | A smaller line under the message. |
+| `  --for <SECONDS>` | How long it stays: 1 to 86400, default 10. |
+| `  --sticky` | Keep it until dismissed or replaced. |
+| `  --style banner\|full` | Draw it across the bottom third (default) or the whole panel. |
+| `  --color <COLOR>` | `red`, `orange`, `yellow`, `green`, `blue` (default), `gray` or `#rrggbb`. |
+| `  --wake` | Switch the screen on if it is off, and off again after. |
+| `  --stdin` | Read the message from standard input: text, or the JSON of a Claude Code hook. |
+| `ssp notify --dismiss` | End the notification. |
 
 ### Autostart
 

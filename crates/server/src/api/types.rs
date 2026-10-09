@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{FitName, Widget};
 pub use crate::metrics::MetricUpdate;
+pub use crate::notify::Style as NotifyStyle;
 
 /// `GET /api/v1/health`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +45,55 @@ pub struct DisplayView {
     pub capabilities: CapabilitiesView,
     /// Counters of the current connection.
     pub stats: Option<StatsView>,
+    /// The notification being shown (`POST /displays/{id}/notify`). Missing when there is none,
+    /// and from daemons before 0.5.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification: Option<NotificationView>,
+}
+
+/// A notification being shown, in [`DisplayView`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NotificationView {
+    /// The title.
+    pub text: String,
+    /// The line under the title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// `banner` or `full`.
+    pub style: NotifyStyle,
+    /// Background color, `#rrggbb`.
+    pub color: String,
+    /// Seconds until it ends; missing for a sticky one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds_left: Option<u64>,
+    /// Whether it stays until dismissed or replaced.
+    pub sticky: bool,
+}
+
+/// `POST /api/v1/displays/{id}/notify`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotifyRequest {
+    /// The title (at most 80 characters).
+    pub text: String,
+    /// A smaller line under the title (at most 120 characters).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// How long it stays, 1 to 86400 (default 10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u64>,
+    /// Stay until dismissed or replaced, instead of `seconds`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sticky: bool,
+    /// `banner` (default) or `full`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<NotifyStyle>,
+    /// `red`, `orange`, `yellow`, `green`, `blue` (default), `gray` or `#rrggbb`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Switch a screen that is off on while it is shown, and off again after.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wake: bool,
 }
 
 /// Supported operations of a display.

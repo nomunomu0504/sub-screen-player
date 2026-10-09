@@ -63,6 +63,8 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `POST` | `/displays/{id}/clear` | | Stops the current content and blanks the screen |
 | `POST` | `/displays/{id}/stop` | | Stops the current content; the screen keeps its picture |
 | `GET` | `/displays/{id}/stream` | | WebSocket for live frames (see below) |
+| `POST` | `/displays/{id}/notify` | JSON | Shows a message over the screen for a while (see below) |
+| `DELETE` | `/displays/{id}/notify` | | Ends the notification |
 | `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Shows a web page (see below) |
 | `GET` | `/web/chrome` | | Whether headless Chrome is ready |
 | `POST` | `/web/chrome` | | Downloads headless Chrome |
@@ -113,6 +115,9 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed; `partial` counts frames sent as
   their changed parts only (`[display] partial_updates`).
+- `notification` appears while a notification is shown (see below):
+  `{"text": "CI failed", "style": "banner", "color": "#dc2626", "seconds_left": 8, "sticky": false}`,
+  with `detail` if it has one and without `seconds_left` if it is sticky.
 
 ### `POST /displays/{id}/image`
 
@@ -175,6 +180,32 @@ clock panel uses the formats of `[clock]`.
 `widgets` lists the panels from left to right (1 to 6 of `clock`, `cpu`, `memory`, `network`,
 `disk`, `claude-code` and `metric:<id>`; see the [CLI guide](cli.md#show-how-much-claude-code-you-have-used)
 for `claude-code`). `accent` is the color of the graphs.
+
+### `POST /displays/{id}/notify`, `DELETE /displays/{id}/notify`
+
+Shows a message over whatever the display shows, then goes back to it. The content keeps
+running underneath; a new notification replaces the current one.
+
+```json
+{ "text": "CI failed", "detail": "main · 2 of 41 jobs", "seconds": 30, "color": "red" }
+```
+
+| Field | Meaning |
+|---|---|
+| `text` | The message, 1 to 80 characters. Required. |
+| `detail` | A smaller line under it, up to 120 characters. |
+| `seconds` | How long it stays, 1 to 86400 (default 10). |
+| `sticky` | `true`: it stays until dismissed or replaced, instead of `seconds`. |
+| `style` | `banner` (the bottom third, default) or `full` (the whole panel). |
+| `color` | Background: `red`, `orange`, `yellow`, `green`, `blue` (default), `gray` or `#rrggbb`. |
+| `wake` | `true`: a screen that is off is switched on while it is shown, and off again after. |
+
+A notification belongs to the display, not to its content: it stays when the content changes,
+and while the display is unplugged (it shows again when the display is back, if it has not
+ended). Over nothing (`content` is `nothing`, or after `stop`) it is drawn on the last picture,
+black if there is none. `POST /displays/{id}/clear` ends it with the content, and
+`DELETE /displays/{id}/notify` ends it at once (`204` whether there was one or not). A page
+token can read it in `GET /displays` but not post one.
 
 ### Metrics
 

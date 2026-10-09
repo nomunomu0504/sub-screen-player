@@ -127,6 +127,45 @@ ssp dashboard --widgets clock,claude-code,cpu,memory
 読ませるには、設定ファイルの `[claude_code] dir` を使います。同じ値は、メトリクス `claude-code` としてスクリプトからも
 使えます（`ssp metric list`、[`GET /api/v1/metrics/claude-code`](api.ja.md#メトリクス)）。
 
+### 通知を出す: Claude Code の入力待ち、CI の失敗
+
+```sh
+ssp notify "ビルドが終わりました" --color green
+ssp notify "CI が失敗しました" --detail "main · 41 件中 2 件のジョブ" --color red --sticky
+ssp notify --dismiss
+```
+
+![時計の上に重ねた通知](images/notify.png)
+
+`ssp notify` は、表示中の内容の上にメッセージを重ねて出します。10 秒（`--for <秒>`、最長1日）たつか、消すか置き換える
+まで（`--sticky`）出し、そのあと元の表示に戻ります。下の内容は動き続けるので、帯の上では時計が進み、動画も再生され続け
+ます。新しい通知は今の通知を置き換えます。`--detail` で小さな2行目を足し、`--color` で背景色（`red`・`orange`・`yellow`・
+`green`・`blue`・`gray`、または `#rrggbb`）を、`--style full` で下3分の1ではなくパネル全体に出すことを指定できます。
+消灯中の画面は、`--wake` を付けたときだけ点灯し、通知が終わるとまた消灯します。通知は表示内容を切り替えても、
+ディスプレイを抜いている間も残ります。`ssp status` で残り時間とともに確認でき、`ssp clear` で消えます。
+
+**Claude Code** は、入力を待つときと作業を終えたときにフックを実行します。`~/.claude/settings.json` に次を足します。
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "ssp notify --stdin --for 60" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "ssp notify \"Claude Code is done\" --stdin --color green" }] }
+    ]
+  }
+}
+```
+
+`--stdin` を付けると、`ssp notify` はフックが受け取った内容を読みます。メッセージ（「Claude needs your permission to use
+Bash」など）が本文に、プロジェクトのフォルダ名と Claude の最後の返答の1行目が2行目になります。ふつうのテキストも読めます
+（1行目が本文、残りが2行目）。
+
+**CI やほかのスクリプト**: ジョブが失敗したときに `ssp notify` を実行するか、別の PC から
+`POST /api/v1/displays/{id}/notify` を送ります（[API ガイド](api.ja.md)を参照）。
+
 ### PC の電源を切っても画像を表示しておく
 
 ```sh
@@ -222,7 +261,8 @@ reload = 600       # 省略可
 | `ssp off` | 保持される | 消灯（バックライト off） | 動き続ける |
 | `ssp on` | | 再び点灯 | |
 
-再び何かを表示するには `ssp clock` や `ssp show ...` を実行します。
+再び何かを表示するには `ssp clock` や `ssp show ...` を実行します。通知（`ssp notify`）は `ssp stop` や `ssp off` の
+あとも残り、`ssp clear` で消えます。
 
 ### 夜は画面を暗くする
 
@@ -417,6 +457,15 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `ssp brightness <0-100>` | バックライトの明るさをパーセントで設定します。 |
 | `ssp on` | 画面を点灯します。 |
 | `ssp off` | 画面を消灯します。表示中の内容は裏で動き続けます。 |
+| `ssp notify <TEXT>` | 表示中の内容の上にメッセージをしばらく重ねて出し、そのあと元の表示に戻ります。 |
+| `  --detail <TEXT>` | メッセージの下の小さな行。 |
+| `  --for <SECONDS>` | 出しておく秒数。1〜86400、既定は 10。 |
+| `  --sticky` | 消すか置き換えるまで出しておきます。 |
+| `  --style banner\|full` | 下3分の1（既定）かパネル全体に出します。 |
+| `  --color <COLOR>` | `red`・`orange`・`yellow`・`green`・`blue`（既定）・`gray`、または `#rrggbb`。 |
+| `  --wake` | 消灯中なら点灯し、終わったらまた消灯します。 |
+| `  --stdin` | メッセージを標準入力から読みます。テキストか、Claude Code のフックの JSON。 |
+| `ssp notify --dismiss` | 通知を消します。 |
 
 ### 自動起動
 

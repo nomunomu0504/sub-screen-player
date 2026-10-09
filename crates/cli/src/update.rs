@@ -49,8 +49,7 @@ pub fn tell(enabled: bool) {
 fn message(latest: &str) -> String {
     format!(
         "ssp {latest} is out (this is {VERSION}): https://subscreen.dev/download/\n\
-         Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restart the \
-         daemon."
+         `ssp update` installs it and restarts the daemon."
     )
 }
 
@@ -89,6 +88,11 @@ fn check(
     (Checked { at: now, latest }, true)
 }
 
+/// The latest version, asked now (for `ssp update`), not from the daily check.
+pub fn latest_now() -> Option<String> {
+    fetch()
+}
+
 /// Asks with curl, as headless Chrome is downloaded: it comes with macOS, Windows 10 and later
 /// and most Linux systems, and keeps a TLS stack out of `ssp` (whose HTTP client speaks to the
 /// daemon only, without TLS).
@@ -119,7 +123,7 @@ pub fn newer(candidate: &str, current: &str) -> bool {
     matches!((parse(candidate), parse(current)), (Some(a), Some(b)) if a > b)
 }
 
-fn parse(version: &str) -> Option<(u64, u64, u64)> {
+pub fn parse(version: &str) -> Option<(u64, u64, u64)> {
     let core = version
         .trim()
         .trim_start_matches('v')
@@ -197,6 +201,6 @@ mod tests {
     fn says_how_to_update() {
         let text = message("9.9.9");
         assert!(text.starts_with(&format!("ssp 9.9.9 is out (this is {VERSION})")));
-        assert!(text.contains("brew upgrade ssp"));
+        assert!(text.contains("`ssp update`"));
     }
 }

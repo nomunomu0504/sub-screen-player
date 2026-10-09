@@ -6,6 +6,7 @@
 # Environment:
 #   SSP_VERSION      release to install, e.g. v0.1.0 (default: the latest)
 #   SSP_INSTALL_DIR  where to put ssp (default: ~/.local/bin)
+#   SSP_FROM_UPDATE  set by `ssp update`: leaves out the first-time hints
 set -eu
 
 repo="nomunomu0504/sub-screen-player"
@@ -69,6 +70,7 @@ chmod 755 "$dir/ssp.new"
 mv -f "$dir/ssp.new" "$dir/ssp"
 say "Installed $("$dir/ssp" --version) to $dir/ssp"
 
+[ -n "${SSP_FROM_UPDATE:-}" ] && exit 0
 case ":$PATH:" in
 	*":$dir:"*) ;;
 	*) say "Note: $dir is not on your PATH. Add it, e.g.: echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile" ;;

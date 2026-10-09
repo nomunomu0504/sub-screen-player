@@ -12,6 +12,7 @@ macro_rules! say {
 mod claude;
 mod client;
 mod selftest;
+mod selfupdate;
 mod service;
 mod update;
 
@@ -85,6 +86,15 @@ enum Cmd {
     },
     /// Show the daemon's state and frame counters
     Status,
+    /// Update ssp to the latest release (the way it was installed) and restart the daemon
+    Update {
+        /// Only tell whether a newer release is out
+        #[arg(long)]
+        check: bool,
+        /// Install this release instead of the latest, e.g. v0.7.1 (also to go back)
+        #[arg(long, value_name = "VERSION")]
+        to: Option<String>,
+    },
     /// Check that connected displays work (displays the daemon may use are skipped)
     Selftest {
         /// Only test displays of this driver (repeatable); also enables experimental drivers
@@ -446,6 +456,11 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    // `ssp update` moves a running ssp.exe aside; remove it once nothing runs it any more.
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = std::fs::remove_file(exe.with_extension("exe.old"));
+    }
     let config_path = match &cli.config {
         Some(path) => path.clone(),
         None => default_config_path()?,
@@ -488,6 +503,13 @@ fn run(cli: Cli) -> Result<()> {
             json,
             &drivers,
         ),
+        Cmd::Update { check, to } => {
+            let Some(version) = selfupdate::update(check, to.as_deref())? else {
+                return Ok(());
+            };
+            restart_after_update(&version, &cli.url, &cli.token, &config_path);
+            Ok(())
+        }
         Cmd::Status => {
             let result = status(&cli_client(&cli.url, &cli.token, &config_path)?);
             let enabled = Config::load(&config_path).map_or(true, |c| c.check_updates);
@@ -745,6 +767,58 @@ fn init_config(path: &Path, force: bool) -> Result<()> {
 }
 
 /// A client for the daemon, using the config file for anything not given on the command line.
+/// After `ssp update` installed `version`: restarts the daemon of the autostart entry and waits
+/// until it answers with the new version, or says to restart a daemon started by hand.
+fn restart_after_update(
+    version: &str,
+    url: &Option<String>,
+    token: &Option<String>,
+    config_path: &Path,
+) {
+    let client = cli_client(url, token, config_path).ok();
+    let running = || {
+        client
+            .as_ref()
+            .and_then(|c| c.health().ok())
+            .map(|h| h.version)
+    };
+    // Only the autostart entry of this ssp: one elsewhere runs another program.
+    let restarted = match service::program() {
+        Ok(Some(program)) if service::runs_this(&program) => service::restart(),
+        Ok(Some(program)) => {
+            say!(
+                "The autostart entry runs {}, not this ssp; it was left alone.",
+                program.display()
+            );
+            return;
+        }
+        Ok(None) => Ok(None),
+        Err(err) => Err(err),
+    };
+    match restarted {
+        Ok(Some(message)) => {
+            say!("{message}");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while std::time::Instant::now() < deadline {
+                if running().as_deref() == Some(version) {
+                    say!("The daemon runs {version}.");
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+            eprintln!("The daemon did not answer with {version} within 20 seconds; see its log.");
+        }
+        Ok(None) => {
+            if let Some(old) = running().filter(|v| v != version) {
+                say!(
+                    "The daemon still runs {old}: restart it (it was started by hand) to use {version}."
+                );
+            }
+        }
+        Err(err) => eprintln!("Could not restart the daemon: {err:#}"),
+    }
+}
+
 /// `ssp config reload`: has the daemon apply its config again, then waits until it answers with
 /// it. The daemon is reached as by other commands (the config file, `--url`, `--token`); after
 /// changing `listen` or `token` in the file, `--url` and `--token` give the running daemon's.

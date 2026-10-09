@@ -7,6 +7,7 @@
 # Environment:
 #   SSP_VERSION      release to install, e.g. v0.1.0 (default: the latest)
 #   SSP_INSTALL_DIR  where to put ssp.exe (default: %LOCALAPPDATA%\Programs\sub-screen-player)
+#   SSP_FROM_UPDATE  set by `ssp update`: leaves out the first-time hints
 
 & {
 	$ErrorActionPreference = 'Stop'
@@ -62,6 +63,8 @@
 		$env:Path = "$env:Path;$dir"
 		Write-Host "Added $dir to your PATH (new terminals pick it up)."
 	}
-	Write-Host ''
-	Write-Host "Next: plug in the display and run 'ssp serve'."
+	if (-not $env:SSP_FROM_UPDATE) {
+		Write-Host ''
+		Write-Host "Next: plug in the display and run 'ssp serve'."
+	}
 }

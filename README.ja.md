@@ -179,9 +179,8 @@ scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket
 scoop install nomunomu0504/ssp
 ```
 
-リリースと同じバイナリをインストールし、`brew upgrade ssp` や `scoop update ssp` で更新できます。更新したら
-デーモンを再起動してください（[自動起動](docs/cli.ja.md#自動起動)を参照）。Windows では、実行中の `ssp.exe` は
-`scoop update` で置き換えられないため、先に終了してください。
+リリースと同じバイナリをインストールします。どの方法で入れた場合も、`ssp update` で `ssp` を更新し、デーモンを再起動できます
+（Scoop の場合は実行するコマンドを表示します。[ssp を最新に保つ](docs/cli.ja.md#ssp-を最新に保つ)を参照）。
 
 ### ビルド済みバイナリ
 

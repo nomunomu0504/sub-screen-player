@@ -64,3 +64,16 @@ jobs:
 
       - name: Release build
         run: mise run build
+
+      # `ssp update` with the website's installers (#23): a copy of this build goes to an older
+      # release. On Windows this also moves the running ssp.exe aside.
+      - name: ssp update
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/ssp-update"
+          mkdir -p "$dir"
+          exe=ssp
+          [ "$RUNNER_OS" = Windows ] && exe=ssp.exe
+          cp "target/release/$exe" "$dir/$exe"
+          "$dir/$exe" update --to v0.7.0
+          "$dir/$exe" --version | tee /dev/stderr | grep -qx "ssp 0.7.0"

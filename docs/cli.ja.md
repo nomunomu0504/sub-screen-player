@@ -464,12 +464,31 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 `ssp status` は、新しい版が出ているときと、インストールした `ssp` より古い版のデーモンが動いているときに知らせます。
 
 ```
-ssp 0.7.1 is out (this is 0.7.0): https://subscreen.dev/download/
-Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restart the daemon.
+ssp 0.8.1 is out (this is 0.8.0): https://subscreen.dev/download/
+`ssp update` installs it and restarts the daemon.
 ```
 
-インストールしたのと同じ方法で更新し（インストーラーをもう一度実行、`brew upgrade ssp`、`scoop update ssp`）、デーモンを
-再起動してください（[自動起動](#自動起動)を参照）。新しい版があるかどうかは、`ssp status` が 1 日に 1 回まで
+`ssp update` は、インストールしたのと同じ方法で `ssp` を更新し、自動起動のデーモンを再起動して、新しい版で応答するまで
+待ちます。
+
+```sh
+ssp update               # 最新のリリースに更新
+ssp update --check       # 新しい版が出ているかを確かめるだけ
+ssp update --to v0.7.1   # 指定したリリースに（前の版に戻すときも）
+```
+
+- **インストーラーで入れた場合**（手で置いた場合も）: Web サイトのインストーラーを、同じフォルダを指定して、指定の
+  リリースでもう一度実行します。SHA-256 も確かめます。Windows では、実行中の `ssp.exe` を `ssp.exe.old` に移して
+  から入れ替え（失敗したら元に戻します）、`.old` はあとで別の `ssp` コマンドを実行したときに消します。
+- **Homebrew の場合**: `brew update` と `brew upgrade ssp` を実行します。Homebrew は常に最新の版を入れるので、
+  `--to` は使えません。tap には、リリースから 1 時間以内に新しい版が入ります。
+- **Scoop の場合**: Scoop は実行中の `ssp.exe` を置き換えられず、`ssp update` 自体がその 1 つなので、代わりに
+  実行するコマンド（`taskkill /im ssp.exe /f`、`scoop update ssp`、`ssp service install`）を表示します。
+
+再起動するのは、この `ssp` を動かす自動起動のデーモンだけです。手で起動したデーモン（`ssp serve`）には触らず、
+再起動するように表示します。
+
+新しい版があるかどうかは、`ssp status` が 1 日に 1 回まで
 <https://subscreen.dev/latest.json> を読んで調べます。送るのは `User-Agent: ssp/<版>` を付けた普通の `GET` だけで、
 ほかには何も送りません。待つのは最大 2 秒で、結果はデータフォルダに覚えておき、エラー出力が端末でないとき（スクリプトの中）
 は何も表示しません。デーモンが問い合わせることはありません。止めるには、設定ファイルで `check_updates = false` にするか、
@@ -500,6 +519,9 @@ Update with the installer, `brew upgrade ssp` or `scoop update ssp`, then restar
 | `  --listen <ADDR>` | 待ち受けアドレス（例: `127.0.0.1:8000`）。設定ファイルの `listen` より優先されます。 |
 | `  --log-file <FILE>` | ログを表示する代わりにファイルへ追記します。 |
 | `  --driver <ID>` | このドライバだけを使います（複数指定可）。例: `--driver d92`。設定ファイルの `[drivers]` の `enable` より優先されます。ほかのドライバのディスプレイには触りません。 |
+| `ssp update` | インストールしたのと同じ方法で `ssp` を最新のリリースに更新し、自動起動のデーモンを再起動します（[ssp を最新に保つ](#ssp-を最新に保つ)を参照）。 |
+| `  --check` | 新しい版が出ているかを確かめるだけにします。 |
+| `  --to <VERSION>` | 代わりにこのリリースを入れます（例: `v0.7.1`。前の版に戻すときも）。Homebrew では使えません。 |
 
 ### ディスプレイ
 

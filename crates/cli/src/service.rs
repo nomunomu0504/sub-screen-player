@@ -191,6 +191,35 @@ mod platform {
             .unwrap_or_else(|| "not loaded".into());
         Ok(format!("Installed: {}\nState: {state}", path.display()))
     }
+
+    /// The program the autostart entry runs, if there is one.
+    pub fn program() -> Result<Option<PathBuf>> {
+        let Ok(plist) = std::fs::read_to_string(plist_path()?) else {
+            return Ok(None);
+        };
+        let first = plist
+            .split("<key>ProgramArguments</key>")
+            .nth(1)
+            .and_then(|rest| rest.split("<string>").nth(1))
+            .and_then(|rest| rest.split("</string>").next())
+            .context("the launchd agent names no program")?;
+        let program = first
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&");
+        Ok(Some(PathBuf::from(program)))
+    }
+
+    /// Restarts the daemon of the autostart entry, if there is one; it starts the program at
+    /// the entry's path again (after an update, the new one).
+    pub fn restart() -> Result<Option<String>> {
+        if !plist_path()?.exists() {
+            return Ok(None);
+        }
+        let service = format!("{}/{LABEL}", domain()?);
+        run(Command::new("launchctl").args(["kickstart", "-k", &service]))?;
+        Ok(Some("Restarted the daemon (launchd).".into()))
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -284,6 +313,37 @@ mod platform {
             state.trim()
         ))
     }
+
+    /// The program the autostart entry runs, if there is one.
+    pub fn program() -> Result<Option<PathBuf>> {
+        let Ok(unit) = std::fs::read_to_string(unit_path()?) else {
+            return Ok(None);
+        };
+        let line = unit
+            .lines()
+            .find_map(|l| l.strip_prefix("ExecStart="))
+            .context("the systemd unit has no ExecStart")?;
+        // The first argument, as `quote` wrote it.
+        let first = line
+            .strip_prefix('"')
+            .and_then(|rest| rest.split("\" ").next())
+            .context("the systemd unit's ExecStart is not quoted")?
+            .trim_end_matches('"');
+        let program = first
+            .replace("%%", "%")
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\");
+        Ok(Some(PathBuf::from(program)))
+    }
+
+    /// Restarts the daemon of the autostart entry, if there is one.
+    pub fn restart() -> Result<Option<String>> {
+        if !unit_path()?.exists() {
+            return Ok(None);
+        }
+        systemctl(&["restart", UNIT])?;
+        Ok(Some("Restarted the daemon (systemd).".into()))
+    }
 }
 
 #[cfg(windows)]
@@ -357,6 +417,49 @@ mod platform {
             Err(_) => Ok("Not installed.".into()),
         }
     }
+
+    /// The program the autostart entry runs, if there is one.
+    pub fn program() -> Result<Option<PathBuf>> {
+        let key = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(RUN_KEY, KEY_READ)
+            .context("cannot open the Run registry key")?;
+        Ok(key
+            .get_value::<String, _>(VALUE)
+            .ok()
+            .and_then(|line| split_line(&line).into_iter().next())
+            .map(PathBuf::from))
+    }
+
+    /// Restarts the daemon of the autostart entry, if there is one: ends the other `ssp.exe`
+    /// processes and runs the entry's command again.
+    pub fn restart() -> Result<Option<String>> {
+        let key = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(RUN_KEY, KEY_READ)
+            .context("cannot open the Run registry key")?;
+        let Ok(line) = key.get_value::<String, _>(VALUE) else {
+            return Ok(None);
+        };
+        let filter = format!("PID ne {}", std::process::id());
+        let _ = Command::new("taskkill")
+            .args(["/f", "/fi", &filter, "/im", "ssp.exe"])
+            .output();
+        let args = split_line(&line);
+        let (program, rest) = args.split_first().context("the Run entry is empty")?;
+        Command::new(program)
+            .args(rest)
+            .spawn()
+            .context("cannot start the daemon")?;
+        Ok(Some("Restarted the daemon.".into()))
+    }
+
+    /// The arguments of a `Run` entry written by [`install`]: each one in double quotes.
+    fn split_line(line: &str) -> Vec<String> {
+        line.trim()
+            .trim_matches('"')
+            .split("\" \"")
+            .map(str::to_owned)
+            .collect()
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
@@ -374,9 +477,26 @@ mod platform {
     pub fn status() -> Result<String> {
         install(Path::new(""))
     }
+
+    pub fn restart() -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    pub fn program() -> Result<Option<PathBuf>> {
+        Ok(None)
+    }
 }
 
-pub use platform::{install, status, uninstall};
+pub use platform::{install, program, restart, status, uninstall};
+
+/// Whether the autostart entry's `program` is this `ssp` (the same path, or the same file).
+pub fn runs_this(program: &Path) -> bool {
+    let Ok(this) = current_exe() else {
+        return false;
+    };
+    let real = |p: &Path| std::fs::canonicalize(p).ok();
+    program == this || real(program).is_some_and(|p| Some(p) == real(&this))
+}
 
 #[cfg(test)]
 mod tests {

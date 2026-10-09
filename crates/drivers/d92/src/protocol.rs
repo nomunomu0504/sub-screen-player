@@ -106,10 +106,11 @@ pub fn live_region(jpeg: &[u8], x: u16, y: u16, width: u16, height: u16) -> Vec<
     out
 }
 
-/// Shortest time between the starts of two `DRA`s. The device needs about 4 ms per image and
-/// drops images that come faster (this only matters for small ones; larger ones take longer
-/// to send anyway).
-pub const DRA_SPACING: std::time::Duration = std::time::Duration::from_millis(5);
+/// Time to leave between the end of one `DRA` and the start of the next. The device draws an
+/// image a few milliseconds after it has arrived, and an image whose next `DRA` arrives before
+/// then is not drawn at all, whatever its size (3 ms was enough from 1 KB to 200 KB, 1 ms was
+/// not).
+pub const DRA_GAP: std::time::Duration = std::time::Duration::from_millis(4);
 
 /// A stored image (`LOG`): header report, JPEG in raw reports, then `STP`.
 /// The device needs about 1.5 s to store it.

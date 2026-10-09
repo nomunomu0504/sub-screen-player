@@ -57,7 +57,7 @@ pub struct D92 {
     session_ended: bool,
     /// Until when the device is busy storing an image.
     busy_until: Option<Instant>,
-    /// When the last `DRA` started (see [`protocol::DRA_SPACING`]).
+    /// When the last `DRA` was written (see [`protocol::DRA_GAP`]).
     last_dra: Option<Instant>,
 }
 
@@ -167,21 +167,26 @@ impl Display for D92 {
         self.before_image()?;
         if let Some(last) = self.last_dra {
             std::thread::sleep(
-                (last + protocol::DRA_SPACING).saturating_duration_since(Instant::now()),
+                (last + protocol::DRA_GAP).saturating_duration_since(Instant::now()),
             );
         }
+        let reports = if whole {
+            protocol::live_frame(&image.data)
+        } else {
+            let place = |v: u32| u16::try_from(v).expect("checked to be on the panel");
+            protocol::live_region(
+                &image.data,
+                place(image.x),
+                place(image.y),
+                place(image.width),
+                place(image.height),
+            )
+        };
+        let sent = self.send(&reports);
+        // Counted from the end: a large image takes a while to write, and the device draws it
+        // only after that.
         self.last_dra = Some(Instant::now());
-        if whole {
-            return self.send(&protocol::live_frame(&image.data));
-        }
-        let place = |v: u32| u16::try_from(v).expect("checked to be on the panel");
-        self.send(&protocol::live_region(
-            &image.data,
-            place(image.x),
-            place(image.y),
-            place(image.width),
-            place(image.height),
-        ))
+        sent
     }
 
     fn save(&mut self, image: &EncodedImage) -> Result<()> {
@@ -297,7 +302,7 @@ mod tests {
         let started = Instant::now();
         d92.show(&image).unwrap();
         d92.show(&image).unwrap();
-        assert!(started.elapsed() >= protocol::DRA_SPACING);
+        assert!(started.elapsed() >= protocol::DRA_GAP);
         let reports = transport.take();
         assert_eq!(words(&reports), ["DRA", "DRA"]);
         assert_eq!(&reports[0][13..21], &[0, 16, 0, 32, 0x01, 0x90, 0, 96]);

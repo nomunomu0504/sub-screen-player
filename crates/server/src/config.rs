@@ -917,24 +917,25 @@ impl DashboardConfig {
 /// More panels than this would be too narrow to read on a bar display.
 pub const MAX_WIDGETS: usize = 6;
 
-/// Errors from loading or checking a configuration.
+/// Errors from loading or checking a configuration. The message includes the cause, which is
+/// therefore not also given as the error's `source` (or it would be printed twice).
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     /// The file exists but could not be read.
-    #[error("cannot read {path}: {source}")]
+    #[error("cannot read {path}: {error}")]
     Read {
         /// The file.
         path: PathBuf,
         /// What went wrong.
-        source: std::io::Error,
+        error: std::io::Error,
     },
     /// The file is not valid TOML for this schema.
-    #[error("invalid config {path}: {source}")]
+    #[error("invalid config {path}: {error}")]
     Parse {
         /// The file.
         path: PathBuf,
         /// What went wrong.
-        source: Box<toml::de::Error>,
+        error: Box<toml::de::Error>,
     },
     /// A value is out of range or inconsistent.
     #[error("invalid config: {0}")]
@@ -947,16 +948,16 @@ impl Config {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(source) => {
+            Err(error) => {
                 return Err(ConfigError::Read {
                     path: path.into(),
-                    source,
+                    error,
                 });
             }
         };
         let config: Self = toml::from_str(&text).map_err(|e| ConfigError::Parse {
             path: path.into(),
-            source: Box::new(e),
+            error: Box::new(e),
         })?;
         config.validate()?;
         Ok(config)

@@ -17,8 +17,14 @@
 	$target = if ($isArm) { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 	$version = $env:SSP_VERSION
 	if (-not $version) {
-		$version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
+		# The latest release page redirects to .../releases/tag/<version>. (The GitHub API would
+		# tell it too, but allows only 60 requests an hour from one address without signing in.)
+		$latest = Invoke-WebRequest -UseBasicParsing -Method Head "https://github.com/$repo/releases/latest"
+		# Windows PowerShell keeps the final address in ResponseUri, PowerShell 7 in RequestMessage.
+		$final = if ($latest.BaseResponse.ResponseUri) { $latest.BaseResponse.ResponseUri } else { $latest.BaseResponse.RequestMessage.RequestUri }
+		$version = $final.Segments[-1]
 	}
+	if ($version -notmatch '^v\d') { throw "cannot tell the latest version (got '$version')" }
 	$dir = $env:SSP_INSTALL_DIR
 	if (-not $dir) { $dir = Join-Path $env:LOCALAPPDATA 'Programs\sub-screen-player' }
 

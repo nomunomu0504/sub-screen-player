@@ -15,8 +15,31 @@ fn serve_args(config: &Path) -> Vec<String> {
     ]
 }
 
+/// The program the autostart entry runs. Homebrew installs `ssp` in a folder named after its
+/// version (`<prefix>/Cellar/ssp/0.5.1/bin/ssp`), which goes away on upgrade, and Linux reports
+/// that path even when `ssp` was run through the link in `<prefix>/bin`; its link that stays
+/// (`<prefix>/opt/ssp/bin/ssp`) is used instead.
 fn current_exe() -> Result<PathBuf> {
-    std::env::current_exe().context("cannot locate the ssp executable")
+    let exe = std::env::current_exe().context("cannot locate the ssp executable")?;
+    Ok(lasting_path(&exe)
+        .filter(|path| path.exists())
+        .unwrap_or(exe))
+}
+
+/// `<prefix>/Cellar/<name>/<version>/<rest>` → `<prefix>/opt/<name>/<rest>`.
+fn lasting_path(exe: &Path) -> Option<PathBuf> {
+    let parts: Vec<_> = exe.components().collect();
+    let cellar = parts
+        .iter()
+        .rposition(|part| part.as_os_str() == "Cellar")?;
+    if parts.len() < cellar + 4 {
+        return None;
+    }
+    let mut path: PathBuf = parts[..cellar].iter().collect();
+    path.push("opt");
+    path.push(parts[cellar + 1]);
+    path.extend(&parts[cellar + 3..]);
+    Some(path)
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -343,3 +366,27 @@ mod platform {
 }
 
 pub use platform::{install, status, uninstall};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn homebrew_installs_run_from_the_link_that_stays() {
+        assert_eq!(
+            lasting_path(Path::new(
+                "/home/linuxbrew/.linuxbrew/Cellar/ssp/0.5.1/bin/ssp"
+            )),
+            Some(PathBuf::from("/home/linuxbrew/.linuxbrew/opt/ssp/bin/ssp"))
+        );
+        assert_eq!(
+            lasting_path(Path::new("/opt/homebrew/Cellar/ssp/0.6.0/bin/ssp")),
+            Some(PathBuf::from("/opt/homebrew/opt/ssp/bin/ssp"))
+        );
+        assert_eq!(lasting_path(Path::new("/usr/local/bin/ssp")), None);
+        assert_eq!(
+            lasting_path(Path::new("/opt/homebrew/Cellar/ssp/0.6.0")),
+            None
+        );
+    }
+}

@@ -277,8 +277,10 @@ it links to, so show pages you trust. A browser costs 300-400 MB of memory, and 
 core while a page animates at 60 fps; a still page costs almost nothing after it is drawn. If a page
 cannot be shown (no network, a missing file, a browser that cannot start), the display says why.
 On Linux, a downloaded Chrome needs the usual browser libraries; if it does not start, install
-`chromium` from your distribution and set `[web] chrome` to it. To show a page whenever the daemon
-starts:
+`chromium` from your distribution and set `[web] chrome` to it. There is no Chrome to download for
+Linux on ARM64 (a Raspberry Pi, for example), so install Chromium there; on Ubuntu,
+`sudo apt install chromium` installs the snap, which is `chrome = "/snap/bin/chromium"`. To show a
+page whenever the daemon starts:
 
 ```toml
 [startup]

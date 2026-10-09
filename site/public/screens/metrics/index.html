@@ -24,9 +24,16 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
     font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
-  main { display: grid; gap: 22px; height: 100vh; padding: 32px 40px; }
+  /* The graph is a strip under the text, so a peak never runs over it. */
+  main { --graph: 90px; display: grid; gap: 22px; height: 100vh; padding: 32px 40px; }
+  main.two { --graph: 36px; }
   .tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-width: 0;
     padding: 22px 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+  .tile.graphed { padding-bottom: calc(var(--graph) + 12px); }
+  main.two .tile { padding: 14px 20px; }
+  main.two .tile.graphed { padding-bottom: calc(var(--graph) + 8px); }
+  main.two .head { font-size: 18px; }
+  main.two .detail { font-size: 16px; }
   .tile.stale { opacity: 0.45; }
   .head { display: flex; justify-content: space-between; gap: 12px; font-size: 22px; letter-spacing: 2px; color: var(--muted); }
   .head .age { letter-spacing: 0; }
@@ -34,7 +41,7 @@
     white-space: nowrap; overflow: hidden; }
   .value .unit { font-size: 0.32em; color: var(--muted); font-weight: 500; }
   .detail { font-size: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .graph { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; opacity: 0.5; pointer-events: none; }
+  .graph { position: absolute; left: 0; bottom: 0; width: 100%; height: var(--graph); opacity: 0.6; pointer-events: none; }
   .graph path.line { fill: none; stroke: var(--mint); stroke-width: 2.5; }
   .graph path.area { fill: rgba(110, 231, 183, 0.12); stroke: none; }
   .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
@@ -84,14 +91,21 @@
     const columns = Math.ceil(list.length / rows);
     main.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
     main.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-    const size = rows === 1 ? (columns <= 2 ? 150 : columns === 3 ? 120 : 96) : 64;
+    main.classList.toggle('two', rows === 2);
+    const size = rows === 1 ? (columns <= 2 ? 150 : columns === 3 ? 120 : 96) : 56;
     main.innerHTML = list.map((m) => {
       const value = m.text ?? (m.value == null ? '–' : (Math.abs(m.value) >= 100000 ? compact.format(m.value) : String(Math.round(m.value * 100) / 100)));
-      return `<div class="tile${m.stale ? ' stale' : ''}">${graph(m.text ? null : m.history)}` +
+      const drawn = graph(m.text ? null : m.history);
+      return `<div class="tile${m.stale ? ' stale' : ''}${drawn ? ' graphed' : ''}">${drawn}` +
         `<div class="head"><span>${escape(m.label).toUpperCase()}</span><span class="age">${m.stale ? age(m.age) : ''}</span></div>` +
         `<div class="value" style="font-size: ${size}px">${escape(value)}<span class="unit">${escape(m.unit)}</span></div>` +
         `<div class="detail">${escape(m.detail)}</div></div>`;
     }).join('');
+    // A long value or unit gets smaller rather than cut off.
+    for (const el of main.querySelectorAll('.value')) {
+      let px = parseFloat(el.style.fontSize);
+      while (el.scrollWidth > el.clientWidth && px > 28) el.style.fontSize = `${(px -= 4)}px`;
+    }
   }
 
   // Example figures for a browser.

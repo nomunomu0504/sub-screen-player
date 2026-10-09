@@ -109,8 +109,10 @@ gets `400` with the error, and nothing changes. Otherwise the answer comes first
 
 Then the daemon stops its screens and the API for a moment and starts again with the new config,
 listening at `listen`. It is back once `GET /health` shows a new `started`. The displays are not
-blanked and show what the new config says at start; content sent through the API is not kept,
-metrics are. `ssp config reload` does all of this and waits.
+blanked. Content sent through the API is shown again: the clock, the dashboard, web pages and
+layouts built with the new config and the request's options, pictures and videos as they were
+(WebSocket streams end). Displays showing the startup content show the new config's. Metrics are
+kept. `ssp config reload` does all of this and waits.
 
 ### `GET /displays`
 

@@ -84,13 +84,15 @@ enum Stopped {
     Reload(Box<Config>),
 }
 
-/// What the daemon keeps while its config is reloaded: the metrics sent to it, and the readers of
-/// the built-in ones with their settings.
+/// What the daemon keeps while its config is reloaded: the metrics sent to it, the readers of
+/// the built-in ones with their settings, and what displays were told to show.
 struct Daemon {
     metrics: metrics::Metrics,
     claude_code: claude_code::Settings,
     /// Why the last reload went back to the config before, for `GET /health`.
     reload_error: Arc<std::sync::Mutex<Option<String>>>,
+    /// What displays were told to show through the API before the reload, to show again.
+    chosen: std::sync::Mutex<Vec<(String, manager::Chosen)>>,
 }
 
 impl Daemon {
@@ -102,6 +104,7 @@ impl Daemon {
             metrics,
             claude_code,
             reload_error: Arc::default(),
+            chosen: std::sync::Mutex::default(),
         }
     }
 
@@ -136,6 +139,9 @@ impl Daemon {
                 )
             })?;
         tracing::info!("API listening on http://{}", listener.local_addr()?);
+        // Only now that this config has started: if it had not, the config before would get them.
+        let chosen = std::mem::take(&mut *self.chosen.lock().unwrap_or_else(|p| p.into_inner()));
+        manager.restore(chosen, &config, &metrics);
 
         let scanner = manager.spawn_scanner(SCAN_INTERVAL);
         let scheduler = schedule.map(|s| s.spawn(manager.clone()));
@@ -169,6 +175,9 @@ impl Daemon {
 
         let next = next.try_recv().ok();
         let reloading = next.is_some();
+        if reloading {
+            *self.chosen.lock().unwrap_or_else(|p| p.into_inner()) = manager.chosen();
+        }
         tokio::task::spawn_blocking(move || {
             if let Some(scheduler) = scheduler {
                 scheduler.stop();

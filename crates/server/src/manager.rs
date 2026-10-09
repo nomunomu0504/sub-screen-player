@@ -97,7 +97,39 @@ pub struct Manager {
     startup: Content,
     /// Decides what connecting displays show, if the config has a schedule.
     schedule: Mutex<Option<Arc<Schedule>>>,
+    /// What displays were told to show before the config was reloaded, by display id: they
+    /// show it again when they connect.
+    restored: Mutex<HashMap<String, (Content, Chosen)>>,
     inner: Mutex<Inner>,
+}
+
+/// Builds content with the settings of a config, for content chosen through the API that is
+/// shown again after the config is reloaded.
+pub type Rebuild = Arc<dyn Fn(&Config, &Metrics) -> Result<Content, String> + Send + Sync>;
+
+/// What a display was told to show through the API (not by the startup setting or the
+/// schedule), kept when the config is reloaded.
+#[derive(Clone)]
+pub enum Chosen {
+    /// Built again with the new config: the clock, the dashboard, a web page, a layout.
+    Rebuild(Rebuild),
+    /// Shown again as it is: pictures and videos sent to the API, or nothing.
+    Same(Box<Content>),
+}
+
+impl Chosen {
+    /// `content`, shown again as it is.
+    pub fn same(content: Content) -> Self {
+        Self::Same(Box::new(content))
+    }
+
+    /// The content to show with `config`.
+    pub fn content(&self, config: &Config, metrics: &Metrics) -> Result<Content, String> {
+        match self {
+            Self::Rebuild(build) => build(config, metrics),
+            Self::Same(content) => Ok((**content).clone()),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -110,6 +142,8 @@ struct Entry {
     info: DisplayInfo,
     device: Option<Arc<Device>>,
     content: Content,
+    /// How the content was chosen through the API, if it was.
+    chosen: Option<Chosen>,
     /// Bumped whenever the content changes, so stale players and streams stop.
     generation: Arc<AtomicU64>,
     player: Option<Player>,
@@ -126,8 +160,35 @@ impl Manager {
             display: config.display.clone(),
             startup: startup_content(config, metrics)?,
             schedule: Mutex::default(),
+            restored: Mutex::default(),
             inner: Mutex::default(),
         })
+    }
+
+    /// What displays were told to show through the API, to show again after a reload.
+    pub fn chosen(&self) -> Vec<(String, Chosen)> {
+        self.lock()
+            .entries
+            .iter()
+            .filter_map(|(id, e)| Some((id.clone(), e.chosen.clone()?)))
+            .collect()
+    }
+
+    /// Has displays show again what they were told to before the config was reloaded, built
+    /// with `config`, when they connect. What cannot be built any more (a file that is gone)
+    /// gives way to the startup content.
+    pub fn restore(&self, chosen: Vec<(String, Chosen)>, config: &Config, metrics: &Metrics) {
+        let mut restored = self.restored.lock().unwrap_or_else(|p| p.into_inner());
+        for (id, chosen) in chosen {
+            match chosen.content(config, metrics) {
+                Ok(content) => {
+                    restored.insert(id, (content, chosen));
+                }
+                Err(err) => {
+                    tracing::warn!(display = %id, "cannot show again what it showed: {err}");
+                }
+            }
+        }
     }
 
     /// Lets `schedule` decide what displays show, how bright they are and whether their screens
@@ -265,15 +326,30 @@ impl Manager {
             .map(|s| s.state(&id, &jiff::Zoned::now()))
             .unwrap_or_default();
         let brightness = state.brightness.or(self.display.brightness);
-        // A display seen before carries on with its content; a new one starts with the
-        // schedule's, else the startup content.
-        let entry = inner.entries.entry(id.clone()).or_insert_with(|| Entry {
-            info: info.clone(),
-            device: None,
-            content: state.show.clone().unwrap_or_else(|| self.startup.clone()),
-            generation: Arc::default(),
-            player: None,
-            overlay: Overlay::new(),
+        // A display seen before carries on with its content; a new one starts with what it
+        // showed before the config was reloaded, else the schedule's, else the startup content.
+        let restored = self
+            .restored
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&id);
+        let entry = inner.entries.entry(id.clone()).or_insert_with(|| {
+            let (content, chosen) = match restored {
+                Some((content, chosen)) => (content, Some(chosen)),
+                None => (
+                    state.show.clone().unwrap_or_else(|| self.startup.clone()),
+                    None,
+                ),
+            };
+            Entry {
+                info: info.clone(),
+                device: None,
+                content,
+                chosen,
+                generation: Arc::default(),
+                player: None,
+                overlay: Overlay::new(),
+            }
         });
         let device = Arc::new(Device {
             presenter,
@@ -359,9 +435,15 @@ impl Manager {
         }
     }
 
-    /// Changes what a display shows. Kept across reconnects.
+    /// Changes what a display shows (for the schedule). Kept across reconnects.
     pub fn set_content(&self, id: &str, content: Content) -> Result<(), LookupError> {
-        self.replace_content(id, content).map(|_| ())
+        self.replace_content(id, content, None).map(|_| ())
+    }
+
+    /// Changes what a display shows, as told through the API. Kept across reconnects, and
+    /// across reloads of the config as `chosen` says.
+    pub fn choose(&self, id: &str, content: Content, chosen: Chosen) -> Result<(), LookupError> {
+        self.replace_content(id, content, Some(chosen)).map(|_| ())
     }
 
     /// Shows `notification` over what the display shows, in place of the current one. A
@@ -388,16 +470,22 @@ impl Manager {
 
     /// Hands the display to a WebSocket stream.
     pub fn begin_stream(&self, id: &str) -> Result<StreamTicket, LookupError> {
-        self.replace_content(id, Content::Stream)
+        self.replace_content(id, Content::Stream, None)
     }
 
-    fn replace_content(&self, id: &str, content: Content) -> Result<StreamTicket, LookupError> {
+    fn replace_content(
+        &self,
+        id: &str,
+        content: Content,
+        chosen: Option<Chosen>,
+    ) -> Result<StreamTicket, LookupError> {
         let (ticket, old) = {
             let mut inner = self.lock();
             let id = self.resolve(&inner, id)?;
             let entry = inner.entries.get_mut(&id).expect("resolved above");
             let old = entry.player.take();
             entry.content = content;
+            entry.chosen = chosen;
             let mine = entry.generation.fetch_add(1, Ordering::SeqCst) + 1;
             start(entry);
             (
@@ -575,6 +663,49 @@ mod tests {
         assert_eq!(displays[0].content, "clock");
         assert!(displays[0].connected);
         manager.shutdown();
+    }
+
+    #[test]
+    fn what_the_api_chose_is_shown_again_after_a_reload() {
+        let manager = manager(StartupShow::Clock);
+        let (_, _) = attach(&manager, "a");
+        assert!(
+            manager.chosen().is_empty(),
+            "the startup content was not chosen"
+        );
+        let chosen = Chosen::same(Content::Nothing);
+        manager
+            .choose("fake-0001", Content::Nothing, chosen.clone())
+            .unwrap();
+        assert_eq!(manager.chosen().len(), 1);
+        // The schedule takes over from what was chosen.
+        manager.set_content("fake-0001", Content::Nothing).unwrap();
+        assert!(manager.chosen().is_empty());
+        manager
+            .choose("fake-0001", Content::Nothing, chosen)
+            .unwrap();
+        let carried = manager.chosen();
+        manager.close();
+
+        // The daemon again, with the new config: the display shows what was chosen, not the
+        // startup clock, and it is still chosen.
+        let again = Manager::new(Registry::new(), &Config::default(), Metrics::default()).unwrap();
+        again.restore(carried, &Config::default(), &Metrics::default());
+        attach(&again, "a");
+        assert_eq!(again.display("fake-0001").unwrap().content, "nothing");
+        assert_eq!(again.chosen().len(), 1);
+        // What cannot be built any more gives way to the startup content.
+        let gone: Rebuild = Arc::new(|_: &Config, _: &Metrics| Err("gone".to_owned()));
+        let third = Manager::new(Registry::new(), &Config::default(), Metrics::default()).unwrap();
+        third.restore(
+            vec![("fake-0001".into(), Chosen::Rebuild(gone))],
+            &Config::default(),
+            &Metrics::default(),
+        );
+        attach(&third, "a");
+        assert_eq!(third.display("fake-0001").unwrap().content, "clock");
+        again.shutdown();
+        third.shutdown();
     }
 
     #[test]

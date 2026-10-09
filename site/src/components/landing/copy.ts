@@ -18,7 +18,7 @@ export interface Copy {
 	htmlLang: string;
 	title: string;
 	description: string;
-	nav: { home: string; sections: string; screens: string; how: string; docs: string; language: string };
+	nav: { home: string; sections: string; screens: string; gallery: string; docs: string; language: string };
 	hero: {
 		eyebrow: string;
 		title: Heading;
@@ -78,7 +78,7 @@ export interface Copy {
 		adding: string;
 		trademark: string;
 	};
-	gallery: { eyebrow: string; soon: string; title: Heading; text: string; yours: string };
+	gallery: { eyebrow: string; title: Heading; text: string; all: string };
 	closing: { title: Heading };
 	footer: { about: string; project: string; license: string; docs: string; cliGuide: string; privacy: string };
 }
@@ -89,7 +89,7 @@ export const copy: Record<Lang, Copy> = {
 		title: 'sub-screen-player — light up the bar display under your monitor',
 		description:
 			'Drive long, narrow USB sub-displays like the upHere D92 from macOS, Linux and Windows: a clock, a system dashboard, Claude Code status, videos and web pages at up to 60 fps.',
-		nav: { home: 'sub-screen-player home', sections: 'Sections', screens: 'Screens', how: 'How it works', docs: 'Docs', language: 'Language' },
+		nav: { home: 'sub-screen-player home', sections: 'Sections', screens: 'Screens', gallery: 'Gallery', docs: 'Docs', language: 'Language' },
 		hero: {
 			eyebrow: 'Open source · macOS · Linux · Windows',
 			title: 'Light up the bar display under your monitor.',
@@ -190,10 +190,9 @@ export const copy: Record<Lang, Copy> = {
 		},
 		gallery: {
 			eyebrow: '06 — Screen gallery',
-			soon: 'Coming soon',
-			title: 'Screens made by everyone, one line away.',
-			text: 'A place for screens people have built as web pages. Pick one and point ssp at its URL:',
-			yours: 'your screen here',
+			title: 'Ready-made screens, one line away.',
+			text: 'Screens built as web pages, served from this site. Pick one and point ssp at its URL; it reads your own figures.',
+			all: 'See every screen →',
 		},
 		closing: { title: 'Plug it in. Run one line.' },
 		footer: {
@@ -210,7 +209,7 @@ export const copy: Record<Lang, Copy> = {
 		title: 'sub-screen-player — 机の上の細長い画面に、いま見たいものを',
 		description:
 			'upHere D92 のような横長の USB サブディスプレイを、macOS・Linux・Windows から動かすツール。時計、システムのダッシュボード、Claude Code の状態、動画、Web ページを最大 60fps で表示します。',
-		nav: { home: 'sub-screen-player トップ', sections: 'セクション', screens: '表示できるもの', how: '仕組み', docs: 'ドキュメント', language: '言語' },
+		nav: { home: 'sub-screen-player トップ', sections: 'セクション', screens: '表示できるもの', gallery: 'ギャラリー', docs: 'ドキュメント', language: '言語' },
 		hero: {
 			eyebrow: 'オープンソース · macOS · Linux · Windows',
 			title: ['机の上の細長い画面に、', 'いま見たいものを。'],
@@ -311,10 +310,9 @@ export const copy: Record<Lang, Copy> = {
 		},
 		gallery: {
 			eyebrow: '06 — 画面ギャラリー',
-			soon: '近日公開',
-			title: ['みんなが作った画面を、', '1 行で。'],
-			text: 'Web ページとして作られた画面を並べる場所です。気に入った画面の URL を ssp に渡すだけで使えます。',
-			yours: 'あなたの画面',
+			title: ['すぐ使える画面を、', '1 行で。'],
+			text: 'Web ページとして作った画面を、このサイトから配信しています。気に入った画面の URL を ssp に渡すだけで、あなたの PC の数値で表示されます。',
+			all: 'すべての画面を見る →',
 		},
 		closing: { title: ['つないで、', '1 行実行するだけ。'] },
 		footer: {

@@ -1,0 +1,132 @@
+---
+// The screen gallery (/screens/, /ja/screens/): ready-made screens served from this site, and
+// how to make one. The screens themselves are static pages in public/screens/.
+import { Image } from 'astro:assets';
+import Page from '../site/Page.astro';
+import { page as sitePage, repo } from '../site/links';
+import type { Lang } from '../landing/copy';
+import { screens } from './screens';
+
+interface Props {
+	lang: Lang;
+}
+
+const { lang } = Astro.props;
+const page = (path: string) => sitePage(path, lang);
+const url = (name: string) => `https://subscreen.dev/screens/${name}/`;
+const wide = { widths: [960, 1440, 1920], sizes: '(min-width: 1240px) 1160px, 100vw' };
+
+const t = {
+	en: {
+		title: 'Screen gallery — sub-screen-player',
+		description: 'Ready-made screens for USB bar displays, one line away: ssp web <URL>. They read your own figures from the local daemon.',
+		eyebrow: 'Screen gallery',
+		heading: ['Ready-made screens,', ' one line away.'],
+		lead: 'Each screen is a web page on this site. Point ssp at its URL and it shows your own figures: the page gets a token from the daemon that can only read. Opened in a browser, it shows example figures.',
+		needs: 'Needs ssp 0.5.1 or later (earlier versions show pages from the internet without figures).',
+		reads: 'Reads',
+		readsNothing: 'Nothing from the daemon',
+		open: 'Open in the browser',
+		source: 'Source',
+		makeTitle: 'Make your own',
+		make: [
+			['Write a page for 1920×462.', 'Any HTML, CSS and JavaScript. Start from one of these (Source).'],
+			['Read the figures.', 'window.ssp gives the API address and a read-only token; see “Pages shown with ssp web” in the API guide.'],
+			['Try it on the display.', 'ssp web page.html shows a local file with the same token.'],
+			['Share it.', 'Open a pull request that adds public/screens/<name>/ and its picture (site/scripts/shoot-screens.sh).'],
+		],
+		api: 'API guide →',
+	},
+	ja: {
+		title: '画面ギャラリー — sub-screen-player',
+		description: 'USB サブディスプレイ向けの、すぐ使える画面。ssp web <URL> の 1 行で、手元のデーモンの数値を表示します。',
+		eyebrow: '画面ギャラリー',
+		heading: ['すぐ使える画面を、', '1 行で。'],
+		lead: 'どの画面も、このサイトにある Web ページです。URL を ssp に渡すと、あなたの PC の数値で表示されます（ページはデーモンから読み取り専用のトークンを受け取ります）。ブラウザで開くと、例の数値で表示されます。',
+		needs: 'ssp 0.5.1 以降が必要です（それより前の版では、インターネット上のページの数値が表示されません）。',
+		reads: '読む数値',
+		readsNothing: 'デーモンの数値は使いません',
+		open: 'ブラウザで開く',
+		source: 'ソース',
+		makeTitle: '自分で作る',
+		make: [
+			['1920×462 のページを書く。', 'HTML・CSS・JavaScript で自由に。ここの画面（ソース）から始めると簡単です。'],
+			['数値を読む。', 'window.ssp に API のアドレスと読み取り専用のトークンが入っています。API ガイドの「ssp web で表示するページ」を見てください。'],
+			['ディスプレイで試す。', 'ssp web page.html で、手元のファイルを同じトークン付きで表示できます。'],
+			['共有する。', 'public/screens/<名前>/ と画像（site/scripts/shoot-screens.sh）を足すプルリクエストを送ってください。'],
+		],
+		api: 'API ガイド →',
+	},
+}[lang];
+---
+
+<Page lang={lang} path="screens/" title={t.title} description={t.description} ogImage={screens[0].image}>
+	<section class="wrap" style="padding-top: clamp(48px, 7cqi, 96px); padding-bottom: clamp(40px, 5cqi, 72px)">
+		<div class="intro" style="gap: 18px">
+			<p class="eyebrow">{t.eyebrow}</p>
+			<h1 class="h1">{t.heading.map((p) => <span class="ph">{p}</span>)}</h1>
+			<p class="lead">{t.lead}</p>
+			<p class="small">{t.needs}</p>
+		</div>
+	</section>
+
+	{
+		screens.map((s, i) => (
+			<section id={s.name} class:list={['sec', 'sec-line', { 'sec-alt': i % 2 === 1 }]} style="padding-block: clamp(40px, 6cqi, 80px)">
+				<div class="wrap stack" style="gap: 22px">
+					<div class="dsp">
+						<Image src={s.image} alt={s.title[lang]} loading={i === 0 ? 'eager' : 'lazy'} {...wide} />
+					</div>
+					<div style="display: flex; flex-wrap: wrap; gap: 16px 40px; align-items: flex-start">
+						<div class="stack" style="flex: 1 1 380px; min-width: 0; gap: 8px">
+							<h2 class="h2">{s.title[lang]}</h2>
+							<p class="body">{s.text[lang]}</p>
+							<p class="small">
+								{t.reads}: {s.reads.length ? s.reads.map((r) => <code class="mono">{r}</code>) : t.readsNothing}
+							</p>
+						</div>
+						<div class="stack" style="flex: 1.2 1 460px; min-width: 0; gap: 10px">
+							<div class="term">
+								<div class="cmd cmd-lg">
+									<span class="p" aria-hidden="true">$</span>
+									<code>ssp web {url(s.name)}</code>
+								</div>
+							</div>
+							{s.variant && (
+								<div class="term">
+									<div class="cmd">
+										<span class="p" aria-hidden="true">$</span>
+										<code>{s.variant}</code>
+									</div>
+								</div>
+							)}
+							<div class="btn-row">
+								<a class="btn btn-secondary btn-sm" href={`/screens/${s.name}/`}>{t.open} ↗</a>
+								<a class="btn btn-ghost btn-sm" href={`${repo}/blob/main/site/public/screens/${s.name}/index.html`}>{t.source} ↗</a>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
+		))
+	}
+
+	<section id="make" class="sec sec-line">
+		<div class="wrap stack" style="gap: 28px">
+			<h2 class="h2">{t.makeTitle}</h2>
+			<ol class="stack" style="gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: step">
+				{
+					t.make.map(([head, text], i) => (
+						<li style="display: flex; gap: 16px">
+							<span class="mono" style="flex: none; color: var(--mint); font-weight: 700">{String(i + 1).padStart(2, '0')}</span>
+							<span>
+								<strong>{head}</strong> <span class="body">{text}</span>
+							</span>
+						</li>
+					))
+				}
+			</ol>
+			<a class="lnk mono" href={`${page('api/')}#pages-shown-with-ssp-web`} style="font-size: 15px; align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center">{t.api}</a>
+		</div>
+	</section>
+</Page>

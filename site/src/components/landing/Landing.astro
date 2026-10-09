@@ -3,8 +3,10 @@
 // with Claude Design (landing, tokens and components). Text: ./copy.ts. Styles:
 // ../../styles/landing.css. The pictures are the repository's docs/images (copied to
 // src/assets/screens by scripts/sync-docs.ts).
-import { Image, getImage } from 'astro:assets';
-import '../../styles/landing.css';
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Page from '../site/Page.astro';
+import { origin as siteOrigin, page as sitePage, repo } from '../site/links';
 import { copy, type Heading, type Lang } from './copy';
 import clock from '../../assets/screens/clock.png';
 import clockJa from '../../assets/screens/clock-ja.png';
@@ -15,6 +17,9 @@ import web from '../../assets/screens/web-day.png';
 import video from '../../assets/screens/video.jpg';
 import notify from '../../assets/screens/notify.png';
 import layout from '../../assets/screens/layout.png';
+import gallerySystem from '../../assets/gallery/system.png';
+import galleryClaudeCode from '../../assets/gallery/claude-code.png';
+import galleryMetrics from '../../assets/gallery/metrics.png';
 
 interface Props {
 	lang: Lang;
@@ -22,110 +27,25 @@ interface Props {
 
 const { lang } = Astro.props;
 const t = copy[lang];
-const other: Lang = lang === 'en' ? 'ja' : 'en';
 const screens = { clock, clockJa, dashboard, claudeCode, metrics, web, video, notify, layout };
 type ScreenName = keyof typeof screens;
 const screen = (name: string) => screens[name as ScreenName];
-
-const repo = 'https://github.com/nomunomu0504/sub-screen-player';
-// Links follow wherever the site is deployed (a custom domain or <owner>.github.io/<repo>).
+const page = (path: string) => sitePage(path, lang);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-const page = (path: string, to: Lang = lang) => `${base}/${to === 'ja' ? 'ja/' : ''}${path}`;
-const origin = Astro.site?.origin ?? 'https://subscreen.dev';
-const installUrl = (file: string) => `${origin}${base}/${file}`;
+const installUrl = (file: string) => `${siteOrigin(Astro.site)}${base}/${file}`;
 const install = {
 	unix: `curl -fsSL ${installUrl('install.sh')} | sh`,
 	win: `powershell -c "irm ${installUrl('install.ps1')} | iex"`,
 };
-const canonical = new URL(page(''), origin).href;
-const alternate = new URL(page('', other), origin).href;
-const ogImage = await getImage({ src: notify, format: 'png', width: 1200 });
 const phrases = (heading: Heading) => (Array.isArray(heading) ? heading : [heading]);
 // Pictures in full-width frames and in cards.
 const wide = { widths: [960, 1440, 1920], sizes: '(min-width: 1240px) 1160px, 100vw' };
 const narrow = { widths: [640, 960, 1280], sizes: '(min-width: 1000px) 560px, 100vw' };
+const third = { widths: [480, 760], sizes: '(min-width: 1240px) 370px, 100vw' };
 const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3" y="20" width="58" height="24" rx="5" fill="#0b0e14" stroke="#6ee7b7" stroke-width="3"/><g fill="#f0f2f8"><rect x="11" y="27" width="4" height="10" rx="1"/><rect x="18" y="27" width="4" height="10" rx="1"/><rect x="26" y="29" width="2.5" height="2.5" rx="1"/><rect x="26" y="33.5" width="2.5" height="2.5" rx="1"/><rect x="32" y="27" width="4" height="10" rx="1"/><rect x="39" y="27" width="4" height="10" rx="1"/><rect x="47" y="27" width="6" height="10" rx="1" fill="#6ee7b7"/></g></svg>`;
 ---
 
-<!doctype html>
-<html lang={t.htmlLang} data-theme="dark">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>{t.title}</title>
-		<meta name="description" content={t.description} />
-		<link rel="canonical" href={canonical} />
-		<link rel="alternate" hreflang={lang} href={canonical} />
-		<link rel="alternate" hreflang={other} href={alternate} />
-		<link rel="alternate" hreflang="x-default" href={new URL(page('', 'en'), origin).href} />
-		<link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
-		<meta property="og:type" content="website" />
-		<meta property="og:title" content={t.title} />
-		<meta property="og:description" content={t.description} />
-		<meta property="og:url" content={canonical} />
-		<meta property="og:image" content={new URL(ogImage.src, origin).href} />
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="theme-color" content="#070a10" />
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link
-			rel="stylesheet"
-			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
-		/>
-		<script is:inline>
-			// The same choice as the docs (Starlight keeps it in localStorage), else the system's.
-			(() => {
-				let theme = 'dark';
-				try {
-					const saved = localStorage.getItem('starlight-theme');
-					theme =
-						saved === 'light' || saved === 'dark'
-							? saved
-							: matchMedia('(prefers-color-scheme: light)').matches
-								? 'light'
-								: 'dark';
-				} catch {}
-				document.documentElement.dataset.theme = theme;
-			})();
-		</script>
-	</head>
-	<body>
-		<div class="ssp" lang={t.htmlLang}>
-			<header class="site-header">
-				<div class="wrap">
-					<a class="brand" href={page('')} aria-label={t.nav.home}>
-						<Fragment set:html={logo.replace('<svg ', '<svg width="34" height="34" ')} />
-						<span class="mono" lang="en">sub-screen-player</span>
-					</a>
-					<nav class="nav-links" aria-label={t.nav.sections}>
-						<a href="#screens">{t.nav.screens}</a>
-						<a href="#claude-code">Claude Code</a>
-						<a href="#how">{t.nav.how}</a>
-						<a href="#api">API</a>
-						<a href={page('getting-started/')}>{t.nav.docs}</a>
-					</nav>
-					<div class="lang">
-						{
-							lang === 'en' ? (
-								<>
-									<span aria-current="true">EN</span>
-									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
-									<a href={page('', 'ja')} lang="ja" hreflang="ja">日本語</a>
-								</>
-							) : (
-								<>
-									<a href={page('', 'en')} lang="en" hreflang="en">EN</a>
-									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
-									<span aria-current="true">日本語</span>
-								</>
-							)
-						}
-						<a class="btn btn-secondary btn-sm" href={repo} style="margin-left: 6px">GitHub</a>
-					</div>
-				</div>
-			</header>
-
-			<main id="top">
+<Page lang={lang} path="" title={t.title} description={t.description} ogImage={notify}>
 				<!-- Hero -->
 				<section class="wrap" style="padding-top: clamp(48px, 7cqi, 96px); padding-bottom: clamp(56px, 7cqi, 104px)">
 					<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: clamp(32px, 5cqi, 64px)">
@@ -374,20 +294,30 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 					</div>
 				</section>
 
-				<!-- Screen gallery (coming soon) -->
+				<!-- Screen gallery -->
 				<section id="gallery" class="sec sec-line sec-alt">
 					<div class="wrap stack" style="gap: clamp(24px, 4cqi, 40px)">
 						<div class="intro">
-							<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px"><p class="eyebrow">{t.gallery.eyebrow}</p><span class="badge">{t.gallery.soon}</span></div>
+							<p class="eyebrow">{t.gallery.eyebrow}</p>
 							<h2 class="h2">{phrases(t.gallery.title).map((p) => <span class="ph">{p}</span>)}</h2>
 							<p class="body">{t.gallery.text}</p>
 							<div class="term"><div class="cmd cmd-lg"><span class="p" aria-hidden="true">$</span><code>ssp web https://subscreen.dev/screens/system/</code></div></div>
 						</div>
-						<div aria-hidden="true" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px">
-							<div class="slot">/screens/system/</div>
-							<div class="slot slot-text">{t.gallery.yours}</div>
-							<div class="slot slot-text">{t.gallery.yours}</div>
+						<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px">
+							{
+								[
+									['system', gallerySystem],
+									['claude-code', galleryClaudeCode],
+									['metrics', galleryMetrics],
+								].map(([name, image]) => (
+									<a class="stack" href={`${page('screens/')}#${name}`} style="gap: 10px">
+										<div class="dsp dsp-sm"><Image src={image as ImageMetadata} alt="" {...third} /></div>
+										<span class="mono small">/screens/{name}/</span>
+									</a>
+								))
+							}
 						</div>
+						<a class="lnk mono" href={page('screens/')} style="font-size: 15px; align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center">{t.gallery.all}</a>
 					</div>
 				</section>
 
@@ -403,49 +333,6 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 						</div>
 					</div>
 				</section>
-			</main>
-
-			<footer class="site-footer">
-				<div class="wrap" style="display: flex; flex-wrap: wrap; gap: 32px 64px; padding-block: 48px">
-					<div class="stack" style="flex: 2 1 280px; gap: 10px">
-						<span class="mono" lang="en" style="font-weight: 700">sub-screen-player</span>
-						<p class="small" style="max-width: 30em">{t.footer.about}</p>
-					</div>
-					<nav class="foot-nav" aria-label={t.footer.project}>
-						<span class="foot-h">{t.footer.project}</span>
-						<a href={repo}>GitHub</a>
-						<a href={page('download/')}>{t.hero.download}</a>
-						<a href={`${repo}#license`}>{t.footer.license}</a>
-					</nav>
-					<nav class="foot-nav" aria-label={t.footer.docs}>
-						<span class="foot-h">{t.footer.docs}</span>
-						<a href={page('getting-started/')}>{t.hero.start}</a>
-						<a href={page('cli/')}>{t.footer.cliGuide}</a>
-						<a href={page('api/')}>HTTP / WebSocket API</a>
-						<a href={page('adding-a-device/')}>{t.displays.adding.replace(' →', '')}</a>
-					</nav>
-					<nav class="foot-nav" aria-label={t.nav.language}>
-						<span class="foot-h">{t.nav.language}</span>
-						{
-							lang === 'en' ? (
-								<>
-									<span aria-current="true">English</span>
-									<a href={page('', 'ja')} lang="ja" hreflang="ja">日本語</a>
-								</>
-							) : (
-								<>
-									<a href={page('', 'en')} lang="en" hreflang="en">English</a>
-									<span aria-current="true">日本語</span>
-								</>
-							)
-						}
-					</nav>
-				</div>
-				<div class="wrap" style="padding-block: 18px; border-top: 1px solid var(--line)">
-					<p class="small">{t.footer.privacy}</p>
-				</div>
-			</footer>
-		</div>
 
 		<script>
 			// The install command: tabs for the OS (Windows chosen on Windows) and a copy button.
@@ -491,5 +378,4 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 				if (/Windows/.test(navigator.userAgent)) select('win');
 			}
 		</script>
-	</body>
-</html>
+</Page>

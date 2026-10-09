@@ -1,0 +1,124 @@
+<!doctype html>
+<!--
+  sub-screen-player screen gallery: "metrics".
+  The figures your scripts send (`ssp metric set`, PUT /api/v1/metrics/{id}) as tiles with a
+  graph each: a CI status, a queue, a price. Up to 8, in one or two rows. Made for a 1920x462
+  panel:
+
+    ssp web https://subscreen.dev/screens/metrics/
+    ssp web "https://subscreen.dev/screens/metrics/?ids=ci,deploy,queue"   # these, in this order
+
+  Shown with `ssp web`, the page gets `window.ssp = { api, token }` and reads your own
+  figures; opened in a browser, it shows example figures.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=462">
+<title>Metrics — sub-screen-player screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg: #05070b; --panel: #0b0f17; --line: #1c2431; --text: #f0f2f8; --muted: #8591a3; --mint: #6ee7b7; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  main { display: grid; gap: 22px; height: 100vh; padding: 32px 40px; }
+  .tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-width: 0;
+    padding: 22px 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+  .tile.stale { opacity: 0.45; }
+  .head { display: flex; justify-content: space-between; gap: 12px; font-size: 22px; letter-spacing: 2px; color: var(--muted); }
+  .head .age { letter-spacing: 0; }
+  .value { display: flex; align-items: baseline; gap: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; }
+  .value .unit { font-size: 0.32em; color: var(--muted); font-weight: 500; }
+  .detail { font-size: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .graph { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; opacity: 0.5; pointer-events: none; }
+  .graph path.line { fill: none; stroke: var(--mint); stroke-width: 2.5; }
+  .graph path.area { fill: rgba(110, 231, 183, 0.12); stroke: none; }
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    font-size: 28px; color: var(--muted); text-align: center; }
+  .empty code { color: var(--text); font-size: 24px; }
+  .demo { position: fixed; right: 14px; bottom: 8px; font-size: 14px; color: var(--muted); opacity: .7; }
+</style>
+</head>
+<body>
+<main id="tiles"></main>
+<div class="demo" id="demo" hidden>example figures · ssp web https://subscreen.dev/screens/metrics/</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ssp = window.ssp;
+  const wanted = new URLSearchParams(location.search).get('ids')?.split(',').map((s) => s.trim()).filter(Boolean);
+  const compact = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, notation: 'compact' });
+  const escape = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  function graph(history) {
+    if (!history || history.length < 2) return '';
+    const max = Math.max(...history), min = Math.min(0, ...history);
+    const span = max - min || 1;
+    const points = history.map((v, i) => [(1000 * i / (history.length - 1)).toFixed(1), (100 - 92 * (v - min) / span).toFixed(1)]);
+    const line = points.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ');
+    return `<svg class="graph" viewBox="0 0 1000 100" preserveAspectRatio="none">` +
+      `<path class="area" d="${line} L1000,100 L0,100 Z"></path><path class="line" d="${line}"></path></svg>`;
+  }
+
+  function age(seconds) {
+    if (seconds < 60) return '';
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+    return `${Math.round(seconds / 86400)}d ago`;
+  }
+
+  function show(metrics) {
+    let list = metrics;
+    if (wanted) list = wanted.map((id) => metrics.find((m) => m.id === id)).filter(Boolean);
+    list = list.slice(0, 8);
+    const main = $('tiles');
+    if (!list.length) {
+      main.style.gridTemplateColumns = '1fr';
+      main.innerHTML = `<div class="empty">No figures yet. Send one:<code>ssp metric set ci --value 2 --label CI --unit failed</code></div>`;
+      return;
+    }
+    const rows = list.length > 4 ? 2 : 1;
+    const columns = Math.ceil(list.length / rows);
+    main.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+    main.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    const size = rows === 1 ? (columns <= 2 ? 150 : columns === 3 ? 120 : 96) : 64;
+    main.innerHTML = list.map((m) => {
+      const value = m.text ?? (m.value == null ? '–' : (Math.abs(m.value) >= 100000 ? compact.format(m.value) : String(Math.round(m.value * 100) / 100)));
+      return `<div class="tile${m.stale ? ' stale' : ''}">${graph(m.text ? null : m.history)}` +
+        `<div class="head"><span>${escape(m.label).toUpperCase()}</span><span class="age">${m.stale ? age(m.age) : ''}</span></div>` +
+        `<div class="value" style="font-size: ${size}px">${escape(value)}<span class="unit">${escape(m.unit)}</span></div>` +
+        `<div class="detail">${escape(m.detail)}</div></div>`;
+    }).join('');
+  }
+
+  // Example figures for a browser.
+  function example() {
+    const wave = (n, base, spread) => Array.from({ length: 30 }, (_, i) => Math.max(0, Math.round(base + spread * Math.sin(i / 3 + n))));
+    return [
+      { id: 'ci', label: 'CI', value: 2, unit: 'failed', detail: 'main · 39 of 41 jobs passed', history: [0, 0, 1, 0, 0, 0, 3, 2], stale: false },
+      { id: 'deploy', label: 'Deploy', text: 'live', unit: '', detail: 'v0.5.0 · 12 min ago', stale: false },
+      { id: 'queue', label: 'Queue', value: 26, unit: 'jobs', detail: 'workers: 4 busy, 0 idle', history: wave(1, 20, 12), stale: false },
+      { id: 'room', label: 'Room', value: 23.5, unit: '°C', detail: 'humidity 48 %', history: wave(2, 23, 1), stale: false },
+    ];
+  }
+
+  async function update() {
+    if (!ssp) { show(example()); return; }
+    try {
+      const response = await fetch(`${ssp.api}/metrics`, { headers: { Authorization: `Bearer ${ssp.token}` } });
+      if (response.ok) show(await response.json());
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // `?clean` leaves the label out (pictures of the screen for the gallery).
+  $('demo').hidden = !!ssp || new URLSearchParams(location.search).has('clean');
+  update();
+  setInterval(update, 2000);
+</script>
+</body>
+</html>

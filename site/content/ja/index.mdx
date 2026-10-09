@@ -55,6 +55,16 @@ import ScreenGallery from '../../../components/ScreenGallery.astro';
 	<Card title="画像・動画・Web ページ" icon="seti:image">
 		PNG・JPEG・GIF・WebP の画像やアニメーションをパネルに合わせて表示します。動画は ffmpeg で、HTML のページはヘッドレス Chrome で表示します。
 	</Card>
+	<Card title="通知" icon="comment-alt">
+		表示中の内容の上にメッセージをしばらく重ねます。Claude Code が入力を待つときや作業を終えたとき（設定はコマンド
+		1つ）、CI のジョブが失敗したときに。
+	</Card>
+	<Card title="レイアウト" icon="bars">
+		時計・動画・メトリクスのパネルを、ブラウザなしで並べて表示します。変わった部分だけを送ります。
+	</Card>
+	<Card title="スケジュール" icon="random">
+		仕事中はダッシュボード、夕方は暗めの時計、夜は消灯。複数の画面を順番に出すこともできます。
+	</Card>
 	<Card title="どんなプログラムからでも描画" icon="puzzle">
 		HTTP と WebSocket の API で、スクリプトやダッシュボード、ゲームからフレームを送れます。
 	</Card>

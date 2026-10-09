@@ -195,6 +195,37 @@ impl Drop for Running {
     }
 }
 
+/// Names of Chrome's permission for pages on the internet to reach this computer
+/// (`loopback-network`, the daemon on 127.0.0.1) and the local network (`local-network`, a
+/// daemon listening on a LAN address), from Chrome 145; before that, one `local-network-access`.
+const LOCAL_NETWORK_PERMISSIONS: [&str; 3] =
+    ["loopback-network", "local-network", "local-network-access"];
+
+/// Lets the page at `url` read the daemon's API (with its page token) although it comes from
+/// the internet: Chrome asks the user for that, and a headless browser cannot. Only the page's
+/// own origin gets it; a file needs nothing. Names a browser does not know are skipped.
+fn allow_local_network(cdp: &mut Connection, url: &str) {
+    let Some(origin) = web_origin(url) else {
+        return;
+    };
+    for name in LOCAL_NETWORK_PERMISSIONS {
+        let granted = cdp.call(
+            "Browser.setPermission",
+            json!({ "permission": { "name": name }, "setting": "granted", "origin": origin }),
+            None,
+        );
+        if let Err(err) = granted {
+            tracing::debug!(permission = name, "not granted: {err}");
+        }
+    }
+}
+
+/// `https://example.com:8443` for an http(s) URL; `None` for anything else.
+fn web_origin(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    matches!(parsed.scheme(), "http" | "https").then(|| parsed.origin().ascii_serialization())
+}
+
 /// Starts the browser, opens the page and passes its screencast frames on until `stop`.
 fn run(
     page: &WebPage,
@@ -236,6 +267,7 @@ fn run(
         .ok_or("no session id")?
         .to_owned();
     let session = Some(session.as_str());
+    allow_local_network(&mut cdp, &page.url);
     cdp.call(
         "Emulation.setDeviceMetricsOverride",
         json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": false }),
@@ -406,6 +438,19 @@ mod tests {
     }
 
     /// Shows a local page with the browser in `SSP_TEST_CHROME`, if set.
+    #[test]
+    fn finds_the_origin_of_web_pages() {
+        assert_eq!(
+            web_origin("https://subscreen.dev/screens/system/?a=1").as_deref(),
+            Some("https://subscreen.dev")
+        );
+        assert_eq!(
+            web_origin("http://192.168.1.5:8000/x.html").as_deref(),
+            Some("http://192.168.1.5:8000")
+        );
+        assert_eq!(web_origin("file:///home/me/panel.html"), None);
+    }
+
     #[test]
     fn shows_a_page_in_chrome() {
         let Some(chrome) = std::env::var_os("SSP_TEST_CHROME") else {

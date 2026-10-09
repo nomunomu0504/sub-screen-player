@@ -6,6 +6,9 @@
 /install.ps1
   Content-Type: text/plain; charset=utf-8
   Cache-Control: no-cache
+# Read by `ssp status` (at most once a day per computer); always the newest.
+/latest.json
+  Cache-Control: no-cache
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

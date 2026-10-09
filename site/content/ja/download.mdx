@@ -38,6 +38,26 @@ scoop install nomunomu0504/ssp
 	</TabItem>
 </Tabs>
 
+最新ではなく指定したリリースをインストールするには、`SSP_VERSION` を指定します（スクリプトで更新するときに、確認済みの版に
+固定するなど）。`SSP_INSTALL_DIR` でインストール先を変えられます。
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+
+```sh
+curl -fsSL https://subscreen.dev/install.sh | SSP_VERSION=v0.7.1 sh
+```
+
+	</TabItem>
+	<TabItem label="Windows">
+
+```powershell
+$env:SSP_VERSION = "v0.7.1"; irm https://subscreen.dev/install.ps1 | iex
+```
+
+	</TabItem>
+</Tabs>
+
 アーカイブをダウンロードする場合は、展開して `ssp`（Windows では `ssp.exe`）を `PATH` の通った場所に置いてください。
 
 <Download lang="ja" />

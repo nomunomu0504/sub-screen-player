@@ -162,7 +162,16 @@ powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 ```
 
 It downloads the latest release for your system, checks its SHA-256 checksum and puts `ssp` on
-your `PATH`.
+your `PATH`. `SSP_VERSION` installs a given release instead, for example to update from a
+script only to a version you have checked; `SSP_INSTALL_DIR` changes where `ssp` goes:
+
+```sh
+curl -fsSL https://subscreen.dev/install.sh | SSP_VERSION=v0.7.1 sh
+```
+
+```powershell
+$env:SSP_VERSION = "v0.7.1"; irm https://subscreen.dev/install.ps1 | iex
+```
 
 ### Homebrew (macOS, Linux) and Scoop (Windows)
 

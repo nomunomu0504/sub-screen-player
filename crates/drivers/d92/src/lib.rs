@@ -21,6 +21,9 @@ use protocol::{REPORT_LEN, StoreMode};
 
 /// How long the device needs to store an image; frames sent earlier get lost.
 const STORE_TIME: Duration = Duration::from_millis(1500);
+/// How often opening asks for the firmware version: right after a stopped program was sending
+/// pictures, the first answer can be something else.
+const VERSION_TRIES: u32 = 3;
 
 /// Finds D92 displays and opens them over HID.
 #[derive(Debug, Clone, Copy, Default)]
@@ -66,11 +69,21 @@ impl D92 {
     /// switches the screen on.
     pub fn open(mut transport: Box<dyn Transport>, serial: &str) -> Result<Self> {
         let mut report = [0u8; 512];
-        let firmware = match transport.get_input_report(0, &mut report) {
-            Ok(n) => protocol::parse_version(&report[..n]),
-            Err(err) if err.is_fatal() => return Err(err),
-            Err(_) => None,
-        };
+        let mut firmware = None;
+        for attempt in 0..VERSION_TRIES {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            match transport.get_input_report(0, &mut report) {
+                Ok(n) => firmware = protocol::parse_version(&report[..n]),
+                Err(err) if err.is_fatal() => return Err(err),
+                // The platform cannot read input reports: asking again will not help.
+                Err(_) => break,
+            }
+            if firmware.is_some() {
+                break;
+            }
+        }
         let model = match &firmware {
             Some(v) if v.contains("upHere") => "upHere D92",
             _ => "D92",
@@ -253,6 +266,22 @@ mod tests {
                     .collect()
             })
             .collect()
+    }
+
+    #[test]
+    fn open_asks_for_the_version_again() {
+        let transport = RecordingTransport::new()
+            .with_input_report(b"\0\0\0\0")
+            .with_input_report(b"V25.upHere_gamingD92.02.014\0\0");
+        let d92 = D92::open(Box::new(transport), "470B03781D1F").unwrap();
+        assert_eq!(d92.info().model, "upHere D92");
+        // Without a version, it is a D92 all the same.
+        let transport = RecordingTransport::new().with_input_report(b"\0\0\0\0");
+        let d92 = D92::open(Box::new(transport), "470B03781D1F").unwrap();
+        assert_eq!(
+            (d92.info().model.as_str(), d92.info().firmware.as_deref()),
+            ("D92", None)
+        );
     }
 
     #[test]

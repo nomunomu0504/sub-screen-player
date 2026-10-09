@@ -157,6 +157,16 @@ powershell -c "irm https://subscreen.dev/install.ps1 | iex"   # Windows
 ```
 
 お使いの環境向けの最新リリースをダウンロードし、SHA-256 チェックサムを確認してから `ssp` を `PATH` の通った場所に置きます。
+`SSP_VERSION` を指定すると、最新ではなく指定したリリースをインストールします（スクリプトで更新するときに、確認済みの版に
+固定するなど）。`SSP_INSTALL_DIR` でインストール先を変えられます。
+
+```sh
+curl -fsSL https://subscreen.dev/install.sh | SSP_VERSION=v0.7.1 sh
+```
+
+```powershell
+$env:SSP_VERSION = "v0.7.1"; irm https://subscreen.dev/install.ps1 | iex
+```
 
 ### Homebrew（macOS・Linux）と Scoop（Windows）
 

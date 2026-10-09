@@ -38,6 +38,26 @@ scoop install nomunomu0504/ssp
 	</TabItem>
 </Tabs>
 
+To install a given release instead of the latest (for example to update from a script only to
+a version you have checked), set `SSP_VERSION`; `SSP_INSTALL_DIR` changes where `ssp` goes:
+
+<Tabs syncKey="os">
+	<TabItem label="macOS / Linux">
+
+```sh
+curl -fsSL https://subscreen.dev/install.sh | SSP_VERSION=v0.7.1 sh
+```
+
+	</TabItem>
+	<TabItem label="Windows">
+
+```powershell
+$env:SSP_VERSION = "v0.7.1"; irm https://subscreen.dev/install.ps1 | iex
+```
+
+	</TabItem>
+</Tabs>
+
 Or download an archive, extract it and put `ssp` (`ssp.exe` on Windows) somewhere on your
 `PATH`:
 

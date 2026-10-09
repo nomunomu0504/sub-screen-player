@@ -5,6 +5,7 @@
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -88,17 +89,23 @@ fn check(
     (Checked { at: now, latest }, true)
 }
 
+/// Asks with curl, as headless Chrome is downloaded: it comes with macOS, Windows 10 and later
+/// and most Linux systems, and keeps a TLS stack out of `ssp` (whose HTTP client speaks to the
+/// daemon only, without TLS).
 fn fetch() -> Option<String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(TIMEOUT))
-        .build()
-        .into();
-    let mut response = agent
-        .get(LATEST_URL)
-        .header("User-Agent", format!("ssp/{VERSION}"))
-        .call()
+    let output = Command::new(if cfg!(windows) { "curl.exe" } else { "curl" })
+        .args(["--fail", "--location", "--silent", "--proto", "=https"])
+        .args(["--max-time", &TIMEOUT.as_secs().to_string()])
+        .args(["--user-agent", &format!("ssp/{VERSION}")])
+        .arg(LATEST_URL)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
         .ok()?;
-    let latest: Latest = response.body_mut().read_json().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let latest: Latest = serde_json::from_slice(&output.stdout).ok()?;
     Some(latest.version)
 }
 
@@ -175,6 +182,15 @@ mod tests {
         // A clock set back does not leave the cache fresh for ever.
         let (_, asked) = check(Some(found("0.7.0")), 10, || None);
         assert!(asked);
+    }
+
+    /// Needs the network: `cargo test -p sub-screen-player -- --ignored`. (ssp's own HTTP
+    /// client has no TLS; the check must reach the https site anyway.)
+    #[test]
+    #[ignore]
+    fn reads_the_latest_version_from_the_site() {
+        let latest = fetch().expect("no answer from https://subscreen.dev/latest.json");
+        assert!(parse(&latest).is_some(), "{latest}");
     }
 
     #[test]

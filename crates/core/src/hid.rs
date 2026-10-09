@@ -11,12 +11,39 @@ fn api() -> Result<MutexGuard<'static, HidApi>> {
     let api = match API.get() {
         Some(api) => api,
         None => {
-            let created = HidApi::new().map_err(to_error)?;
+            let created = create()?;
             API.get_or_init(|| Mutex::new(created))
         }
     };
     // A panic while holding the lock leaves the device list intact, so keep using it.
     Ok(api.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
+}
+
+/// Creates the `HidApi`. On macOS, hidapi ties its device manager to the run loop of the thread
+/// that creates it, and the next enumeration crashes once that thread has ended (as the daemon's
+/// scanner thread does when the config is reloaded), so it is created on a thread that never
+/// ends.
+#[cfg(target_os = "macos")]
+fn create() -> Result<HidApi> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("ssp-hid".into())
+        .spawn(move || {
+            let _ = sender.send(HidApi::new());
+            loop {
+                std::thread::park();
+            }
+        })
+        .map_err(|e| Error::Transport(format!("cannot start the HID thread: {e}")))?;
+    receiver
+        .recv()
+        .map_err(|_| Error::Transport("the HID thread ended".into()))?
+        .map_err(to_error)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn create() -> Result<HidApi> {
+    HidApi::new().map_err(to_error)
 }
 
 fn to_error(err: hidapi::HidError) -> Error {

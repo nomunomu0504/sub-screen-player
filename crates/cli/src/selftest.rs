@@ -11,8 +11,8 @@ use anyhow::{Result, bail};
 use image::{Rgb, RgbImage};
 use serde::Serialize;
 use ssp_core::{
-    DisplayInfo, DriverSelection, Found, Frame, Presenter, PresenterOptions, Registry, StopAction,
-    hid,
+    Capabilities, DisplayInfo, DriverSelection, Found, Frame, Presenter, PresenterOptions,
+    Registry, StopAction, hid,
 };
 use ssp_server::text::{TextStyle, builtin_font};
 
@@ -329,7 +329,7 @@ fn test_display(
     let (width, height) = (info.panel.width, info.panel.height);
     let checks = &mut report.checks;
     let step =
-        |n: u32, label: &str| test_pattern(width, height, &format!("ssp selftest {n}/5: {label}"));
+        |n: u32, label: &str| test_pattern(width, height, &format!("ssp selftest {n}/6: {label}"));
 
     // Commands.
     let mut done = Vec::new();
@@ -368,6 +368,9 @@ fn test_display(
         Err(err) => Check::new("still image", Status::Fail, err),
     });
 
+    // Partial updates.
+    checks.push(partial(presenter, &caps, width, height));
+
     // Streaming.
     checks.push(stream(
         presenter,
@@ -381,7 +384,7 @@ fn test_display(
     let _ = presenter.submit(test_pattern(
         width,
         height,
-        &format!("ssp selftest 3/5: idle for {} s", options.hold.as_secs()),
+        &format!("ssp selftest 4/6: idle for {} s", options.hold.as_secs()),
     ));
     std::thread::sleep(options.hold);
     let still_there = on_usb(&opened.path);
@@ -413,7 +416,7 @@ fn test_display(
             "not run: the display was lost",
         ));
     } else {
-        let _ = presenter.submit(step(4, "screen off for 2 s"));
+        let _ = presenter.submit(step(5, "screen off for 2 s"));
         std::thread::sleep(Duration::from_millis(500));
         let result = presenter.sleep().and_then(|()| {
             std::thread::sleep(Duration::from_secs(2));
@@ -431,13 +434,58 @@ fn test_display(
     let _ = presenter.submit(test_pattern(
         width,
         height,
-        &format!("ssp selftest 5/5: {verdict}"),
+        &format!("ssp selftest 6/6: {verdict}"),
     ));
     let _ = wait_for(
         || presenter.stats().submitted == presenter.stats().shown,
         Duration::from_secs(3),
     );
     report
+}
+
+/// Moves a small box over an otherwise unchanged screen. A display that takes partial images
+/// should then get only the changed part of each frame.
+fn partial(presenter: &Presenter, caps: &Capabilities, width: u32, height: u32) -> Check {
+    const FRAMES: u64 = 10;
+    if !caps.partial_images {
+        return Check::new("partial updates", Status::Skip, "not supported");
+    }
+    let base = test_pattern(width, height, "ssp selftest 2/6: partial updates");
+    let size = (height / 6).max(4);
+    let before = presenter.stats();
+    let mut bytes = 0;
+    for n in 0..FRAMES as u32 {
+        let mut frame = base.clone();
+        let x = (width / 4 + n * size * 2).min(width - size);
+        let y = height - size - height / 12;
+        for py in y..y + size {
+            for px in x..x + size {
+                frame.image_mut().put_pixel(px, py, Rgb([255, 255, 255]));
+            }
+        }
+        let shown = presenter.stats().shown;
+        if let Err(err) = presenter.submit(frame) {
+            return Check::new("partial updates", Status::Fail, err.to_string());
+        }
+        // One frame at a time, so each is planned against the one before.
+        if let Err(err) = wait_for(|| presenter.stats().shown > shown, Duration::from_secs(5)) {
+            return Check::new("partial updates", Status::Fail, err);
+        }
+        bytes += presenter.stats().last_bytes;
+    }
+    let after = presenter.stats();
+    let parts = after.partial - before.partial;
+    let detail = format!(
+        "{parts} of {FRAMES} frames sent in parts, {:.1} KB per frame",
+        bytes as f64 / FRAMES as f64 / 1024.0
+    );
+    // The first frame may differ in more places (the label), so allow a few whole ones.
+    let status = if parts * 10 >= FRAMES * 8 {
+        Status::Pass
+    } else {
+        Status::Warn
+    };
+    Check::new("partial updates", status, detail)
 }
 
 fn stream(presenter: &Presenter, width: u32, height: u32, frames: u32, max_fps: u32) -> Check {
@@ -448,8 +496,20 @@ fn stream(presenter: &Presenter, width: u32, height: u32, frames: u32, max_fps: 
         let mut frame = test_pattern(
             width,
             height,
-            &format!("ssp selftest 2/5: frame {}/{frames}", n + 1),
+            &format!("ssp selftest 3/6: frame {}/{frames}", n + 1),
         );
+        // The color bars pulse, so every frame changes most of the screen and goes out whole:
+        // this measures how fast the display takes whole frames (the step before checks parts).
+        let phase = (2 * n) % 192;
+        let level = 255 - phase.min(192 - phase);
+        let band = height / 3..height * 2 / 3;
+        for (_, y, pixel) in frame.image_mut().enumerate_pixels_mut() {
+            if !band.contains(&y) {
+                for c in &mut pixel.0 {
+                    *c = (u32::from(*c) * level / 255) as u8;
+                }
+            }
+        }
         let x = (u64::from(n) * u64::from(width) / u64::from(max_fps.max(1) * 2)) as u32 % width;
         for y in 0..height {
             for dx in 0..width.min(40) {
@@ -576,7 +636,7 @@ mod tests {
 
     #[test]
     fn test_pattern_has_panel_size_and_label() {
-        let frame = test_pattern(1920, 462, "ssp selftest 1/5: still image");
+        let frame = test_pattern(1920, 462, "ssp selftest 1/6: still image");
         assert_eq!((frame.width(), frame.height()), (1920, 462));
         // The label is drawn in white on the black band in the middle.
         let band = (154..308).flat_map(|y| (0..1920).map(move |x| (x, y)));
@@ -686,17 +746,40 @@ mod tests {
         let report = test_display(&target, &opened, &options(), &|_| true);
         let mut checks = statuses(&report);
         // The frame rate depends on the machine; only a failure would be wrong.
-        assert_ne!(checks[3], ("streaming", "fail"));
-        checks.remove(3);
+        assert_ne!(checks[4], ("streaming", "fail"));
+        checks.remove(4);
         assert_eq!(
             checks,
             [
                 ("open", "pass"),
                 ("commands", "pass"),
                 ("still image", "pass"),
+                ("partial updates", "skip"),
                 ("keep-alive", "pass"),
                 ("power", "pass"),
             ]
+        );
+    }
+
+    #[test]
+    fn a_display_with_partial_images_gets_parts() {
+        let target = Target {
+            id: "dummy".into(),
+            found: found(""),
+        };
+        let opened = Ok(opened(fake().partial_images()));
+        let report = test_display(&target, &opened, &options(), &|_| true);
+        let partial = &report.checks[3];
+        assert_eq!(
+            statuses(&report)[3],
+            ("partial updates", "pass"),
+            "{}",
+            partial.detail
+        );
+        assert!(
+            partial.detail.contains("of 10 frames sent in parts"),
+            "{}",
+            partial.detail
         );
     }
 
@@ -713,9 +796,9 @@ mod tests {
         let report = test_display(&target, &opened, &options(), &|_| false);
         let checks = statuses(&report);
         assert_eq!(checks[1], ("commands", "fail"));
-        assert_eq!(checks[4], ("keep-alive", "fail"));
-        assert_eq!(checks[5], ("power", "skip"));
-        assert_eq!(report.checks[5].detail, "not run: the display was lost");
+        assert_eq!(checks[5], ("keep-alive", "fail"));
+        assert_eq!(checks[6], ("power", "skip"));
+        assert_eq!(report.checks[6].detail, "not run: the display was lost");
     }
 
     #[test]

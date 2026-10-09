@@ -126,11 +126,13 @@ ssp dashboard --widgets clock,claude-code,cpu,memory
 ```
 
 **Web ページで作った画面**。ヘッドレス Chrome で描きます（[使い方](docs/cli.ja.md#web-ページを表示する)）。
+すぐ使える画面は[画面ギャラリー](https://subscreen.dev/ja/screens/)にあります。
 
 ![時刻と、1日のうちどれだけ過ぎたかを表示する Web ページ](docs/images/web-day.png)
 
 ```sh
 ssp web contrib/web/day.html
+ssp web https://subscreen.dev/screens/system/
 ```
 
 **動画**。PC に入っている [ffmpeg](https://ffmpeg.org/) で、最大 60fps でループ再生します

@@ -15,6 +15,10 @@ request needs.
   a public issue.
 - **Add a display.** Follow [docs/adding-a-device.md](docs/adding-a-device.md). If you only
   have notes on how a display works, open an issue with them; someone else may write the driver.
+- **Add a screen to the [gallery](https://subscreen.dev/screens/).** Write a page for
+  1920x462 in `site/public/screens/<name>/index.html` that reads the figures from `window.ssp`
+  and shows example figures without it, so it can be tried in a browser. Draw its picture with
+  `sh site/scripts/shoot-screens.sh <name>` and add it to `site/src/components/gallery/screens.ts`.
 - **Improve features or docs.** For anything larger than a small fix, open an issue first so
   we can agree on the approach before you invest time.
 
@@ -61,7 +65,9 @@ exactly one driver crate; nothing else knows about them.**
 | Add a CLI command | `crates/cli/src/main.rs` (+ `docs/cli.md` / `docs/cli.ja.md`) |
 | Change autostart for an OS | `crates/cli/src/service.rs` |
 | Linux permissions for a device | `contrib/linux/70-sub-screen-player.rules` |
-| Website-only pages (home, getting started, download) | `site/content/` (and `site/content/ja/`) |
+| The website's home page (text in `copy.ts`) | `site/src/components/landing/` |
+| A screen for the gallery | `site/public/screens/<name>/` (+ `site/src/components/gallery/screens.ts`) |
+| Website-only pages in the docs (getting started, download) | `site/content/` (and `site/content/ja/`) |
 | Publish another document on the website | `site/scripts/sync-docs.ts` and the sidebar in `site/astro.config.mjs` |
 
 Dependencies point one way only: `cli` → `server` → `drivers/*` → `core`. A driver never

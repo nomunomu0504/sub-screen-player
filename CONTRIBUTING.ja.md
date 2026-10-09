@@ -12,6 +12,10 @@
 - **脆弱性を報告する**: 公開の Issue ではなく、[SECURITY.ja.md](SECURITY.ja.md) の手順に従って非公開で報告してください。
 - **ディスプレイを追加する**: [docs/adding-a-device.ja.md](docs/adding-a-device.ja.md) の手順に従ってください。
   表示の仕組みについてのメモしかない場合でも、Issue に共有してもらえれば、ほかの人がドライバを書けるかもしれません。
+- **[ギャラリー](https://subscreen.dev/ja/screens/)に画面を追加する**: `site/public/screens/<名前>/index.html` に
+  1920x462 のページを書きます。数値は `window.ssp` から読み、`window.ssp` がないときは例の数値を表示して、ブラウザでも
+  試せるようにしてください。`sh site/scripts/shoot-screens.sh <名前>` で画像を作り、`site/src/components/gallery/screens.ts`
+  に追加します。
 - **機能やドキュメントを改善する**: 小さな修正より大きい変更は、まず Issue を立てて進め方を相談してください。
   作業を始める前に方向性を合わせておくと、手戻りを防げます。
 
@@ -57,7 +61,9 @@ Linux の HID バックエンドは `hidraw` を直接扱うため、ほかに�
 | CLI のコマンドを追加する | `crates/cli/src/main.rs`（＋ `docs/cli.md` / `docs/cli.ja.md`） |
 | OS ごとの自動起動を変える | `crates/cli/src/service.rs` |
 | Linux でのデバイスのアクセス権 | `contrib/linux/70-sub-screen-player.rules` |
-| Web サイト専用のページ（トップ、はじめに、ダウンロード） | `site/content/`（と `site/content/ja/`） |
+| Web サイトのトップページ（文言は `copy.ts`） | `site/src/components/landing/` |
+| ギャラリーの画面 | `site/public/screens/<名前>/`（＋ `site/src/components/gallery/screens.ts`） |
+| ドキュメント側にある Web サイト専用のページ（はじめに、ダウンロード） | `site/content/`（と `site/content/ja/`） |
 | Web サイトに載せるドキュメントを増やす | `site/scripts/sync-docs.ts` と `site/astro.config.mjs` のサイドバー |
 
 依存の向きは一方向だけです: `cli` → `server` → `drivers/*` → `core`。ドライバがほかのドライバやサーバに

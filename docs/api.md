@@ -43,6 +43,12 @@ is never written to disk or the log. A page could pass it on to the sites it loa
 then read the same figures while it is shown, so show pages you trust.
 [contrib/web/system.html](../contrib/web/system.html) is an example.
 
+Chrome counts a request from a page on the internet to the daemon on this computer as local
+network access, which a page may make only with permission. The daemon gives that permission to
+the origin of the page it shows and to no other, so pages from a website (like the
+[screen gallery](https://subscreen.dev/screens/)) can read the figures too. Before 0.5.1 it did
+not, and such pages got no answer.
+
 ## Display ids
 
 Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed by

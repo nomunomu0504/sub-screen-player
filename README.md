@@ -130,12 +130,14 @@ ssp dashboard --widgets clock,claude-code,cpu,memory
 ```
 
 **Anything you can build as a web page**, drawn by headless Chrome
-([how](docs/cli.md#show-a-web-page)):
+([how](docs/cli.md#show-a-web-page)). Ready-made ones are in the
+[screen gallery](https://subscreen.dev/screens/):
 
 ![A web page showing the time and how much of the day has gone](docs/images/web-day.png)
 
 ```sh
 ssp web contrib/web/day.html
+ssp web https://subscreen.dev/screens/system/
 ```
 
 **Videos**, looped at up to 60 fps through the [ffmpeg](https://ffmpeg.org/) installed on your

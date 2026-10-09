@@ -3,7 +3,7 @@ title: Getting started
 description: Install ssp, show the clock on your display and start it at login.
 ---
 
-import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Code, Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 import InstallCommand from '../../components/InstallCommand.astro';
 
 <Steps>
@@ -14,16 +14,20 @@ import InstallCommand from '../../components/InstallCommand.astro';
    <Tabs syncKey="os">
    	<TabItem label="macOS / Linux">
    		<InstallCommand os="unix" />
-   		It installs to `~/.local/bin` (change with `SSP_INSTALL_DIR`).
+   		It installs to `~/.local/bin` (change with `SSP_INSTALL_DIR`). Or use
+   		[Homebrew](https://brew.sh), which also updates it later:
+   		<Code code="brew install nomunomu0504/tap/ssp" lang="sh" />
    	</TabItem>
    	<TabItem label="Windows">
    		<InstallCommand os="windows" />
-   		It installs to `%LOCALAPPDATA%\Programs\sub-screen-player` and adds it to your `PATH`.
+   		It installs to `%LOCALAPPDATA%\Programs\sub-screen-player` and adds it to your `PATH`. Or
+   		use [Scoop](https://scoop.sh), which also updates it later:
+   		<Code code={'scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket\nscoop install nomunomu0504/ssp'} lang="powershell" wrap />
    	</TabItem>
    </Tabs>
 
-   You can also use Homebrew or Scoop (see [Download](../download/)), download the archive
-   yourself or [build from source](https://github.com/nomunomu0504/sub-screen-player#install).
+   You can also [download the archive](../download/) yourself or
+   [build from source](https://github.com/nomunomu0504/sub-screen-player#install).
 
 2. **Linux only: allow access to the display.** Install the udev rule, then replug the display.
 

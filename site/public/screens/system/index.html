@@ -174,7 +174,8 @@
     }
   }
 
-  $('demo').hidden = !!ssp;
+  // `?clean` leaves the label out (pictures of the screen for the gallery).
+  $('demo').hidden = !!ssp || new URLSearchParams(location.search).has('clean');
   tick(); update();
   setInterval(tick, 1000);
   setInterval(update, 1000);

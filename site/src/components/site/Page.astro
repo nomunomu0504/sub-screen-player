@@ -1,0 +1,155 @@
+---
+// A page of the site outside the docs (the landing page, the screen gallery): the head, the
+// header and the footer around the page's sections. The same page in the other language lives
+// at the same `path` under /ja/ (or without it).
+import { getImage } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import '../../styles/landing.css';
+import { copy, type Lang } from '../landing/copy';
+import { absolute, file, page, repo } from './links';
+
+interface Props {
+	lang: Lang;
+	/** Path of the page under the language's root, e.g. '' or 'screens/'. */
+	path: string;
+	title: string;
+	description: string;
+	ogImage: ImageMetadata;
+}
+
+const { lang, path, title, description, ogImage } = Astro.props;
+const t = copy[lang];
+const other: Lang = lang === 'en' ? 'ja' : 'en';
+const canonical = absolute(page(path, lang), Astro.site);
+const og = await getImage({ src: ogImage, format: 'png', width: 1200 });
+const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3" y="20" width="58" height="24" rx="5" fill="#0b0e14" stroke="#6ee7b7" stroke-width="3"/><g fill="#f0f2f8"><rect x="11" y="27" width="4" height="10" rx="1"/><rect x="18" y="27" width="4" height="10" rx="1"/><rect x="26" y="29" width="2.5" height="2.5" rx="1"/><rect x="26" y="33.5" width="2.5" height="2.5" rx="1"/><rect x="32" y="27" width="4" height="10" rx="1"/><rect x="39" y="27" width="4" height="10" rx="1"/><rect x="47" y="27" width="6" height="10" rx="1" fill="#6ee7b7"/></g></svg>`;
+const onHome = path === '';
+const section = (id: string) => (onHome ? `#${id}` : `${page('', lang)}#${id}`);
+---
+
+<!doctype html>
+<html lang={t.htmlLang} data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="alternate" hreflang={lang} href={canonical} />
+		<link rel="alternate" hreflang={other} href={absolute(page(path, other), Astro.site)} />
+		<link rel="alternate" hreflang="x-default" href={absolute(page(path, 'en'), Astro.site)} />
+		<link rel="icon" href={file('favicon.svg')} type="image/svg+xml" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={absolute(og.src, Astro.site)} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="theme-color" content="#070a10" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+		/>
+		<script is:inline>
+			// The same choice as the docs (Starlight keeps it in localStorage), else the system's.
+			(() => {
+				let theme = 'dark';
+				try {
+					const saved = localStorage.getItem('starlight-theme');
+					theme =
+						saved === 'light' || saved === 'dark'
+							? saved
+							: matchMedia('(prefers-color-scheme: light)').matches
+								? 'light'
+								: 'dark';
+				} catch {}
+				document.documentElement.dataset.theme = theme;
+			})();
+		</script>
+	</head>
+	<body>
+		<div class="ssp" lang={t.htmlLang}>
+			<header class="site-header">
+				<div class="wrap">
+					<a class="brand" href={page('', lang)} aria-label={t.nav.home}>
+						<Fragment set:html={logo.replace('<svg ', '<svg width="34" height="34" ')} />
+						<span class="mono" lang="en">sub-screen-player</span>
+					</a>
+					<nav class="nav-links" aria-label={t.nav.sections}>
+						<a href={section('screens')}>{t.nav.screens}</a>
+						<a href={page('screens/', lang)} aria-current={path === 'screens/' ? 'page' : undefined}>{t.nav.gallery}</a>
+						<a href={section('claude-code')}>Claude Code</a>
+						<a href={section('api')}>API</a>
+						<a href={page('getting-started/', lang)}>{t.nav.docs}</a>
+					</nav>
+					<div class="lang">
+						{
+							lang === 'en' ? (
+								<>
+									<span aria-current="true">EN</span>
+									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
+									<a href={page(path, 'ja')} lang="ja" hreflang="ja">日本語</a>
+								</>
+							) : (
+								<>
+									<a href={page(path, 'en')} lang="en" hreflang="en">EN</a>
+									<span aria-hidden="true" style="color: var(--line-strong)">/</span>
+									<span aria-current="true">日本語</span>
+								</>
+							)
+						}
+						<a class="btn btn-secondary btn-sm" href={repo} style="margin-left: 6px">GitHub</a>
+					</div>
+				</div>
+			</header>
+
+			<main id="top">
+				<slot />
+			</main>
+
+			<footer class="site-footer">
+				<div class="wrap" style="display: flex; flex-wrap: wrap; gap: 32px 64px; padding-block: 48px">
+					<div class="stack" style="flex: 2 1 280px; gap: 10px">
+						<span class="mono" lang="en" style="font-weight: 700">sub-screen-player</span>
+						<p class="small" style="max-width: 30em">{t.footer.about}</p>
+					</div>
+					<nav class="foot-nav" aria-label={t.footer.project}>
+						<span class="foot-h">{t.footer.project}</span>
+						<a href={repo}>GitHub</a>
+						<a href={page('download/', lang)}>{t.hero.download}</a>
+						<a href={page('screens/', lang)}>{t.nav.gallery}</a>
+						<a href={`${repo}#license`}>{t.footer.license}</a>
+					</nav>
+					<nav class="foot-nav" aria-label={t.footer.docs}>
+						<span class="foot-h">{t.footer.docs}</span>
+						<a href={page('getting-started/', lang)}>{t.hero.start}</a>
+						<a href={page('cli/', lang)}>{t.footer.cliGuide}</a>
+						<a href={page('api/', lang)}>HTTP / WebSocket API</a>
+						<a href={page('adding-a-device/', lang)}>{t.displays.adding.replace(' →', '')}</a>
+					</nav>
+					<nav class="foot-nav" aria-label={t.nav.language}>
+						<span class="foot-h">{t.nav.language}</span>
+						{
+							lang === 'en' ? (
+								<>
+									<span aria-current="true">English</span>
+									<a href={page(path, 'ja')} lang="ja" hreflang="ja">日本語</a>
+								</>
+							) : (
+								<>
+									<a href={page(path, 'en')} lang="en" hreflang="en">English</a>
+									<span aria-current="true">日本語</span>
+								</>
+							)
+						}
+					</nav>
+				</div>
+				<div class="wrap" style="padding-block: 18px; border-top: 1px solid var(--line)">
+					<p class="small">{t.footer.privacy}</p>
+				</div>
+			</footer>
+		</div>
+	</body>
+</html>

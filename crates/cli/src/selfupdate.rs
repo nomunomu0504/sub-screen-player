@@ -45,6 +45,19 @@ pub fn method(exe: &Path) -> Method {
     }
 }
 
+/// `path` without the `\\?\` prefix that `canonicalize` adds on Windows, which PowerShell (the
+/// installer) does not take.
+fn plain(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
 /// `v1.2.3` for `1.2.3` or `v1.2.3`.
 pub fn tag(version: &str) -> Result<String> {
     let version = version.trim().trim_start_matches('v');
@@ -78,7 +91,7 @@ pub fn update(check: bool, to: Option<&str>) -> Result<Option<String>> {
     }
 
     let exe = std::env::current_exe().context("cannot locate this ssp")?;
-    let real = std::fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
+    let real = std::fs::canonicalize(&exe).map_or_else(|_| exe.clone(), plain);
     match method(&real) {
         Method::Installer(dir) => {
             say!("Installing ssp {version} into {} …", dir.display());
@@ -253,6 +266,22 @@ mod tests {
         assert_eq!(
             method(Path::new("/opt/ssp/bin/ssp")),
             Method::Installer(PathBuf::from("/opt/ssp/bin"))
+        );
+    }
+
+    #[test]
+    fn plain_windows_paths_for_the_installer() {
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\D:\a\_temp\ssp-update\ssp.exe")),
+            PathBuf::from(r"D:\a\_temp\ssp-update\ssp.exe")
+        );
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\UNC\server\share\ssp.exe")),
+            PathBuf::from(r"\\server\share\ssp.exe")
+        );
+        assert_eq!(
+            plain(PathBuf::from("/home/me/.local/bin/ssp")),
+            PathBuf::from("/home/me/.local/bin/ssp")
         );
     }
 

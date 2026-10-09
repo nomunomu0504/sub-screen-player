@@ -323,7 +323,7 @@ body {
 }
 .tab {
 	min-height: 44px;
-	padding: 0 14px;
+	padding: 0 10px;
 	background: transparent;
 	border: 0;
 	border-bottom: 2px solid transparent;
@@ -359,6 +359,9 @@ body {
 .copy:hover {
 	border-color: var(--ssp-term-mint);
 	color: var(--ssp-term-mint);
+}
+.copy .ready {
+	display: contents;
 }
 .copy .done,
 .copy[data-copied] .ready {

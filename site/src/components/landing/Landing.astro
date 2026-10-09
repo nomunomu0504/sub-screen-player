@@ -37,6 +37,18 @@ const install = {
 	unix: `curl -fsSL ${installUrl('install.sh')} | sh`,
 	win: `powershell -c "irm ${installUrl('install.ps1')} | iex"`,
 };
+/** The install commands of the hero's tabs: label, prompt and lines. */
+const installTabs = [
+	{ id: 'unix', label: 'macOS · Linux', prompt: '$', lines: [install.unix] },
+	{ id: 'win', label: 'Windows', prompt: '>', lines: [install.win] },
+	{ id: 'brew', label: 'Homebrew', prompt: '$', lines: ['brew install nomunomu0504/tap/ssp'] },
+	{
+		id: 'scoop',
+		label: 'Scoop',
+		prompt: '>',
+		lines: ['scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket', 'scoop install nomunomu0504/ssp'],
+	},
+];
 const phrases = (heading: Heading) => (Array.isArray(heading) ? heading : [heading]);
 // Pictures in full-width frames and in cards.
 const wide = { widths: [960, 1440, 1920], sizes: '(min-width: 1240px) 1160px, 100vw' };
@@ -65,12 +77,26 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 						<div class="stack" style="flex: 1 1 400px; min-width: 0; gap: 10px" data-install>
 							<div class="term">
 								<div class="term-bar" style="padding: 0 6px 0 4px">
-									<div role="tablist" aria-label={t.hero.os} style="display: flex; align-items: center">
-										<button class="tab" role="tab" type="button" id="tab-unix" data-os="unix" aria-controls="install-unix" aria-selected="true">macOS · Linux</button>
-										<button class="tab" role="tab" type="button" id="tab-win" data-os="win" aria-controls="install-win" aria-selected="false" tabindex="-1">Windows</button>
+									<div role="tablist" aria-label={t.hero.os} style="display: flex; flex-wrap: wrap; align-items: center; min-width: 0">
+										{
+											installTabs.map((tab, i) => (
+												<button
+													class="tab"
+													role="tab"
+													type="button"
+													id={`tab-${tab.id}`}
+													data-os={tab.id}
+													aria-controls={`install-${tab.id}`}
+													aria-selected={i === 0 ? 'true' : 'false'}
+													tabindex={i === 0 ? undefined : -1}
+												>
+													{tab.label}
+												</button>
+											))
+										}
 									</div>
 									<button class="copy" type="button" aria-live="polite">
-										<span class="ready" style="display: contents">
+										<span class="ready">
 											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
 											<span>{t.hero.copy}</span>
 										</span>
@@ -80,12 +106,25 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 										</span>
 									</button>
 								</div>
-								<div role="tabpanel" id="install-unix" aria-labelledby="tab-unix" data-cmd="unix" style="min-height: 96px; display: flex; align-items: center">
-									<div class="cmd" style="padding: 18px 16px; font-size: 15px"><span class="p" aria-hidden="true">$</span><code>{install.unix}</code></div>
-								</div>
-								<div role="tabpanel" id="install-win" aria-labelledby="tab-win" data-cmd="win" hidden style="min-height: 96px; align-items: center">
-									<div class="cmd" style="padding: 18px 16px; font-size: 15px"><span class="p" aria-hidden="true">&gt;</span><code>{install.win}</code></div>
-								</div>
+								{
+									installTabs.map((tab, i) => (
+										<div
+											role="tabpanel"
+											id={`install-${tab.id}`}
+											aria-labelledby={`tab-${tab.id}`}
+											data-cmd={tab.id}
+											hidden={i !== 0}
+											style={`min-height: 96px; display: ${i === 0 ? 'flex' : 'none'}; flex-direction: column; justify-content: center; padding-block: 10px`}
+										>
+											{tab.lines.map((line) => (
+												<div class="cmd" style="padding: 8px 16px; font-size: 15px">
+													<span class="p" aria-hidden="true">{tab.prompt}</span>
+													<code>{line}</code>
+												</div>
+											))}
+										</div>
+									))
+								}
 							</div>
 							<p class="small">
 								{t.hero.note[0]}<code class="mono">ssp</code>{t.hero.note[1]}<code class="mono" style="color: var(--text)">ssp serve</code>{t.hero.note[2]}
@@ -365,7 +404,8 @@ const logo = `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="3
 					});
 				});
 				button?.addEventListener('click', async () => {
-					const text = root.querySelector(`[data-cmd="${os}"] code`)?.textContent ?? '';
+					const lines = root.querySelectorAll(`[data-cmd="${os}"] code`);
+					const text = [...lines].map((code) => code.textContent ?? '').join('\n');
 					try {
 						await navigator.clipboard.writeText(text);
 						button.setAttribute('data-copied', '');

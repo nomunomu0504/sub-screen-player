@@ -3,7 +3,7 @@ title: はじめに
 description: ssp をインストールして、ディスプレイに時計を表示し、ログイン時に自動で起動するまで。
 ---
 
-import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Code, Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 import InstallCommand from '../../../components/InstallCommand.astro';
 
 <Steps>
@@ -15,14 +15,18 @@ import InstallCommand from '../../../components/InstallCommand.astro';
    	<TabItem label="macOS / Linux">
    		<InstallCommand os="unix" />
    		`~/.local/bin` にインストールします（`SSP_INSTALL_DIR` で変更できます）。
+   		[Homebrew](https://brew.sh) を使う場合は次のとおりです（あとの更新も Homebrew で行えます）。
+   		<Code code="brew install nomunomu0504/tap/ssp" lang="sh" />
    	</TabItem>
    	<TabItem label="Windows">
    		<InstallCommand os="windows" />
    		`%LOCALAPPDATA%\Programs\sub-screen-player` にインストールし、`PATH` に追加します。
+   		[Scoop](https://scoop.sh) を使う場合は次のとおりです（あとの更新も Scoop で行えます）。
+   		<Code code={'scoop bucket add nomunomu0504 https://github.com/nomunomu0504/scoop-bucket\nscoop install nomunomu0504/ssp'} lang="powershell" wrap />
    	</TabItem>
    </Tabs>
 
-   Homebrew や Scoop を使ったり（[ダウンロード](../download/)を参照）、アーカイブを自分でダウンロードしたり、
+   [アーカイブを自分でダウンロード](../download/)したり、
    [ソースからビルド](https://github.com/nomunomu0504/sub-screen-player/blob/main/README.ja.md#インストール)したりもできます。
 
 2. **Linux の場合のみ: ディスプレイへのアクセスを許可します。** udev ルールを入れてから、ディスプレイを挿し直してください。

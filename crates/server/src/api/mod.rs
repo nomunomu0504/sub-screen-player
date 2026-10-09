@@ -21,7 +21,7 @@ use ssp_core::{Fit, Frame};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
-use crate::config::{ClockConfig, Config, DashboardConfig};
+use crate::config::{ClockConfig, Config, DashboardConfig, LayoutConfig};
 use crate::manager::{DisplayState, LookupError, Manager};
 use crate::metrics::{Metric, Metrics};
 use crate::notify::{self, Notification};
@@ -43,6 +43,8 @@ const MAX_IMAGE_BYTES: usize = 64 << 20;
 #[derive(Clone)]
 pub struct AppState {
     manager: Arc<Manager>,
+    /// For contents built from requests (layouts) with the daemon's settings.
+    config: Arc<Config>,
     token: Option<Arc<str>>,
     clock: ClockConfig,
     dashboard: DashboardConfig,
@@ -66,6 +68,7 @@ impl AppState {
     ) -> Self {
         Self {
             manager,
+            config: Arc::new(config.clone()),
             token: config.token.clone().map(Into::into),
             clock: config.clock.clone(),
             dashboard: config.dashboard.clone(),
@@ -93,6 +96,7 @@ pub fn router(state: AppState) -> Router {
         .route("/displays/{id}/stop", post(stop))
         .route("/displays/{id}/stream", get(stream::stream))
         .route("/displays/{id}/web", post(show_web))
+        .route("/displays/{id}/layout", post(show_layout))
         .route(
             "/displays/{id}/notify",
             post(show_notification).delete(dismiss_notification),
@@ -300,6 +304,21 @@ async fn resume_schedule(State(app): State<AppState>) -> Result<StatusCode, ApiE
     let schedule = app.manager.schedule().ok_or_else(no_schedule)?;
     blocking(move || {
         schedule.resume(&app.manager);
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+async fn show_layout(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(layout): Json<LayoutConfig>,
+) -> Result<StatusCode, ApiError> {
+    blocking(move || {
+        // Reads image and video files, so off the async threads.
+        let content =
+            Content::layout(&layout, &app.config, &app.metrics).map_err(ApiError::bad_request)?;
+        app.manager.set_content(&id, content)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

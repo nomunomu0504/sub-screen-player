@@ -66,6 +66,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `POST` | `/displays/{id}/notify` | JSON | Shows a message over the screen for a while (see below) |
 | `DELETE` | `/displays/{id}/notify` | | Ends the notification |
 | `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Shows a web page (see below) |
+| `POST` | `/displays/{id}/layout` | JSON | Shows several contents side by side (see below) |
 | `GET` | `/web/chrome` | | Whether headless Chrome is ready |
 | `POST` | `/web/chrome` | | Downloads headless Chrome |
 | `PUT` | `/metrics/{id}` | JSON | Sets a figure for `metric:<id>` dashboard panels (see below) |
@@ -113,7 +114,7 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 ```
 
 - `width` x `height` is the size to draw at (landscape). Other sizes are fitted.
-- `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard`, `rotation` or `stream`. It is remembered while the display is
+- `content` is `nothing`, `image`, `animation`, `video`, `web`, `clock`, `dashboard`, `rotation`, `layout` or `stream`. It is remembered while the display is
   unplugged (`connected: false`, `stats: null`).
 - `stats`: `dropped` counts frames replaced by newer ones before they could be sent;
   `duplicates` counts frames skipped because nothing changed; `partial` counts frames sent as
@@ -306,6 +307,28 @@ loopback) are averaged since the previous request; ask about once a second. Memo
 bytes; the disk is the one holding the system (`/`, or `C:\` on Windows). `load` (one-minute load
 average) is `null` on Windows, and `disk_used` and `disk_total` are `null` if the disk is not
 found.
+
+### `POST /displays/{id}/layout`
+
+Shows zones side by side (`content` is then `layout`), as `[layout]` in the config:
+
+```json
+{
+  "zones": [
+    { "show": "clock", "width": 0.34 },
+    { "show": "image", "image": "/home/me/loop.mp4", "fit": "cover" },
+    { "show": "metric:ci", "width": 480 }
+  ],
+  "gap": 16,
+  "background": "#000000"
+}
+```
+
+`show` is a dashboard panel (`clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`,
+`metric:<id>`), `dashboard`, `image` (a picture, animation or video in `image`, a file on the
+daemon's computer), `web` (with `url` and `reload`) or `nothing`. `width` is a share of the panel
+(up to 1) or pixels; zones without one share the rest. Zone edges are on the 16-pixel grid. At
+most 8 zones, one video and one web page; `400` otherwise, or when a file cannot be read.
 
 ### `POST /displays/{id}/web`
 

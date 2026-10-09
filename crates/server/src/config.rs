@@ -30,7 +30,7 @@ partial_updates = true   # send only the changed parts of a frame (D92), e.g. a 
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
-show = "clock"           # "clock", "dashboard", "image", "web", "rotation" or "nothing"
+show = "clock"           # "clock", "dashboard", "image", "web", "layout", "rotation" or "nothing"
 # image = "/path/to/picture.png"   # a video works too (needs ffmpeg, see [video])
 # url = "https://example.com/panel.html"   # for show = "web" (see [web])
 # reload = 600           # reload the web page every this many seconds
@@ -54,6 +54,20 @@ fit = "contain"          # "contain", "cover" or "stretch"
 # [[schedule]]
 # at = "01:00"
 # power = "off"
+
+# Several things side by side, for show = "layout" (in [startup], a schedule entry or a
+# rotation). `show` is a dashboard panel ("clock", "cpu", "memory", "network", "disk",
+# "claude-code", "metric:<id>"), "dashboard", "image" (a picture, animation or video, with
+# `image`) or "web" (with `url`). `width` is a share of the panel (0.3) or pixels (480); zones
+# without one share the rest.
+# [layout]
+# zones = [
+#   { show = "clock", width = 0.3 },
+#   { show = "image", image = "/path/to/loop.mp4", fit = "cover" },
+#   { show = "metric:ci", width = 0.25 },
+# ]
+# gap = 0                # pixels between zones
+# background = "#000000"
 
 # Screens shown in turn, for show = "rotation" (in [startup] or a schedule entry).
 # [rotation]
@@ -116,6 +130,8 @@ pub struct Config {
     pub schedule: Vec<ScheduleEntry>,
     /// Screens shown in turn for `show = "rotation"`.
     pub rotation: RotationConfig,
+    /// Contents side by side for `show = "layout"`.
+    pub layout: LayoutConfig,
     /// Look of the built-in clock.
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
@@ -139,6 +155,7 @@ impl Default for Config {
             startup: StartupConfig::default(),
             schedule: Vec::new(),
             rotation: RotationConfig::default(),
+            layout: LayoutConfig::default(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
             web: WebConfig::default(),
@@ -306,6 +323,8 @@ pub enum StartupShow {
     Web,
     /// The screens of `[rotation]`, in turn.
     Rotation,
+    /// The zones of `[layout]`, side by side.
+    Layout,
 }
 
 impl StartupConfig {
@@ -337,20 +356,160 @@ pub struct ShowSpec<'a> {
 }
 
 impl ShowSpec<'_> {
-    /// Checks that the options the kind needs are there; `rotation` says whether `[rotation]`
-    /// has screens.
-    fn validate(&self, rotation: bool) -> Result<(), String> {
+    /// Checks that the options the kind needs are there.
+    fn validate(&self, defined: Defined) -> Result<(), String> {
         match self.show {
             StartupShow::Image if self.image.is_none() => {
                 Err("show = \"image\" needs image".into())
             }
             StartupShow::Web if self.url.is_none() => Err("show = \"web\" needs url".into()),
-            StartupShow::Rotation if !rotation => {
+            StartupShow::Rotation if !defined.rotation => {
                 Err("show = \"rotation\" needs screens in [rotation] show".into())
+            }
+            StartupShow::Layout if !defined.layout => {
+                Err("show = \"layout\" needs zones in [layout]".into())
             }
             _ if self.reload == Some(0) => Err("reload must be at least 1".into()),
             _ => Ok(()),
         }
+    }
+}
+
+/// Which of `[rotation]` and `[layout]` have something in them, for checking `show`.
+#[derive(Debug, Clone, Copy, Default)]
+struct Defined {
+    rotation: bool,
+    layout: bool,
+}
+
+/// Contents side by side (`[layout]`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LayoutConfig {
+    /// The zones from left to right.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub zones: Vec<ZoneConfig>,
+    /// Pixels between zones.
+    pub gap: u32,
+    /// Color around and between the zones, `#RRGGBB`.
+    pub background: String,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            zones: Vec::new(),
+            gap: 0,
+            background: "#000000".into(),
+        }
+    }
+}
+
+/// Most zones in a layout.
+pub const MAX_ZONES: usize = 8;
+
+impl LayoutConfig {
+    /// Checks the zones and their options.
+    pub fn validate(&self) -> Result<(), String> {
+        if parse_color(&self.background).is_none() {
+            return Err(format!(
+                "layout: {:?} is not a #RRGGBB color",
+                self.background
+            ));
+        }
+        if self.zones.len() > MAX_ZONES {
+            return Err(format!("layout: at most {MAX_ZONES} zones"));
+        }
+        let mut webs = 0;
+        for (n, zone) in self.zones.iter().enumerate() {
+            let fail = |e: String| format!("layout zone {} ({}): {e}", n + 1, zone.show);
+            match zone.kind().map_err(fail)? {
+                ZoneKind::Image => {
+                    if zone.image.is_none() {
+                        return Err(fail("needs image".into()));
+                    }
+                }
+                ZoneKind::Web => {
+                    if zone.url.is_none() {
+                        return Err(fail("needs url".into()));
+                    }
+                    webs += 1;
+                }
+                ZoneKind::Panel(_) | ZoneKind::Dashboard | ZoneKind::Nothing => {
+                    if zone.image.is_some() || zone.url.is_some() {
+                        return Err(fail("image and url are for image and web zones".into()));
+                    }
+                }
+            }
+            if zone.width.is_some_and(|w| !(w > 0.0 && w.is_finite())) {
+                return Err(fail("width must be more than 0".into()));
+            }
+            if zone.reload == Some(0) {
+                return Err(fail("reload must be at least 1".into()));
+            }
+        }
+        if webs > 1 {
+            return Err("layout: at most one web zone".into());
+        }
+        Ok(())
+    }
+}
+
+/// A zone of `[layout]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZoneConfig {
+    /// A dashboard panel (`"clock"`, `"cpu"`, `"metric:<id>"`, ...), `"dashboard"`, `"image"`,
+    /// `"web"` or `"nothing"`.
+    pub show: String,
+    /// A share of the panel's width (up to 1) or pixels (more than 1). Zones without one share
+    /// what is left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// Picture, animation or video for `image`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<PathBuf>,
+    /// Page for `web`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Reload the page every this many seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<u64>,
+    /// How a picture or video is fitted into the zone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<FitName>,
+}
+
+/// What a zone shows, from [`ZoneConfig::show`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ZoneKind {
+    /// A dashboard panel; `Widget::Clock` is the full clock.
+    Panel(Widget),
+    /// The whole dashboard.
+    Dashboard,
+    /// A picture, animation or video.
+    Image,
+    /// A web page.
+    Web,
+    /// The background only.
+    Nothing,
+}
+
+impl ZoneConfig {
+    /// What the zone shows.
+    pub fn kind(&self) -> Result<ZoneKind, String> {
+        Ok(match self.show.as_str() {
+            "dashboard" => ZoneKind::Dashboard,
+            "image" | "video" | "animation" => ZoneKind::Image,
+            "web" => ZoneKind::Web,
+            "nothing" => ZoneKind::Nothing,
+            other => ZoneKind::Panel(other.parse().map_err(|_| {
+                format!(
+                    "unknown zone {other:?}: use a dashboard panel (clock, cpu, memory, network, \
+                     disk, claude-code, metric:<id>), dashboard, image, web or nothing"
+                )
+            })?),
+        })
     }
 }
 
@@ -440,7 +599,7 @@ impl ScheduleEntry {
         Ok(on)
     }
 
-    fn validate(&self, rotation: bool) -> Result<(), String> {
+    fn validate(&self, defined: Defined) -> Result<(), String> {
         self.time()?;
         self.weekdays()?;
         if self.show.is_none()
@@ -454,7 +613,7 @@ impl ScheduleEntry {
         if self.brightness.is_some_and(|b| b > 100) {
             return Err("brightness must be 0..=100".into());
         }
-        self.spec().map_or(Ok(()), |spec| spec.validate(rotation))
+        self.spec().map_or(Ok(()), |spec| spec.validate(defined))
     }
 }
 
@@ -482,7 +641,7 @@ impl Default for RotationConfig {
 }
 
 impl RotationConfig {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self, defined: Defined) -> Result<(), String> {
         if self.every == 0 {
             return Err("rotation.every must be at least 1".into());
         }
@@ -491,7 +650,8 @@ impl RotationConfig {
             if spec.show == StartupShow::Rotation {
                 return Err("a rotation cannot show a rotation".into());
             }
-            spec.validate(true).map_err(|e| format!("rotation: {e}"))?;
+            spec.validate(defined)
+                .map_err(|e| format!("rotation: {e}"))?;
             if seconds == Some(0) {
                 return Err("rotation: seconds must be at least 1".into());
             }
@@ -829,14 +989,20 @@ impl Config {
         if self.display.max_fps == 0 {
             return invalid("display.max_fps must be at least 1".into());
         }
-        let rotation = !self.rotation.show.is_empty();
+        let defined = Defined {
+            rotation: !self.rotation.show.is_empty(),
+            layout: !self.layout.zones.is_empty(),
+        };
         self.startup
             .spec()
-            .validate(rotation)
+            .validate(defined)
             .map_err(|e| ConfigError::Invalid(format!("startup: {e}")))?;
-        self.rotation.validate().map_err(ConfigError::Invalid)?;
+        self.rotation
+            .validate(defined)
+            .map_err(ConfigError::Invalid)?;
+        self.layout.validate().map_err(ConfigError::Invalid)?;
         for (n, entry) in self.schedule.iter().enumerate() {
-            entry.validate(rotation).map_err(|e| {
+            entry.validate(defined).map_err(|e| {
                 ConfigError::Invalid(format!("schedule entry {} ({}): {e}", n + 1, entry.at))
             })?;
         }

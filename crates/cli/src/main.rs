@@ -23,7 +23,7 @@ use ssp_server::api::types::{
     BrightnessRequest, ClockRequest, DashboardRequest, DisplayView, MetricUpdate, MetricView,
     NotifyRequest, NotifyStyle, PowerRequest, ScheduleView, WebRequest,
 };
-use ssp_server::config::Widget;
+use ssp_server::config::{FitName, LayoutConfig, Widget, ZoneConfig};
 
 use client::Client;
 
@@ -183,6 +183,23 @@ enum Cmd {
         /// End the notification being shown
         #[arg(long, conflicts_with_all = ["text", "stdin", "detail", "seconds", "sticky", "wake"])]
         dismiss: bool,
+    },
+    /// Show several things side by side: dashboard panels, a picture or video, a web page
+    Layout {
+        /// Zones from left to right: clock, cpu, memory, network, disk, claude-code,
+        /// metric:<id>, dashboard, image:<FILE>, video:<FILE>, web:<URL or FILE>, nothing
+        #[arg(required = true, num_args = 1..)]
+        zones: Vec<String>,
+        /// Widths in percent, comma-separated, e.g. 30,45,25 or 30,,25; zones without one share
+        /// the rest
+        #[arg(long, value_delimiter = ',')]
+        widths: Vec<String>,
+        /// Pixels between zones
+        #[arg(long, default_value_t = 0)]
+        gap: u32,
+        /// How pictures and videos are fitted into their zones
+        #[arg(long, value_enum, default_value_t = FitArg::Contain)]
+        fit: FitArg,
     },
     /// Show the schedule of the config ([[schedule]]), or pause and resume it
     Schedule {
@@ -540,6 +557,32 @@ fn run(cli: Cli) -> Result<()> {
                 },
             )
         }
+        Cmd::Layout {
+            zones,
+            widths,
+            gap,
+            fit,
+        } => {
+            if widths.len() > zones.len() {
+                anyhow::bail!("more --widths than zones");
+            }
+            let widths = widths
+                .iter()
+                .map(|w| percent(w))
+                .collect::<Result<Vec<_>>>()?;
+            let zones = zones
+                .iter()
+                .enumerate()
+                .map(|(i, zone)| zone_config(zone, widths.get(i).copied().flatten(), fit))
+                .collect::<Result<Vec<_>>>()?;
+            let layout = LayoutConfig {
+                zones,
+                gap,
+                ..LayoutConfig::default()
+            };
+            cli_client(&cli.url, &cli.token, &config_path)?
+                .post_json(&format!("{display}/layout"), &layout)
+        }
         Cmd::Schedule { action } => {
             let client = cli_client(&cli.url, &cli.token, &config_path)?;
             match action.unwrap_or(ScheduleCmd::Status) {
@@ -829,6 +872,55 @@ fn ensure_chrome(client: &Client, yes: bool) -> Result<()> {
     Ok(())
 }
 
+/// A width of `--widths` as a share: `"30"` is 0.3, `""` none.
+fn percent(width: &str) -> Result<Option<f64>> {
+    if width.trim().is_empty() {
+        return Ok(None);
+    }
+    match width.trim().parse::<f64>() {
+        Ok(w) if w > 0.0 && w <= 100.0 => Ok(Some(w / 100.0)),
+        _ => anyhow::bail!("--widths are percent, more than 0 and at most 100, not {width:?}"),
+    }
+}
+
+/// A zone of `ssp layout`: a panel name, or `image:`, `video:` or `web:` with a file or URL.
+/// Files are passed to the daemon as absolute paths.
+fn zone_config(zone: &str, width: Option<f64>, fit: FitArg) -> Result<ZoneConfig> {
+    let mut config = ZoneConfig {
+        show: zone.to_owned(),
+        width,
+        image: None,
+        url: None,
+        reload: None,
+        fit: None,
+    };
+    match zone.split_once(':') {
+        Some(("image" | "video", file)) => {
+            let path =
+                std::fs::canonicalize(file).with_context(|| format!("cannot find {file}"))?;
+            config.show = "image".into();
+            config.image = Some(path);
+            config.fit = Some(fit.into());
+        }
+        Some(("web", page)) => {
+            config.show = "web".into();
+            config.url = Some(page_url(page)?);
+        }
+        _ => {}
+    }
+    Ok(config)
+}
+
+impl From<FitArg> for FitName {
+    fn from(fit: FitArg) -> Self {
+        match fit {
+            FitArg::Contain => Self::Contain,
+            FitArg::Cover => Self::Cover,
+            FitArg::Stretch => Self::Stretch,
+        }
+    }
+}
+
 /// A URL as it is, or a file as a `file://` URL.
 fn page_url(page: &str) -> Result<String> {
     if let Ok(url) = url::Url::parse(page)
@@ -1049,6 +1141,36 @@ mod tests {
         assert!(text.ends_with('…'));
         let detail = detail.unwrap();
         assert_eq!(detail.chars().count(), ssp_server::notify::MAX_DETAIL);
+    }
+
+    #[test]
+    fn reads_layout_widths() {
+        assert_eq!(percent("30").unwrap(), Some(0.3));
+        assert_eq!(percent("").unwrap(), None);
+        assert!(percent("0").is_err() && percent("120").is_err() && percent("x").is_err());
+    }
+
+    #[test]
+    fn reads_layout_zones() {
+        let panel = zone_config("metric:ci", Some(0.25), FitArg::Contain).unwrap();
+        assert_eq!(
+            (panel.show.as_str(), panel.width, panel.image),
+            ("metric:ci", Some(0.25), None)
+        );
+        let web = zone_config("web:https://example.com/a", None, FitArg::Contain).unwrap();
+        assert_eq!(
+            (web.show.as_str(), web.url.as_deref()),
+            ("web", Some("https://example.com/a"))
+        );
+        let here = std::env::current_dir().unwrap();
+        let video = zone_config("video:.", None, FitArg::Cover).unwrap();
+        assert_eq!(video.show, "image");
+        assert_eq!(
+            video.image.as_deref(),
+            Some(here.canonicalize().unwrap().as_path())
+        );
+        assert_eq!(video.fit, Some(FitName::Cover));
+        assert!(zone_config("image:/no/such/file.png", None, FitArg::Contain).is_err());
     }
 
     #[test]

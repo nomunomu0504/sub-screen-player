@@ -64,6 +64,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `POST` | `/displays/{id}/notify` | JSON | 画面の上にメッセージをしばらく重ねて出す（後述） |
 | `DELETE` | `/displays/{id}/notify` | | 通知を消す |
 | `POST` | `/displays/{id}/web` | `{"url": "...", "reload": 600}` | Web ページを表示（後述） |
+| `POST` | `/displays/{id}/layout` | JSON | 複数の内容を並べて表示（後述） |
 | `GET` | `/web/chrome` | | ヘッドレス Chrome の準備ができているか |
 | `POST` | `/web/chrome` | | ヘッドレス Chrome をダウンロード |
 | `PUT` | `/metrics/{id}` | JSON | ダッシュボードの `metric:<id>` パネルに出す値を設定（後述） |
@@ -111,7 +112,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 ```
 
 - `width` x `height` が描画すべきサイズです（横長）。ほかのサイズはパネルに合わせて調整されます。
-- `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`rotation`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
+- `content` は `nothing`・`image`・`animation`・`video`・`web`・`clock`・`dashboard`・`rotation`・`layout`・`stream` のいずれかです。ディスプレイが抜かれている間も保持されます
   （そのとき `connected: false`、`stats: null`）。
 - `stats`: `dropped` は送る前に新しいフレームに置き換えられた数、`duplicates` は変化がなかったため送らなかった数、`partial` は変わった部分だけを送った数です（`[display] partial_updates`）。
 - `notification` は通知を出している間だけ入ります（後述）:
@@ -290,6 +291,28 @@ CPU 使用率（0〜100、全コア）と通信速度（ループバックを除
 平均です。1秒に1回くらい読んでください。メモリとディスクの単位はバイトで、ディスクはシステムのあるもの（`/`、Windows では
 `C:\`）です。`load`（1分間のロードアベレージ）は Windows では `null`、ディスクが見つからないときは `disk_used` と
 `disk_total` が `null` です。
+
+### `POST /displays/{id}/layout`
+
+設定ファイルの `[layout]` と同じ形で、領域を並べて表示します（このとき `content` は `layout`）。
+
+```json
+{
+  "zones": [
+    { "show": "clock", "width": 0.34 },
+    { "show": "image", "image": "/home/me/loop.mp4", "fit": "cover" },
+    { "show": "metric:ci", "width": 480 }
+  ],
+  "gap": 16,
+  "background": "#000000"
+}
+```
+
+`show` は、ダッシュボードのパネル（`clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`）、
+`dashboard`、`image`（`image` に、デーモンのある PC 上の画像・アニメーション・動画のファイル）、`web`（`url` と `reload`）、
+`nothing` のいずれかです。`width` はパネルに対する割合（1 まで）かピクセルで、指定のない領域は残りを分け合います。領域の
+端は 16 ピクセル単位にそろえます。領域は 8 つまで、動画と Web ページはそれぞれ1つまでで、超えたときやファイルを読めない
+ときは `400` を返します。
 
 ### `POST /displays/{id}/web`
 

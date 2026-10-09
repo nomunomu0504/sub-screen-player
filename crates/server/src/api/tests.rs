@@ -860,3 +860,64 @@ async fn rotates_between_screens() {
     assert_eq!(api.content().await, "rotation");
     wait_until(|| !api.log.calls().is_empty());
 }
+
+#[tokio::test]
+async fn shows_a_layout() {
+    let api = Api::new(config());
+    std::fs::create_dir_all(&api.dir).unwrap();
+    let picture = api.dir.join("red.png");
+    std::fs::write(&picture, png()).unwrap();
+    let body = serde_json::json!({
+        "zones": [
+            { "show": "clock", "width": 0.3 },
+            { "show": "image", "image": picture, "fit": "cover" },
+            { "show": "metric:ci", "width": 480 },
+        ],
+        "gap": 16,
+    });
+    let request = json_request(
+        "POST",
+        &format!("/api/v1/displays/{DISPLAY}/layout"),
+        &body.to_string(),
+    );
+    let (status, answer) = api.send(request).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{answer}");
+    assert_eq!(api.content().await, "layout");
+    wait_until(|| api.log.calls().iter().any(|c| matches!(c, Call::Show(_))));
+}
+
+#[tokio::test]
+async fn refuses_bad_layouts() {
+    let api = Api::new(config());
+    for (body, expected) in [
+        (r#"{"zones": []}"#, "no zones"),
+        (r#"{"zones": [{"show": "weather"}]}"#, "unknown zone"),
+        (r#"{"zones": [{"show": "image"}]}"#, "needs image"),
+        (
+            r#"{"zones": [{"show": "clock", "url": "https://a.b"}]}"#,
+            "image and url",
+        ),
+        (
+            r#"{"zones": [{"show": "web", "url": "https://a.b"}, {"show": "web", "url": "https://c.d"}]}"#,
+            "one web zone",
+        ),
+        (
+            r#"{"zones": [{"show": "clock", "width": 0}]}"#,
+            "more than 0",
+        ),
+        (
+            r#"{"zones": [{"show": "image", "image": "/nonexistent.png"}]}"#,
+            "cannot read",
+        ),
+        (
+            r#"{"zones": [{"show": "clock"}], "background": "black"}"#,
+            "color",
+        ),
+    ] {
+        let request = json_request("POST", &format!("/api/v1/displays/{DISPLAY}/layout"), body);
+        let (status, answer) = api.send(request).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {answer}");
+        assert!(error(&answer).contains(expected), "{body}: {answer}");
+    }
+    assert_eq!(api.content().await, "nothing");
+}

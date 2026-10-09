@@ -252,6 +252,37 @@ url = "file:///home/me/panel.html"
 reload = 600       # 省略可
 ```
 
+### 複数の内容を並べて表示する
+
+```sh
+ssp layout clock video:~/Movies/loop.mp4 metric:ci --widths 34,40,26 --fit cover
+ssp layout clock claude-code web:panel.html --widths 30,,30
+```
+
+![時計・動画・メトリクスのパネルを並べた画面](images/layout.png)
+
+`ssp layout` は、パネルを左から順に領域に分け、領域ごとに別の内容を、ブラウザなしで表示します。領域には、ダッシュボードの
+パネル（`clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`）、`dashboard`、`image:<ファイル>`
+か `video:<ファイル>`（画像・アニメーション・動画）、`web:<URL かファイル>`、`nothing` を指定できます。`--widths` で幅を
+パーセントで指定し、指定のない領域は残りを分け合います（`30,,30`）。各領域は別々に動くので、動画の隣でも時計は進み、
+部分更新では変わった領域だけを送ります。1つのレイアウトで再生できる動画と表示できる Web ページは、それぞれ1つまでです。
+
+設定ファイルでは、`[layout]` に同じ領域を書き、`width` は割合（`0.3`）かピクセル（`480`）で指定します。`[startup]`・
+スケジュールのエントリー・ローテーションで `show = "layout"` と書くと表示されます。
+
+```toml
+[startup]
+show = "layout"
+
+[layout]
+zones = [
+  { show = "clock", width = 0.34 },
+  { show = "image", image = "/home/me/loop.mp4", fit = "cover" },
+  { show = "metric:ci", width = 0.26 },
+]
+gap = 16                 # 領域の間のピクセル数
+```
+
 ### 表示を止める・消す・画面を消灯する
 
 | コマンド | 画面の絵 | 画面 | 時計・ダッシュボード・画像・ストリーム |
@@ -480,6 +511,10 @@ ssp serve --log-file ~/ssp.log           # ログをファイルに出力
 | `  --reload <SECONDS>` | 指定した秒数ごとにページを読み込み直します。 |
 | `  --yes`・`-y` | 必要なら、確認せずにヘッドレス Chrome をダウンロードします。 |
 | `  --install` | ヘッドレス Chrome のダウンロード（更新）だけを行います。 |
+| `ssp layout <ZONE>...` | 領域を並べて表示します: `clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`・`dashboard`・`image:<FILE>`・`video:<FILE>`・`web:<URL か FILE>`・`nothing`。 |
+| `  --widths <PERCENT,...>` | 領域の幅（パーセント）。指定のない領域は残りを分け合います。 |
+| `  --gap <PIXELS>` | 領域の間の幅。 |
+| `  --fit contain\|cover\|stretch` | 画像や動画を領域に合わせる方法。 |
 | `ssp stop` | 時計・ダッシュボード・画像・ストリームを止めます。画面には最後の絵が残ります。 |
 | `ssp clear` | 時計・ダッシュボード・画像・ストリームを止め、画面を消去します。 |
 

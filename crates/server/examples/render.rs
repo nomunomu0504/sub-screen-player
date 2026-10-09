@@ -5,9 +5,10 @@
 //!     cargo run -p ssp-server --example render -- dashboard dashboard.png --seconds 60
 //!     cargo run -p ssp-server --example render -- dashboard metrics.png --metrics metrics.json
 //!     cargo run -p ssp-server --example render -- clock notify.png --notify "Build finished"
+//!     cargo run -p ssp-server --example render -- layout layout.png --config layout.toml
 //!
-//! The screen is drawn at the D92's size (1920x462) with the `[clock]` and `[dashboard]` sections
-//! of the given config file, or the defaults. Useful for trying a look or making documentation.
+//! The screen is drawn at the D92's size (1920x462) with the `[clock]`, `[dashboard]` and
+//! `[layout]` sections of the given config file, or the defaults. Useful for trying a look or making documentation.
 //! The dashboard shows this computer's figures, sampled once a second for `--seconds` (default
 //! 8) so the graphs have something to show; 60 fills them. `--metrics` takes a JSON object of
 //! `{"<id>": <body of PUT /api/v1/metrics/<id>>}` for `metric:<id>` panels. `--notify` draws a
@@ -25,7 +26,7 @@ use ssp_server::notify::{self, Notification, Overlay, Style};
 use ssp_server::sources::Content;
 
 fn main() -> anyhow::Result<()> {
-    const USAGE: &str = "usage: render <clock|dashboard> <out.png> [--config <config.toml>] \
+    const USAGE: &str = "usage: render <clock|dashboard|layout> <out.png> [--config <config.toml>] \
                          [--seconds <n>] [--metrics <metrics.json>] [--notify <text> \
                          [--detail <text>] [--color <color>] [--style banner|full]]";
     let mut args = std::env::args().skip(1);
@@ -89,7 +90,12 @@ fn main() -> anyhow::Result<()> {
             Content::Dashboard(config.dashboard, config.clock, metrics),
             seconds.max(1),
         ),
-        other => bail!("unknown screen {other:?} (try clock or dashboard)"),
+        // Zones draw on threads of their own; give them a few rounds.
+        "layout" => (
+            Content::layout(&config.layout, &config, &metrics).map_err(anyhow::Error::msg)?,
+            seconds.max(3),
+        ),
+        other => bail!("unknown screen {other:?} (try clock, dashboard or layout)"),
     };
     let mut source = content.source().context("this screen draws nothing")?;
     let mut frame = Frame::blank(1920, 462);

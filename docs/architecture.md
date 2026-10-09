@@ -119,6 +119,7 @@ order, and the caller waits for the result. Keep-alives are sent on that thread 
 | `ssp-player-<id>` | 0–1 per display | Runs the current built-in `Source` (e.g. ticks the clock) |
 | `ssp-notify` | 0–1 per notification | Ends a notification on time |
 | `ssp-schedule` | 0–1 | Applies the `[[schedule]]` entries at their times |
+| `ssp-zone-<n>` | 0–8 per display | Runs one zone's `Source` of a layout, at the zone's size |
 
 A `Display` is only ever used by its device thread, so drivers need no locking.
 

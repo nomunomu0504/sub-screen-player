@@ -269,6 +269,39 @@ url = "file:///home/me/panel.html"
 reload = 600       # optional
 ```
 
+### Show several things side by side
+
+```sh
+ssp layout clock video:~/Movies/loop.mp4 metric:ci --widths 34,40,26 --fit cover
+ssp layout clock claude-code web:panel.html --widths 30,,30
+```
+
+![The clock, a video and a metric panel side by side](images/layout.png)
+
+`ssp layout` splits the panel into zones from left to right, each with its own content, without a
+browser. A zone is a dashboard panel (`clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`,
+`metric:<id>`), `dashboard`, `image:<file>` or `video:<file>` (a picture, animation or video),
+`web:<URL or file>`, or `nothing`. `--widths` gives widths in percent; zones without one share
+the rest (`30,,30`). Each zone runs on its own: the clock keeps ticking next to a video, and with
+partial updates only the zone that changed is sent. A layout plays one video and shows one web
+page at most.
+
+In the config, `[layout]` takes the same zones, a `width` as a share (`0.3`) or in pixels
+(`480`), and is shown with `show = "layout"` in `[startup]`, a schedule entry or a rotation:
+
+```toml
+[startup]
+show = "layout"
+
+[layout]
+zones = [
+  { show = "clock", width = 0.34 },
+  { show = "image", image = "/home/me/loop.mp4", fit = "cover" },
+  { show = "metric:ci", width = 0.26 },
+]
+gap = 16                 # pixels between zones
+```
+
 ### Stop, blank or turn off the screen
 
 | Command | What happens to the picture | The screen | The clock / dashboard / image / stream |
@@ -504,6 +537,10 @@ These work with every command.
 | `  --reload <SECONDS>` | Reload the page every so many seconds. |
 | `  --yes`, `-y` | Download headless Chrome without asking, if needed. |
 | `  --install` | Only download (or update) headless Chrome. |
+| `ssp layout <ZONE>...` | Show zones side by side: `clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`, `metric:<id>`, `dashboard`, `image:<FILE>`, `video:<FILE>`, `web:<URL or FILE>` or `nothing`. |
+| `  --widths <PERCENT,...>` | Widths of the zones in percent; zones without one share the rest. |
+| `  --gap <PIXELS>` | Space between zones. |
+| `  --fit contain\|cover\|stretch` | How pictures and videos are fitted into their zones. |
 | `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
 

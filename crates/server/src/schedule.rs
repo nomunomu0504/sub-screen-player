@@ -193,6 +193,7 @@ fn show_name(show: StartupShow) -> &'static str {
         StartupShow::Image => "image",
         StartupShow::Web => "web",
         StartupShow::Rotation => "rotation",
+        StartupShow::Layout => "layout",
     }
 }
 

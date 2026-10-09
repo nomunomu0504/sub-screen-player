@@ -8,6 +8,7 @@ mod animation;
 mod clock;
 mod dashboard;
 pub(crate) use dashboard::number;
+mod layout;
 mod rotation;
 pub mod stats;
 pub mod video;
@@ -21,9 +22,12 @@ use ssp_core::{Animation, Fit, Frame};
 
 pub use clock::Clock;
 pub use dashboard::Dashboard;
+pub use layout::{LayoutSpec, Zone};
 pub use rotation::Turn;
 
-use crate::config::{ClockConfig, Config, DashboardConfig, ShowSpec, StartupShow};
+use crate::config::{
+    ClockConfig, Config, DashboardConfig, LayoutConfig, ShowSpec, StartupShow, Widget, ZoneKind,
+};
 use crate::metrics::Metrics;
 
 /// Something that draws a picture and knows when it changes.
@@ -77,6 +81,8 @@ pub enum Content {
     Stream,
     /// Several contents in turn.
     Rotation(Arc<Vec<Turn>>),
+    /// Several contents side by side.
+    Layout(Arc<LayoutSpec>),
 }
 
 impl Content {
@@ -92,6 +98,7 @@ impl Content {
             Self::Dashboard(..) => "dashboard",
             Self::Stream => "stream",
             Self::Rotation(_) => "rotation",
+            Self::Layout(_) => "layout",
         }
     }
 
@@ -115,6 +122,7 @@ impl Content {
                 metrics.clone(),
             ))),
             Self::Rotation(turns) => Some(Box::new(rotation::Rotation::new(turns.clone()))),
+            Self::Layout(spec) => Some(Box::new(layout::Layout::new(spec.clone()))),
         }
     }
 
@@ -193,7 +201,66 @@ impl Content {
                 }
                 Ok(Self::Rotation(Arc::new(turns)))
             }
+            StartupShow::Layout => Self::layout(&config.layout, config, metrics),
         }
+    }
+
+    /// The layout `layout`, with the other settings of `config`.
+    pub fn layout(
+        layout: &LayoutConfig,
+        config: &Config,
+        metrics: &Metrics,
+    ) -> Result<Self, String> {
+        layout.validate()?;
+        if layout.zones.is_empty() {
+            return Err("the layout has no zones".into());
+        }
+        let background =
+            crate::config::parse_color(&layout.background).ok_or("bad layout background")?;
+        let mut zones = Vec::with_capacity(layout.zones.len());
+        for (n, zone) in layout.zones.iter().enumerate() {
+            let fail = |e: String| format!("layout zone {} ({}): {e}", n + 1, zone.show);
+            let spec = |show| ShowSpec {
+                show,
+                image: zone.image.as_deref(),
+                url: zone.url.as_deref(),
+                reload: zone.reload,
+                fit: zone.fit.unwrap_or_default(),
+            };
+            let content = match zone.kind().map_err(fail)? {
+                ZoneKind::Panel(Widget::Clock) => {
+                    Self::from_spec(spec(StartupShow::Clock), config, metrics)
+                }
+                ZoneKind::Panel(widget) => {
+                    let dashboard = DashboardConfig {
+                        widgets: vec![widget],
+                        ..config.dashboard.clone()
+                    };
+                    dashboard
+                        .validate()
+                        .map(|()| Self::Dashboard(dashboard, config.clock.clone(), metrics.clone()))
+                }
+                ZoneKind::Dashboard => {
+                    Self::from_spec(spec(StartupShow::Dashboard), config, metrics)
+                }
+                ZoneKind::Image => Self::from_spec(spec(StartupShow::Image), config, metrics),
+                ZoneKind::Web => Self::from_spec(spec(StartupShow::Web), config, metrics),
+                ZoneKind::Nothing => Ok(Self::Nothing),
+            }
+            .map_err(fail)?;
+            zones.push(Zone {
+                content,
+                width: zone.width,
+            });
+        }
+        if zones.iter().filter(|z| z.content.kind() == "video").count() > 1 {
+            return Err("a layout can play one video at a time".into());
+        }
+        Ok(Self::Layout(Arc::new(LayoutSpec {
+            zones,
+            gap: layout.gap,
+            background,
+        })))
     }
 }
 

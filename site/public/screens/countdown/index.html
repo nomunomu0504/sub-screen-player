@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  sub-screen-player screen gallery: "countdown".
+  Days, hours and minutes until a moment you give, and how long ago it was once it has passed.
+  Needs nothing from the daemon. Made for a 1920x462 panel:
+
+    ssp web "https://subscreen.dev/screens/countdown/?to=2026-12-24T18:00&label=Party"
+
+  ?to= is the moment in this computer's time (2026-12-24, 2026-12-24T18:00), or with its
+  offset (2026-12-24T18:00+09:00); ?label= names it. Without ?to=, it counts to the new year.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=462">
+<title>Countdown — sub-screen-player screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg: #05070b; --panel: #0b0f17; --line: #1c2431; --text: #f0f2f8; --muted: #8591a3;
+    --mint: #6ee7b7; --blue: #60a5fa; --amber: #fbbf24; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  main { display: grid; grid-template-columns: 560px 1fr 1fr 1fr; gap: 24px; height: 100vh; padding: 36px 44px; }
+  .what { display: flex; flex-direction: column; justify-content: center; gap: 14px; min-width: 0; }
+  .name { font-size: 64px; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+  .state { font-size: 26px; letter-spacing: 3px; color: var(--muted); }
+  .state.done { color: var(--mint); }
+  .when { font-size: 26px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 22px; min-width: 0; }
+  .num { font-size: 150px; font-weight: 700; letter-spacing: -6px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .num .s { color: var(--muted); font-size: 60px; letter-spacing: -2px; margin-left: 8px; }
+  .done-num .num { color: var(--mint); }
+  .label { font-size: 22px; letter-spacing: 3px; color: var(--muted); }
+  .message { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; color: var(--muted); background: var(--bg); }
+  .message[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main id="main">
+  <section class="what">
+    <div class="state" id="state"></div>
+    <div class="name" id="name"></div>
+    <div class="when" id="when"></div>
+  </section>
+  <section class="panel"><div class="num" id="days">--</div><div class="label">DAYS</div></section>
+  <section class="panel"><div class="num" id="hours">--</div><div class="label">HOURS</div></section>
+  <section class="panel"><div class="num"><span id="minutes">--</span><span class="s" id="seconds">--</span></div><div class="label">MINUTES</div></section>
+</main>
+<div class="message" id="message" hidden></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const query = new URLSearchParams(location.search);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  // A date alone is midnight here; a date and time without an offset is this computer's time.
+  function moment(text) {
+    const value = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00` : text;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const given = query.get('to');
+  const now = new Date();
+  const target = given ? moment(given) : new Date(now.getFullYear() + 1, 0, 1);
+  const label = query.get('label') || (given ? 'Countdown' : `New Year ${now.getFullYear() + 1}`);
+
+  // Changes only when the numbers do.
+  const shown = {};
+  function set(id, text) {
+    if (shown[id] !== text) { shown[id] = text; $(id).textContent = text; }
+  }
+
+  function tick() {
+    const left = target - new Date();
+    const passed = left <= 0;
+    const s = Math.floor(Math.abs(left) / 1000);
+    set('state', passed ? 'REACHED' : 'COUNTDOWN TO');
+    $('state').classList.toggle('done', passed);
+    $('main').classList.toggle('done-num', passed);
+    set('when', (passed ? 'since ' : '') + target.toLocaleString('en-US', { weekday: 'short', month: 'short',
+      day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+    set('days', String(Math.floor(s / 86400)));
+    set('hours', pad(Math.floor(s / 3600) % 24));
+    set('minutes', pad(Math.floor(s / 60) % 60));
+    set('seconds', pad(s % 60));
+  }
+
+  if (!target) {
+    $('message').textContent = `?to= is not a date: ${given} (try 2026-12-24 or 2026-12-24T18:00)`;
+    $('message').hidden = false;
+  } else {
+    $('name').textContent = label;
+    tick();
+    setInterval(tick, 1000);
+  }
+</script>
+</body>
+</html>

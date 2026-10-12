@@ -972,6 +972,27 @@ async fn streams_into_the_stream_zone_of_a_layout() {
 }
 
 #[tokio::test]
+async fn answers_the_close_of_a_stream() {
+    let api = Api::new(config());
+    let address = serve(&api).await;
+    let mut socket = open_stream(address).await;
+    let end = tokio::task::spawn_blocking(move || {
+        socket.close(None).unwrap();
+        loop {
+            if let Err(err) = socket.read() {
+                break err;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        matches!(end, tungstenite::Error::ConnectionClosed),
+        "{end:?}"
+    );
+}
+
+#[tokio::test]
 async fn goes_back_to_the_schedule_when_a_stream_ends() {
     let api = Api::new(Config {
         schedule: vec![midnight(StartupShow::Dashboard, 30)],

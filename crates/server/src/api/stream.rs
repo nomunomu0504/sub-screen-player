@@ -15,6 +15,7 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
+use futures_util::SinkExt;
 use ssp_core::Frame;
 
 use super::types::{ErrorBody, StreamFormat, StreamQuery};
@@ -142,7 +143,9 @@ async fn run(
             }
         }
     };
-    // Finishes the closing handshake before waiting below.
+    // Sends the answer to the sender's close, which waits in the socket until flushed, and
+    // finishes the closing handshake before waiting below.
+    let _ = socket.flush().await;
     drop(socket);
     tracing::info!(display = %ticket.id, "stream ended");
     if end == End::Sender && matches!(target, Target::Display) {

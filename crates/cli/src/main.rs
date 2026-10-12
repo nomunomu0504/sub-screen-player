@@ -220,7 +220,7 @@ enum Cmd {
     /// Show several things side by side: dashboard panels, a picture or video, a web page
     Layout {
         /// Zones from left to right: clock, cpu, memory, network, disk, claude-code,
-        /// metric:<id>, dashboard, image:<FILE>, video:<FILE>, web:<URL or FILE>, nothing
+        /// metric:<id>, dashboard, image:<FILE>, video:<FILE>, web:<URL or FILE>, stream, nothing
         #[arg(required_unless_present = "name", num_args = 1..)]
         zones: Vec<String>,
         /// A layout of [layouts] in the daemon's config, instead of zones

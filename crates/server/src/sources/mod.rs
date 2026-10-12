@@ -22,7 +22,7 @@ use ssp_core::{Animation, Fit, Frame};
 
 pub use clock::Clock;
 pub use dashboard::Dashboard;
-pub use layout::{LayoutSpec, Zone};
+pub use layout::{Feed, LayoutSpec, Zone};
 pub use rotation::Turn;
 
 use crate::config::{
@@ -258,6 +258,7 @@ impl Content {
                 }
                 ZoneKind::Image => Self::from_spec(spec(StartupShow::Image), config, metrics),
                 ZoneKind::Web => Self::from_spec(spec(StartupShow::Web), config, metrics),
+                ZoneKind::Stream => Ok(Self::Stream),
                 ZoneKind::Nothing => Ok(Self::Nothing),
             }
             .map_err(fail)?;
@@ -269,10 +270,15 @@ impl Content {
         if zones.iter().filter(|z| z.content.kind() == "video").count() > 1 {
             return Err("a layout can play one video at a time".into());
         }
+        let feed = zones
+            .iter()
+            .any(|z| matches!(z.content, Self::Stream))
+            .then(Arc::default);
         Ok(Self::Layout(Arc::new(LayoutSpec {
             zones,
             gap: layout.gap,
             background,
+            feed,
         })))
     }
 }

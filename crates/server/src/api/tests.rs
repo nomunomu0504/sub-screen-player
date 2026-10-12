@@ -895,6 +895,82 @@ async fn close_stream(mut socket: Socket) {
     .unwrap();
 }
 
+/// Opens a stream into the stream zone of the fake display, or answers the HTTP status it was
+/// refused with.
+async fn open_zone_stream(address: std::net::SocketAddr) -> Result<Socket, u16> {
+    tokio::task::spawn_blocking(move || {
+        let tcp = std::net::TcpStream::connect(address).unwrap();
+        let url = format!("ws://{address}/api/v1/displays/{DISPLAY}/stream?zone=true");
+        match tungstenite::client(url, tcp) {
+            Ok((socket, _)) => Ok(socket),
+            Err(tungstenite::HandshakeError::Failure(tungstenite::Error::Http(answer))) => {
+                Err(answer.status().as_u16())
+            }
+            Err(err) => panic!("{err}"),
+        }
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn streams_into_the_stream_zone_of_a_layout() {
+    let api = Api::new(config());
+    let address = serve(&api).await;
+    assert_eq!(open_zone_stream(address).await.err(), Some(409));
+
+    let layout = json_request(
+        "POST",
+        &format!("/api/v1/displays/{DISPLAY}/layout"),
+        r#"{"zones": [{"show": "clock", "width": 0.5}, {"show": "stream"}]}"#,
+    );
+    let (status, answer) = api.send(layout).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{answer}");
+    let mut socket = open_zone_stream(address).await.unwrap();
+    let mut socket = tokio::task::spawn_blocking(move || {
+        // A picture is fitted into the zone; raw pixels must be its size.
+        socket.send(tungstenite::Message::binary(png())).unwrap();
+        socket.flush().unwrap();
+        socket
+    })
+    .await
+    .unwrap();
+    assert_eq!(api.content().await, "layout");
+    let raw = format!("ws://{address}/api/v1/displays/{DISPLAY}/stream?zone=true&format=rgb");
+    let wrong_size = tokio::task::spawn_blocking(move || {
+        let tcp = std::net::TcpStream::connect(address).unwrap();
+        let (mut raw, _) = tungstenite::client(raw, tcp).unwrap();
+        raw.send(tungstenite::Message::binary(vec![0; 30])).unwrap();
+        raw.read().unwrap().into_text().unwrap().to_string()
+    })
+    .await
+    .unwrap();
+    assert!(wrong_size.contains("the zone is 960x462"), "{wrong_size}");
+
+    // Showing something else ends the stream.
+    let (status, _) = api
+        .send(post(&format!("/api/v1/displays/{DISPLAY}/clock"), ""))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let closed = tokio::task::spawn_blocking(move || {
+        let _ = socket.send(tungstenite::Message::binary(png()));
+        let _ = socket.flush();
+        loop {
+            match socket.read() {
+                Ok(tungstenite::Message::Close(frame)) => {
+                    break frame.map(|f| u16::from(f.code));
+                }
+                Ok(_) => continue,
+                Err(_) => break None,
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(closed, Some(4000));
+    assert_eq!(api.content().await, "clock");
+}
+
 #[tokio::test]
 async fn goes_back_to_the_schedule_when_a_stream_ends() {
     let api = Api::new(Config {

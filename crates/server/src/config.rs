@@ -64,8 +64,9 @@ fit = "contain"          # "contain", "cover" or "stretch"
 # Several things side by side, for show = "layout" (in [startup], a schedule entry or a
 # rotation). `show` is a dashboard panel ("clock", "cpu", "memory", "network", "disk",
 # "claude-code", "metric:<id>"), "dashboard", "image" (a picture, animation or video, with
-# `image`) or "web" (with `url`). `width` is a share of the panel (0.3) or pixels (480); zones
-# without one share the rest.
+# `image`), "web" (with `url`) or "stream" (the frames of a WebSocket stream opened with
+# ?zone=true). `width` is a share of the panel (0.3) or pixels (480); zones without one share
+# the rest.
 # [layout]
 # zones = [
 #   { show = "clock", width = 0.3 },
@@ -78,7 +79,7 @@ fit = "contain"          # "contain", "cover" or "stretch"
 # More layouts by name, for show = "layout" with layout = "<name>" (in [startup], a schedule
 # entry or a rotation) and `ssp layout --name <name>`.
 # [layouts.evening]
-# zones = [{ show = "clock", width = 0.4 }, { show = "metric:ci" }]
+# zones = [{ show = "clock", width = 0.4 }, { show = "stream" }]
 
 # Screens shown in turn, for show = "rotation" (in [startup] or a schedule entry).
 # [rotation]
@@ -470,10 +471,11 @@ impl LayoutConfig {
         if self.zones.len() > MAX_ZONES {
             return Err(format!("layout: at most {MAX_ZONES} zones"));
         }
-        let mut webs = 0;
+        let (mut webs, mut streams) = (0, 0);
         for (n, zone) in self.zones.iter().enumerate() {
             let fail = |e: String| format!("layout zone {} ({}): {e}", n + 1, zone.show);
-            match zone.kind().map_err(fail)? {
+            let kind = zone.kind().map_err(fail)?;
+            match kind {
                 ZoneKind::Image => {
                     if zone.image.is_none() {
                         return Err(fail("needs image".into()));
@@ -485,11 +487,14 @@ impl LayoutConfig {
                     }
                     webs += 1;
                 }
-                ZoneKind::Panel(_) | ZoneKind::Dashboard | ZoneKind::Nothing => {
+                ZoneKind::Panel(_) | ZoneKind::Dashboard | ZoneKind::Stream | ZoneKind::Nothing => {
                     if zone.image.is_some() || zone.url.is_some() {
                         return Err(fail("image and url are for image and web zones".into()));
                     }
                 }
+            }
+            if kind == ZoneKind::Stream {
+                streams += 1;
             }
             if zone.width.is_some_and(|w| !(w > 0.0 && w.is_finite())) {
                 return Err(fail("width must be more than 0".into()));
@@ -501,6 +506,9 @@ impl LayoutConfig {
         if webs > 1 {
             return Err("layout: at most one web zone".into());
         }
+        if streams > 1 {
+            return Err("layout: at most one stream zone".into());
+        }
         Ok(())
     }
 }
@@ -510,7 +518,7 @@ impl LayoutConfig {
 #[serde(deny_unknown_fields)]
 pub struct ZoneConfig {
     /// A dashboard panel (`"clock"`, `"cpu"`, `"metric:<id>"`, ...), `"dashboard"`, `"image"`,
-    /// `"web"` or `"nothing"`.
+    /// `"web"`, `"stream"` or `"nothing"`.
     pub show: String,
     /// A share of the panel's width (up to 1) or pixels (more than 1). Zones without one share
     /// what is left.
@@ -541,6 +549,8 @@ pub enum ZoneKind {
     Image,
     /// A web page.
     Web,
+    /// The frames of a WebSocket stream (`stream?zone=true`).
+    Stream,
     /// The background only.
     Nothing,
 }
@@ -552,11 +562,12 @@ impl ZoneConfig {
             "dashboard" => ZoneKind::Dashboard,
             "image" | "video" | "animation" => ZoneKind::Image,
             "web" => ZoneKind::Web,
+            "stream" => ZoneKind::Stream,
             "nothing" => ZoneKind::Nothing,
             other => ZoneKind::Panel(other.parse().map_err(|_| {
                 format!(
                     "unknown zone {other:?}: use a dashboard panel (clock, cpu, memory, network, \
-                     disk, claude-code, metric:<id>), dashboard, image, web or nothing"
+                     disk, claude-code, metric:<id>), dashboard, image, web, stream or nothing"
                 )
             })?),
         })

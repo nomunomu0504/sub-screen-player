@@ -21,7 +21,7 @@ use crate::config::{Config, DisplayConfig};
 use crate::metrics::Metrics;
 use crate::notify::{Notification, Overlay, Shown};
 use crate::schedule::{Schedule, State};
-use crate::sources::{Content, Source};
+use crate::sources::{Content, Feed, Source};
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
@@ -579,6 +579,27 @@ impl Manager {
     /// Hands the display to a WebSocket stream.
     pub fn begin_stream(&self, id: &str) -> Result<StreamTicket, LookupError> {
         self.replace_content(id, Content::Stream, None, None)
+    }
+
+    /// The `stream` zone of the layout the display shows, for a WebSocket stream, with a ticket
+    /// that is lost when the display shows something else. `None` if it shows no layout with
+    /// one.
+    pub fn stream_zone(&self, id: &str) -> Result<Option<(StreamTicket, Arc<Feed>)>, LookupError> {
+        let inner = self.lock();
+        let id = self.resolve(&inner, id)?;
+        let entry = &inner.entries[&id];
+        let Content::Layout(spec) = &entry.content else {
+            return Ok(None);
+        };
+        let Some(feed) = spec.feed.clone() else {
+            return Ok(None);
+        };
+        let ticket = StreamTicket {
+            mine: entry.generation.load(Ordering::SeqCst),
+            generation: entry.generation.clone(),
+            id,
+        };
+        Ok(Some((ticket, feed)))
     }
 
     fn replace_content(

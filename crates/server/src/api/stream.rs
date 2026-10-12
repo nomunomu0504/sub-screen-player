@@ -4,17 +4,23 @@
 //! the display shows the newest one it can. Errors are reported as text messages with an
 //! [`ErrorBody`] and do not close the stream. When the sender ends the stream, a schedule shows
 //! what it says for the display again; without one, the last frame stays.
+//!
+//! With `zone=true`, the frames go into the `stream` zone of the layout the display shows
+//! instead, until the display shows something else; the zone keeps the last frame.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::Response;
 use ssp_core::Frame;
 
 use super::types::{ErrorBody, StreamFormat, StreamQuery};
 use super::{ApiError, AppState, blocking};
 use crate::manager::StreamTicket;
+use crate::sources::Feed;
 
 /// Largest frame message accepted (raw RGBA for big panels).
 const MAX_MESSAGE_BYTES: usize = 64 << 20;
@@ -25,6 +31,15 @@ const CLOSE_REPLACED: u16 = 4000;
 /// How long a display keeps the last frame of a stream its sender ended before the schedule
 /// takes over again, so that a sender that reconnects at once does not make it flicker.
 const BACK_TO_SCHEDULE_AFTER: Duration = Duration::from_secs(2);
+
+/// Where the frames of a stream go.
+#[derive(Clone)]
+enum Target {
+    /// The whole display, which the stream owns.
+    Display,
+    /// The `stream` zone of the layout the display shows.
+    Zone(Arc<Feed>),
+}
 
 /// Why a stream ended.
 #[derive(PartialEq)]
@@ -44,14 +59,33 @@ pub async fn stream(
     Query(query): Query<StreamQuery>,
 ) -> Result<Response, ApiError> {
     let manager = app.manager.clone();
-    let ticket = blocking(move || Ok(manager.begin_stream(&id)?)).await?;
-    tracing::info!(display = %ticket.id, "stream started");
+    let zone = query.zone;
+    let (ticket, target) = blocking(move || {
+        if !zone {
+            return Ok((manager.begin_stream(&id)?, Target::Display));
+        }
+        let (ticket, feed) = manager.stream_zone(&id)?.ok_or_else(|| {
+            ApiError::new(
+                StatusCode::CONFLICT,
+                "the display shows no layout with a stream zone",
+            )
+        })?;
+        Ok((ticket, Target::Zone(feed)))
+    })
+    .await?;
+    tracing::info!(display = %ticket.id, zone, "stream started");
     Ok(ws
         .max_message_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| run(socket, app, ticket, query)))
+        .on_upgrade(move |socket| run(socket, app, ticket, target, query)))
 }
 
-async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: StreamQuery) {
+async fn run(
+    mut socket: WebSocket,
+    app: AppState,
+    ticket: StreamTicket,
+    target: Target,
+    query: StreamQuery,
+) {
     let mut shutdown = app.shutdown.clone();
     let fit = query.fit.unwrap_or_default().into();
     let end = loop {
@@ -74,17 +108,30 @@ async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: 
         }
         let manager = app.manager.clone();
         let id = ticket.id.clone();
+        let target = target.clone();
         let result = blocking(move || {
-            // Looked up per frame so the stream survives the display reconnecting.
-            let device = manager.device(&id)?;
-            let panel = device.presenter.info().panel;
-            let (width, height) = (panel.width, panel.height);
-            let frame = match query.format {
+            let decode = |width, height| match query.format {
                 StreamFormat::Image => Frame::decode(&data, width, height, fit),
                 StreamFormat::Rgb => Frame::from_rgb(width, height, data.to_vec()),
                 StreamFormat::Rgba => Frame::from_rgba(width, height, &data),
-            }?;
-            device.submit(frame)?;
+            };
+            match target {
+                Target::Display => {
+                    // Looked up per frame so the stream survives the display reconnecting.
+                    let device = manager.device(&id)?;
+                    let panel = device.presenter.info().panel;
+                    device.submit(decode(panel.width, panel.height)?)?;
+                }
+                Target::Zone(feed) => {
+                    let (width, height) = feed.size().ok_or_else(|| {
+                        ApiError::new(StatusCode::CONFLICT, "the layout is not shown yet")
+                    })?;
+                    let frame = decode(width, height).map_err(|e| {
+                        ApiError::bad_request(format!("{e} (the zone is {width}x{height})"))
+                    })?;
+                    feed.put(frame);
+                }
+            }
             Ok(())
         })
         .await;
@@ -98,7 +145,7 @@ async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: 
     // Finishes the closing handshake before waiting below.
     drop(socket);
     tracing::info!(display = %ticket.id, "stream ended");
-    if end == End::Sender {
+    if end == End::Sender && matches!(target, Target::Display) {
         back_to_schedule(app, ticket).await;
     }
 }

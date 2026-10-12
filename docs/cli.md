@@ -305,7 +305,7 @@ ssp layout clock claude-code web:panel.html --widths 30,,30
 `ssp layout` splits the panel into zones from left to right, each with its own content, without a
 browser. A zone is a dashboard panel (`clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`,
 `metric:<id>`), `dashboard`, `image:<file>` or `video:<file>` (a picture, animation or video),
-`web:<URL or file>`, or `nothing`. `--widths` gives widths in percent; zones without one share
+`web:<URL or file>`, `stream` (frames a program sends, see below), or `nothing`. `--widths` gives widths in percent; zones without one share
 the rest (`30,,30`). Each zone runs on its own: the clock keeps ticking next to a video, and with
 partial updates only the zone that changed is sent. A layout plays one video and shows one web
 page at most.
@@ -325,6 +325,25 @@ zones = [
 ]
 gap = 16                 # pixels between zones
 ```
+
+More layouts can have names. `[layouts.<name>]` takes what `[layout]` takes, and `layout =
+"<name>"` next to `show = "layout"` picks one, for example another layout in the evening:
+
+```toml
+[layouts.evening]
+zones = [{ show = "clock", width = 0.4 }, { show = "metric:ci" }]
+
+[[schedule]]
+at = "19:00"
+show = "layout"
+layout = "evening"
+```
+
+`ssp layout --name evening` shows one by hand.
+
+A `stream` zone shows the frames a program sends over a [WebSocket stream](api.md#websocket-stream)
+opened with `?zone=true`, while the other zones keep running: a game or a chart next to the
+daemon's clock, for example. At most one zone of a layout is a `stream` zone.
 
 ### Show something for a while, then go back
 
@@ -621,10 +640,11 @@ These work with every command.
 | `  --reload <SECONDS>` | Reload the page every so many seconds. |
 | `  --yes`, `-y` | Download headless Chrome without asking, if needed. |
 | `  --install` | Only download (or update) headless Chrome. |
-| `ssp layout <ZONE>...` | Show zones side by side: `clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`, `metric:<id>`, `dashboard`, `image:<FILE>`, `video:<FILE>`, `web:<URL or FILE>` or `nothing`. |
+| `ssp layout <ZONE>...` | Show zones side by side: `clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`, `metric:<id>`, `dashboard`, `image:<FILE>`, `video:<FILE>`, `web:<URL or FILE>`, `stream` or `nothing`. |
 | `  --widths <PERCENT,...>` | Widths of the zones in percent; zones without one share the rest. |
 | `  --gap <PIXELS>` | Space between zones. |
 | `  --fit contain\|cover\|stretch` | How pictures and videos are fitted into their zones. |
+| `ssp layout --name <NAME>` | Show `[layouts.<NAME>]` of the config. |
 | `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
 | `--for <TIME>` | With `show`, `clock`, `dashboard`, `web`, `layout`, `stop` and `clear`: show it for this long, then what was shown before. Seconds, or `90s`, `10m`, `2h`; up to a week. Not with `--persist`. |

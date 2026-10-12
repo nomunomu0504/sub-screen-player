@@ -3,7 +3,8 @@
 //! Each zone runs its own source on a thread of its own, at the zone's size, so that a video or
 //! a web page waiting for its next frame does not hold the others back. The layout puts the
 //! zones' latest pictures together whenever one of them changes. Zone edges are on the 16-pixel
-//! grid, so that with partial updates the change of one zone is sent as a part of its own.
+//! grid, so that with partial updates the change of one zone is sent as a part of its own. A
+//! `stream` zone shows the frames a WebSocket stream puts into the layout's [`Feed`].
 
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -37,6 +38,92 @@ pub struct LayoutSpec {
     pub gap: u32,
     /// Color around and between the zones.
     pub background: [u8; 3],
+    /// Frames for the `stream` zone (a zone whose content is [`Content::Stream`]), if there is
+    /// one.
+    pub feed: Option<Arc<Feed>>,
+}
+
+/// The frames of a WebSocket stream for a layout's `stream` zone.
+#[derive(Default)]
+pub struct Feed {
+    state: Mutex<FeedState>,
+    changed: Condvar,
+}
+
+#[derive(Default)]
+struct FeedState {
+    /// The zone's size, once the layout runs.
+    size: Option<(u32, u32)>,
+    /// The latest frame, at that size.
+    frame: Option<Frame>,
+    /// Bumped by every frame.
+    version: u64,
+}
+
+impl Feed {
+    fn lock(&self) -> MutexGuard<'_, FeedState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// The size frames must have, once the layout runs.
+    pub fn size(&self) -> Option<(u32, u32)> {
+        self.lock().size
+    }
+
+    /// Shows `frame` in the zone. A frame of another size than [`Feed::size`] is ignored.
+    pub fn put(&self, frame: Frame) {
+        let mut state = self.lock();
+        if state.size != Some((frame.width(), frame.height())) {
+            return;
+        }
+        state.frame = Some(frame);
+        state.version += 1;
+        drop(state);
+        self.changed.notify_all();
+    }
+
+    /// The zone is now `size`: a frame of another size is dropped.
+    fn resize(&self, size: (u32, u32)) {
+        let mut state = self.lock();
+        if state.size != Some(size) {
+            state.size = Some(size);
+            state.frame = None;
+        }
+    }
+}
+
+/// Draws the latest frame of a [`Feed`], or the background before the first.
+struct FeedSource {
+    feed: Arc<Feed>,
+    background: [u8; 3],
+    shown: Option<u64>,
+}
+
+impl Source for FeedSource {
+    fn render(&mut self, frame: &mut Frame) {
+        let state = self.feed.lock();
+        let shown = self.shown;
+        let state = self
+            .feed
+            .changed
+            .wait_timeout_while(state, WAIT, |s| Some(s.version) == shown)
+            .map_or_else(|p| p.into_inner().0, |(state, _)| state);
+        self.shown = Some(state.version);
+        match &state.frame {
+            Some(picture) if picture.width() == frame.width() => {
+                let _ = frame.image_mut().copy_from(picture.image(), 0, 0);
+            }
+            _ => frame
+                .image_mut()
+                .pixels_mut()
+                .for_each(|p| *p = Rgb(self.background)),
+        }
+    }
+
+    fn next_change(&self) -> Option<Duration> {
+        // `render` waits for a frame.
+        Some(Duration::ZERO)
+    }
 }
 
 /// Where the zones of `widths` go on a panel `width` pixels wide: the left edge and the width of
@@ -171,7 +258,17 @@ impl Running {
             .zip(&columns)
             .enumerate()
             .filter_map(|(index, (zone, (_, w)))| {
-                let source = zone.content.source()?;
+                let source: Box<dyn Source> = match (&zone.content, &spec.feed) {
+                    (Content::Stream, Some(feed)) => {
+                        feed.resize((*w, height));
+                        Box::new(FeedSource {
+                            feed: feed.clone(),
+                            background: spec.background,
+                            shown: None,
+                        })
+                    }
+                    (content, _) => content.source()?,
+                };
                 Some(ZoneThread::start(
                     index,
                     source,
@@ -324,6 +421,7 @@ mod tests {
             ],
             gap: 0,
             background: [9, 9, 9],
+            feed: None,
         });
         let mut layout = Layout::new(spec);
         let mut frame = Frame::blank(1920, 462);
@@ -350,6 +448,46 @@ mod tests {
     }
 
     #[test]
+    fn a_stream_zone_shows_what_is_put_into_it() {
+        let feed = Arc::new(Feed::default());
+        let spec = Arc::new(LayoutSpec {
+            zones: vec![
+                Zone {
+                    content: color([255, 0, 0]),
+                    width: Some(0.5),
+                },
+                Zone {
+                    content: Content::Stream,
+                    width: None,
+                },
+            ],
+            gap: 0,
+            background: [9, 9, 9],
+            feed: Some(feed.clone()),
+        });
+        let mut layout = Layout::new(spec);
+        let mut frame = Frame::blank(1920, 462);
+        let draw_until = |layout: &mut Layout, frame: &mut Frame, left: [u8; 3], right: [u8; 3]| {
+            let started = Instant::now();
+            loop {
+                layout.render(frame);
+                let image = frame.image();
+                if image.get_pixel(10, 10).0 == left && image.get_pixel(1500, 200).0 == right {
+                    break;
+                }
+                assert!(started.elapsed() < Duration::from_secs(10), "not drawn");
+            }
+        };
+        // The background until the first frame.
+        draw_until(&mut layout, &mut frame, [255, 0, 0], [9, 9, 9]);
+        assert_eq!(feed.size(), Some((960, 462)));
+        feed.put(Frame::blank(10, 10));
+        let green = RgbImage::from_pixel(960, 462, Rgb([0, 255, 0]));
+        feed.put(Frame::new(green));
+        draw_until(&mut layout, &mut frame, [255, 0, 0], [0, 255, 0]);
+    }
+
+    #[test]
     fn a_clock_zone_keeps_ticking() {
         let spec = Arc::new(LayoutSpec {
             zones: vec![Zone {
@@ -358,6 +496,7 @@ mod tests {
             }],
             gap: 0,
             background: [0, 0, 0],
+            feed: None,
         });
         let mut layout = Layout::new(spec);
         let mut frame = Frame::blank(1920, 462);

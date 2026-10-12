@@ -268,8 +268,10 @@ pub struct ForQuery {
 pub struct StreamQuery {
     /// What each binary message contains.
     pub format: StreamFormat,
-    /// How encoded images are fitted to the panel.
+    /// How encoded images are fitted to the panel (or the zone).
     pub fit: Option<FitName>,
+    /// Into the `stream` zone of the layout the display shows, instead of the whole display.
+    pub zone: bool,
 }
 
 /// Contents of the binary messages of a stream.

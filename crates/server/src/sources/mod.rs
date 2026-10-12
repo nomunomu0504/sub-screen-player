@@ -201,8 +201,20 @@ impl Content {
                 }
                 Ok(Self::Rotation(Arc::new(turns)))
             }
-            StartupShow::Layout => Self::layout(&config.layout, config, metrics),
+            StartupShow::Layout => match spec.layout {
+                Some(name) => Self::named_layout(name, config, metrics),
+                None => Self::layout(&config.layout, config, metrics),
+            },
         }
+    }
+
+    /// The layout `[layouts.<name>]` of `config`.
+    pub fn named_layout(name: &str, config: &Config, metrics: &Metrics) -> Result<Self, String> {
+        let layout = config
+            .layouts
+            .get(name)
+            .ok_or_else(|| format!("no layout {name:?} in [layouts]"))?;
+        Self::layout(layout, config, metrics).map_err(|e| format!("layouts.{name}: {e}"))
     }
 
     /// The layout `layout`, with the other settings of `config`.
@@ -226,6 +238,7 @@ impl Content {
                 url: zone.url.as_deref(),
                 reload: zone.reload,
                 fit: zone.fit.unwrap_or_default(),
+                layout: None,
             };
             let content = match zone.kind().map_err(fail)? {
                 ZoneKind::Panel(Widget::Clock) => {

@@ -817,6 +817,7 @@ fn midnight(show: StartupShow, brightness: u8) -> ScheduleEntry {
         url: None,
         reload: None,
         fit: None,
+        layout: None,
         brightness: Some(brightness),
         power: None,
     }
@@ -977,6 +978,35 @@ async fn shows_a_layout() {
     assert_eq!(status, StatusCode::NO_CONTENT, "{answer}");
     assert_eq!(api.content().await, "layout");
     wait_until(|| api.log.calls().iter().any(|c| matches!(c, Call::Show(_))));
+}
+
+#[tokio::test]
+async fn shows_a_layout_by_name() {
+    let named: Config =
+        toml::from_str("[layouts.work]\nzones = [{ show = \"clock\" }, { show = \"cpu\" }]")
+            .unwrap();
+    let api = Api::new(Config {
+        layouts: named.layouts,
+        ..config()
+    });
+    let layout = |query: &str| post(&format!("/api/v1/displays/{DISPLAY}/layout{query}"), "");
+    let (status, answer) = api.send(layout("?name=work")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{answer}");
+    assert_eq!(api.content().await, "layout");
+
+    let (status, answer) = api.send(layout("?name=play")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{answer}");
+    let (status, answer) = api.send(layout("")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answer}");
+    assert!(error(&answer).contains("?name="), "{answer}");
+    let both = json_request(
+        "POST",
+        &format!("/api/v1/displays/{DISPLAY}/layout?name=work"),
+        r#"{"zones": [{"show": "clock"}]}"#,
+    );
+    let (status, answer) = api.send(both).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answer}");
+    assert!(error(&answer).contains("not both"), "{answer}");
 }
 
 #[tokio::test]

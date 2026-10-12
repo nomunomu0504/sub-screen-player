@@ -18,8 +18,11 @@ request needs.
 - **Add a screen to the [gallery](https://subscreen.dev/screens/).** Write a page for
   1920x462 in `site/public/screens/<name>/index.html` that reads the figures from `window.ssp`
   and shows example figures without it, so it can be tried in a browser (a screen that reads the
-  internet shows them with `?example`). Draw its picture with
-  `sh site/scripts/shoot-screens.sh <name>` and add it to `site/src/components/gallery/screens.ts`.
+  internet shows them with `?example`). Screens stay on all day, so avoid animations and
+  transitions that run all the time or every second: while a page moves, the browser keeps
+  drawing it (the system screen took a third of a CPU core with a 0.6 s transition on its rings,
+  5 % without). Draw its picture with `sh site/scripts/shoot-screens.sh <name>` and add it to
+  `site/src/components/gallery/screens.ts`.
 - **Improve features or docs.** For anything larger than a small fix, open an issue first so
   we can agree on the approach before you invest time.
 

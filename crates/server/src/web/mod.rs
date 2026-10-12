@@ -31,6 +31,8 @@ pub struct Web {
     configured: Option<PathBuf>,
     /// Download when needed without being asked (`[web] auto_download`).
     auto_download: bool,
+    /// Most frames per second taken from a page (`[web] fps`).
+    fps: u32,
     /// Folder of downloaded browsers.
     dir: PathBuf,
     /// Base URL of the API, given to shown pages as `window.ssp.api`.
@@ -64,6 +66,7 @@ impl Web {
         Self {
             configured: config.chrome.clone(),
             auto_download: config.auto_download,
+            fps: config.fps,
             dir: dir.join("chrome"),
             api: None,
         }
@@ -89,11 +92,24 @@ impl Web {
         self.api.as_deref()
     }
 
+    /// Most frames per second taken from a page.
+    pub fn fps(&self) -> u32 {
+        self.fps
+    }
+
+    /// Takes at most `fps` frames per second from pages (for tests).
+    #[cfg(test)]
+    pub fn with_fps(mut self, fps: u32) -> Self {
+        self.fps = fps;
+        self
+    }
+
     /// Settings for tests: downloads go to `dir`.
     pub fn with_dir(configured: Option<PathBuf>, dir: PathBuf) -> Self {
         Self {
             configured,
             auto_download: false,
+            fps: WebConfig::default().fps,
             dir,
             api: None,
         }

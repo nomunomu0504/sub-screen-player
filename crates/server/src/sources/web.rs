@@ -1,8 +1,9 @@
 //! Shows a web page, rendered by headless Chrome at the panel's size.
 //!
 //! The browser runs only while the page is shown. Its screencast sends a JPEG whenever the page
-//! repaints, so a still page costs nothing after the first frame and an animated one is sent as
-//! fast as the display takes it.
+//! repaints, so a still page costs nothing after the first frame. While a page changes, at most
+//! `[web] fps` frames a second are taken: each frame's acknowledgement is held back, and the
+//! browser keeps the newest picture meanwhile and sends it then, so the last change always shows.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -25,6 +26,9 @@ const FRAME_WAIT: Duration = Duration::from_millis(500);
 const POLL: Duration = Duration::from_millis(100);
 /// How long to wait for a page to load before showing it anyway.
 const LOAD_TIMEOUT: Duration = Duration::from_secs(15);
+/// The first Chrome whose screencast sends the newest picture when a frame is acknowledged late
+/// (`sendLastFrame`). Older ones drop what changes meanwhile, so they are not paced.
+const PACED_SINCE: u32 = 154;
 
 /// What to show: a page and how often to reload it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +150,8 @@ struct Slot {
     frame: Option<Frame>,
     count: u64,
     ended: Option<String>,
+    /// Whether frames are paced to `[web] fps`, once the screencast runs.
+    paced: bool,
 }
 
 impl Running {
@@ -305,14 +311,20 @@ fn run(
         json!({ "enabled": true }),
         session,
     )?;
-    cdp.call(
-        "Page.startScreencast",
-        json!({ "format": "jpeg", "quality": 92, "maxWidth": width, "maxHeight": height }),
-        session,
-    )?;
+    let pace = pacing(&mut cdp, web.fps());
+    let mut screencast =
+        json!({ "format": "jpeg", "quality": 92, "maxWidth": width, "maxHeight": height });
+    if pace.is_some() {
+        screencast["maxFramesInFlight"] = json!(1);
+        screencast["sendLastFrame"] = json!(true);
+    }
+    cdp.call("Page.startScreencast", screencast, session)?;
+    lock(&shared.slot).paced = pace.is_some();
     tracing::info!(url = %page.url, "showing a web page");
 
     let mut reloaded = Instant::now();
+    // The frame to acknowledge, and when.
+    let mut ack: Option<(serde_json::Value, Instant)> = None;
     while !stop.load(Ordering::SeqCst) {
         if let Some(every) = page.reload
             && reloaded.elapsed() >= Duration::from_secs(every)
@@ -320,18 +332,35 @@ fn run(
             cdp.send("Page.reload", json!({ "ignoreCache": true }), session)?;
             reloaded = Instant::now();
         }
-        let Some(event) = cdp.next_event(POLL)? else {
+        if ack.as_ref().is_some_and(|(_, due)| Instant::now() >= *due)
+            && let Some((id, _)) = ack.take()
+        {
+            cdp.send(
+                "Page.screencastFrameAck",
+                json!({ "sessionId": id }),
+                session,
+            )?;
+        }
+        let wait = ack.as_ref().map_or(POLL, |(_, due)| {
+            due.saturating_duration_since(Instant::now()).min(POLL)
+        });
+        let Some(event) = cdp.next_event(wait)? else {
             continue;
         };
         match event.method.as_str() {
             "Page.screencastFrame" => {
-                // Acknowledge first: the browser sends the next frame only after that.
+                // The browser sends the next frame only after this one is acknowledged.
                 let id = event.params["sessionId"].clone();
-                cdp.send(
-                    "Page.screencastFrameAck",
-                    json!({ "sessionId": id }),
-                    session,
-                )?;
+                match pace {
+                    Some(pace) => ack = Some((id, Instant::now() + pace)),
+                    None => {
+                        cdp.send(
+                            "Page.screencastFrameAck",
+                            json!({ "sessionId": id }),
+                            session,
+                        )?;
+                    }
+                }
                 let Some(data) = event.params["data"].as_str() else {
                     continue;
                 };
@@ -355,6 +384,28 @@ fn run(
     }
     drop(browser);
     Ok(())
+}
+
+/// How long to hold each frame's acknowledgement so that at most `fps` frames a second come,
+/// or `None` to take every frame as it comes: at 60 fps, or with a browser that cannot pace.
+fn pacing(cdp: &mut Connection, fps: u32) -> Option<Duration> {
+    if fps >= 60 {
+        return None;
+    }
+    let version = cdp.call("Browser.getVersion", json!({}), None).ok()?;
+    let product = version["product"].as_str().unwrap_or("this browser");
+    if major_version(product).is_some_and(|major| major >= PACED_SINCE) {
+        return Some(Duration::from_secs(1) / fps.max(1));
+    }
+    tracing::info!(
+        "{product} cannot limit how many frames a page sends; [web] fps needs Chrome {PACED_SINCE} or later"
+    );
+    None
+}
+
+/// The major version of a browser's product name: 154 for `HeadlessChrome/154.0.8037.99`.
+fn major_version(product: &str) -> Option<u32> {
+    product.rsplit('/').next()?.split('.').next()?.parse().ok()
 }
 
 /// A screencast frame (base64 JPEG) as a panel-sized frame.
@@ -449,6 +500,62 @@ mod tests {
             Some("http://192.168.1.5:8000")
         );
         assert_eq!(web_origin("file:///home/me/panel.html"), None);
+    }
+
+    #[test]
+    fn reads_the_major_version_of_a_browser() {
+        assert_eq!(major_version("HeadlessChrome/155.0.8059.39"), Some(155));
+        assert_eq!(major_version("Chrome/153.0.8010.52"), Some(153));
+        assert_eq!(major_version("Edg/154.0.3000.1"), Some(154));
+        assert_eq!(major_version("something else"), None);
+    }
+
+    /// With the browser in `SSP_TEST_CHROME`, if set: a page that moves for two seconds is taken
+    /// at no more than `[web] fps` frames a second, and its last change still shows.
+    #[test]
+    fn paces_a_moving_page() {
+        let Some(chrome) = std::env::var_os("SSP_TEST_CHROME") else {
+            eprintln!("skipped: set SSP_TEST_CHROME to a Chrome to run it");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("ssp-web-pace-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let html = dir.join("page.html");
+        // Blue moving for 2 s, then red and still.
+        let page = "<body style='margin:0;background:#000'><div id=b style='position:absolute;\
+            left:0;width:40px;height:80px;background:#00f'></div><script>\
+            const b = document.getElementById('b'), t0 = performance.now();\
+            function step(t) { if (t - t0 < 2000) { b.style.left = (t - t0) / 10 + 'px';\
+            requestAnimationFrame(step); } else { document.body.style.background = '#f00'; } }\
+            requestAnimationFrame(step);</script></body>";
+        std::fs::write(&html, page).unwrap();
+        let url = url::Url::from_file_path(&html).unwrap();
+        let web = Web::with_dir(Some(chrome.into()), dir.clone()).with_fps(5);
+        let page = WebPage::new(url.as_str(), None).unwrap();
+        let running = Running::start(&page, web, "", (320, 80));
+        let started = Instant::now();
+        let (mut shown, mut red) = (0, false);
+        while !red && started.elapsed() < Duration::from_secs(60) {
+            let mut slot = running.wait_for(shown);
+            assert_eq!(slot.ended, None);
+            if let Some(frame) = slot.frame.take() {
+                shown = slot.count;
+                red = frame.image().get_pixel(300, 40).0[0] > 200;
+            }
+        }
+        assert!(red, "the last change shows");
+        let (paced, count) = {
+            let slot = lock(&running.shared.slot);
+            (slot.paced, slot.count)
+        };
+        // Unpaced, a browser sends 30-60 frames a second while the page moves.
+        if paced {
+            assert!(count <= 20, "{count} frames at 5 fps");
+        } else {
+            eprintln!("this browser cannot pace pages: {count} frames");
+        }
+        drop(running);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

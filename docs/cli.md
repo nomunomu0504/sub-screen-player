@@ -242,7 +242,8 @@ ssp web https://example.com/status --reload 600
 
 Anything you can build with HTML, CSS and JavaScript can be a screen: a page is drawn by headless
 Chrome at the panel's size (1920x462 on the D92) and sent to the display whenever it repaints, so
-CSS animations and pages that update themselves run as they would in a browser, at up to 60 fps.
+CSS animations and pages that update themselves run as they would in a browser, at up to 30 fps
+(`[web] fps`, see below).
 [contrib/web/day.html](../contrib/web/day.html) is a small example to start from. `--reload`
 reloads the page every so many seconds, for pages that do not update themselves. A file is passed
 to the daemon as a `file://` URL, so with a daemon on another computer it has to be there.
@@ -273,8 +274,12 @@ chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 The browser runs only while a page is shown and uses a fresh, empty profile each time: no
 cookies, logins or extensions of your own browser. JavaScript is on, and a page can load whatever
-it links to, so show pages you trust. A browser costs 300-400 MB of memory, and about half a CPU
-core while a page animates at 60 fps; a still page costs almost nothing after it is drawn. If a page
+it links to, so show pages you trust. A browser costs 300-400 MB of memory. On an Apple Silicon
+Mac, a page that changes once a second costs the browser and the daemon a few percent of a CPU
+core; one that moves all the time (a CSS animation) about 40 % at 30 fps and 50 % at 60. Most of
+that is the browser drawing the page, so animations and transitions that run all the time cost
+the most. `[web] fps` (1-60, default 30) sets how many frames a second are taken from a page while
+it changes; the last change is always shown. Chrome 153 and older send every frame. If a page
 cannot be shown (no network, a missing file, a browser that cannot start), the display says why.
 On Linux, a downloaded Chrome needs the usual browser libraries; if it does not start, install
 `chromium` from your distribution and set `[web] chrome` to it; on Ubuntu, `sudo apt install chromium`

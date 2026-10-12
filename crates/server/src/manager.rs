@@ -446,7 +446,8 @@ impl Manager {
         entry.overlay.attach(&device);
         entry.info = info;
         entry.device = Some(device.clone());
-        entry.generation.fetch_add(1, Ordering::SeqCst);
+        // The content stays the same: a stream keeps its ticket. The player of the device before
+        // was stopped when it was found gone.
         start(entry);
         let timed = entry.timed.is_some();
         drop(inner);
@@ -1071,6 +1072,23 @@ mod tests {
         let (log, _) = attach(&manager, "a2");
         wait_until(|| log.calls().iter().any(|c| matches!(c, Call::Show(_))));
         assert_eq!(manager.displays()[0].content, "clock");
+        manager.shutdown();
+    }
+
+    #[test]
+    fn a_stream_survives_a_reconnect() {
+        let manager = manager(StartupShow::Nothing);
+        let (_, unplug) = attach(&manager, "a");
+        let ticket = manager.begin_stream("default").unwrap();
+        unplug.unplug();
+        // A frame of the stream finds the display gone.
+        let device = manager.device("fake-0001").unwrap();
+        let _ = device.submit(Frame::blank(1920, 462));
+        wait_until(|| !device.presenter.is_running());
+        manager.scan();
+        attach(&manager, "a2");
+        assert_eq!(manager.displays()[0].content, "stream");
+        assert!(ticket.is_current());
         manager.shutdown();
     }
 

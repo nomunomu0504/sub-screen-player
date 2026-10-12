@@ -349,7 +349,8 @@ brightness = 60
 （`"mon"`〜`"sun"`）で曜日を、`display = "<id>"` でディスプレイを限定できます。デーモンの起動時やディスプレイを接続した
 ときは、その時点でスケジュールが示す状態になります。
 
-手動での変更（`ssp clock`・`ssp brightness`・`ssp off`・API）は、次のエントリーの時刻まで有効です。`ssp schedule` で
+手動での変更（`ssp clock`・`ssp brightness`・`ssp off`・API）は、次のエントリーの時刻まで有効です。WebSocket の
+ストリームは送り手が終えるまで有効で、その 2 秒後にスケジュールが示す表示に戻ります。`ssp schedule` で
 直前と次のエントリーを確認でき、`ssp schedule pause` で自動の切り替えを止め、`ssp schedule resume` で今の時点の状態を
 当てはめて再開します。
 

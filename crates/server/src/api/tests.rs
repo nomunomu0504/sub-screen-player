@@ -44,6 +44,8 @@ struct Api {
     manager: Arc<Manager>,
     log: CallLog,
     dir: PathBuf,
+    /// Kept so that open WebSocket streams do not see the daemon stopping.
+    _shutdown: watch::Sender<bool>,
 }
 
 impl Api {
@@ -66,8 +68,7 @@ impl Api {
         }
         let (display, log) = FakeDisplay::new();
         manager.attach(Box::new(display), c"fake".to_owned());
-        // Only WebSocket streams watch for the daemon stopping, and these tests open none.
-        let (_, shutdown) = watch::channel(false);
+        let (stopping, shutdown) = watch::channel(false);
         let state = AppState::new(manager.clone(), &config, metrics.clone(), videos, shutdown);
         let state = adjust(state, &metrics);
         Self {
@@ -75,6 +76,7 @@ impl Api {
             manager,
             log,
             dir,
+            _shutdown: stopping,
         }
     }
 
@@ -848,6 +850,76 @@ async fn follows_the_schedule() {
     let resume = post("/api/v1/schedule/resume", "");
     assert_eq!(api.send(resume).await.0, StatusCode::NO_CONTENT);
     assert_eq!(api.content().await, "dashboard");
+}
+
+/// Serves the API on a free local port, for tests with a real WebSocket.
+async fn serve(api: &Api) -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = api.router.clone();
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    address
+}
+
+type Socket = tungstenite::WebSocket<std::net::TcpStream>;
+
+/// Opens a stream to the fake display and sends it a frame (on a thread of its own: the
+/// handshake waits for the server, which runs on the test's thread).
+async fn open_stream(address: std::net::SocketAddr) -> Socket {
+    tokio::task::spawn_blocking(move || {
+        let tcp = std::net::TcpStream::connect(address).unwrap();
+        let url = format!("ws://{address}/api/v1/displays/{DISPLAY}/stream");
+        let (mut socket, _) = tungstenite::client(url, tcp).unwrap();
+        socket.send(tungstenite::Message::binary(png())).unwrap();
+        socket.flush().unwrap();
+        socket
+    })
+    .await
+    .unwrap()
+}
+
+/// Ends a stream as its sender, and waits until the daemon has seen that.
+async fn close_stream(mut socket: Socket) {
+    tokio::task::spawn_blocking(move || {
+        socket.close(None).unwrap();
+        while socket.read().is_ok() {}
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn goes_back_to_the_schedule_when_a_stream_ends() {
+    let api = Api::new(Config {
+        schedule: vec![midnight(StartupShow::Dashboard, 30)],
+        ..config()
+    });
+    assert_eq!(api.content().await, "dashboard");
+    let address = serve(&api).await;
+
+    // A sender that comes back at once keeps the display.
+    let first = open_stream(address).await;
+    assert_eq!(api.content().await, "stream");
+    close_stream(first).await;
+    let second = open_stream(address).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(api.content().await, "stream");
+
+    // Once it is gone, the schedule takes over again after a moment.
+    close_stream(second).await;
+    assert_eq!(api.content().await, "stream");
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(api.content().await, "dashboard");
+}
+
+#[tokio::test]
+async fn keeps_the_last_frame_of_a_stream_without_a_schedule() {
+    let api = Api::new(config());
+    let address = serve(&api).await;
+    let socket = open_stream(address).await;
+    close_stream(socket).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(api.content().await, "stream");
 }
 
 #[tokio::test]

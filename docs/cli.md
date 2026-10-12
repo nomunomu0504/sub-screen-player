@@ -372,7 +372,8 @@ entry that shows something also switches the screen on, unless it says `power = 
 the daemon starts or a display connects, it gets what the schedule says at that moment.
 
 Changes by hand (`ssp clock`, `ssp brightness`, `ssp off`, the API) last until the next entry.
-`ssp schedule` shows the last and the next entries; `ssp schedule pause` stops the changes, and
+A WebSocket stream lasts until its sender ends it: two seconds later, the display shows what
+the schedule says. `ssp schedule` shows the last and the next entries; `ssp schedule pause` stops the changes, and
 `ssp schedule resume` applies what the schedule says now and starts them again.
 
 **Screens in turn**: `show = "rotation"` (in an entry, or in `[startup]` to rotate all day) shows

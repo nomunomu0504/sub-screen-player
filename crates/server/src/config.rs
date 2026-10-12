@@ -102,6 +102,7 @@ background = "#000000"
 # (about 100 MB, from Google's Chrome for Testing). Or use an installed Chrome, Chromium or Edge:
 # chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 auto_download = false    # download without asking when a page is shown and none is there
+fps = 30                 # most frames per second taken from a page (Chrome 154 or later)
 
 [video]
 # Videos are played by ffmpeg, found on PATH or where it is usually installed.
@@ -176,7 +177,7 @@ impl Default for Config {
 }
 
 /// How web pages are drawn.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebConfig {
     /// A Chrome, Chromium or Edge program to use instead of a downloaded headless Chrome.
@@ -184,6 +185,18 @@ pub struct WebConfig {
     pub chrome: Option<PathBuf>,
     /// Download headless Chrome when a page is shown and none is installed, without asking.
     pub auto_download: bool,
+    /// Most frames per second taken from a page while it changes (1..=60).
+    pub fps: u32,
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            chrome: None,
+            auto_download: false,
+            fps: 30,
+        }
+    }
 }
 
 /// How videos are played.
@@ -999,6 +1012,9 @@ impl Config {
         if self.display.max_fps == 0 {
             return invalid("display.max_fps must be at least 1".into());
         }
+        if !(1..=60).contains(&self.web.fps) {
+            return invalid("web.fps must be 1..=60".into());
+        }
         let defined = Defined {
             rotation: !self.rotation.show.is_empty(),
             layout: !self.layout.zones.is_empty(),
@@ -1197,6 +1213,14 @@ mod tests {
             ..Config::default()
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn checks_the_frame_rate_of_web_pages() {
+        for (fps, valid) in [(0, false), (1, true), (60, true), (61, false)] {
+            let config: Config = toml::from_str(&format!("[web]\nfps = {fps}")).unwrap();
+            assert_eq!(config.validate().is_ok(), valid, "fps = {fps}");
+        }
     }
 
     #[test]

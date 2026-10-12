@@ -409,6 +409,9 @@ fails), and both return:
 - The stream survives the display being replugged; frames sent while it is unplugged are
   answered with an error.
 - The stream closes when the daemon shuts down.
+- When the sender closes the stream or goes away, the display keeps the last frame. With a
+  `[[schedule]]`, it shows what the schedule says two seconds later, unless a new stream or other
+  content came meanwhile or the schedule is paused.
 
 Browser example (a page served from `localhost`):
 

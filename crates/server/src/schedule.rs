@@ -5,8 +5,9 @@
 //! moment is, for each of show, brightness and power, the latest occurrence of an entry that sets
 //! it, looking back up to a week on the days each entry applies. A `show` also switches the
 //! screen on, unless its entry sets `power`. The daemon applies the state to a display when it
-//! connects, and each entry at its time; changes by hand last until the next entry. While
-//! paused, nothing is applied; resuming applies the state at once.
+//! connects, and each entry at its time; changes by hand last until the next entry, and a
+//! WebSocket stream until its sender ends it. While paused, nothing is applied; resuming applies
+//! the state at once.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
@@ -325,10 +326,14 @@ impl Schedule {
 
     /// Applies the state as of now to every display.
     fn apply_now(&self, manager: &Manager) {
-        let now = Zoned::now();
         for id in manager.ids() {
-            manager.apply(&id, &self.state(&id, &now));
+            self.apply_now_to(manager, &id);
         }
+    }
+
+    /// Applies the state as of now to display `id` (nothing while paused).
+    pub fn apply_now_to(&self, manager: &Manager, id: &str) {
+        manager.apply(id, &self.state(id, &Zoned::now()));
     }
 
     /// Stops applying entries until [`Schedule::resume`].

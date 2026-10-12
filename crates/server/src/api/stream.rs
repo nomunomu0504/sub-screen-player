@@ -2,7 +2,10 @@
 //!
 //! The stream owns the display until other content is set. Frames may arrive at any rate;
 //! the display shows the newest one it can. Errors are reported as text messages with an
-//! [`ErrorBody`] and do not close the stream.
+//! [`ErrorBody`] and do not close the stream. When the sender ends the stream, a schedule shows
+//! what it says for the display again; without one, the last frame stays.
+
+use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
@@ -18,6 +21,21 @@ const MAX_MESSAGE_BYTES: usize = 64 << 20;
 
 /// Close code sent when other content replaced the stream (application-defined range).
 const CLOSE_REPLACED: u16 = 4000;
+
+/// How long a display keeps the last frame of a stream its sender ended before the schedule
+/// takes over again, so that a sender that reconnects at once does not make it flicker.
+const BACK_TO_SCHEDULE_AFTER: Duration = Duration::from_secs(2);
+
+/// Why a stream ended.
+#[derive(PartialEq)]
+enum End {
+    /// The sender closed it or went away.
+    Sender,
+    /// Other content was set.
+    Replaced,
+    /// The daemon is stopping.
+    Shutdown,
+}
 
 pub async fn stream(
     ws: WebSocketUpgrade,
@@ -36,14 +54,14 @@ pub async fn stream(
 async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: StreamQuery) {
     let mut shutdown = app.shutdown.clone();
     let fit = query.fit.unwrap_or_default().into();
-    loop {
+    let end = loop {
         let message = tokio::select! {
             message = socket.recv() => message,
-            _ = shutdown.changed() => break,
+            _ = shutdown.changed() => break End::Shutdown,
         };
         let data = match message {
             Some(Ok(Message::Binary(data))) => data,
-            Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+            Some(Ok(Message::Close(_)) | Err(_)) | None => break End::Sender,
             Some(Ok(_)) => continue,
         };
         if !ticket.is_current() {
@@ -52,7 +70,7 @@ async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: 
                 reason: "replaced by other content".into(),
             };
             let _ = socket.send(Message::Close(Some(close))).await;
-            break;
+            break End::Replaced;
         }
         let manager = app.manager.clone();
         let id = ticket.id.clone();
@@ -73,9 +91,38 @@ async fn run(mut socket: WebSocket, app: AppState, ticket: StreamTicket, query: 
         if let Err(err) = result {
             let body = serde_json::to_string(&ErrorBody { error: err.message }).unwrap_or_default();
             if socket.send(Message::Text(body.into())).await.is_err() {
-                break;
+                break End::Sender;
             }
         }
-    }
+    };
+    // Finishes the closing handshake before waiting below.
+    drop(socket);
     tracing::info!(display = %ticket.id, "stream ended");
+    if end == End::Sender {
+        back_to_schedule(app, ticket).await;
+    }
+}
+
+/// After the sender ended a stream, shows what the schedule says for the display, unless the
+/// schedule is paused, the daemon is stopping, or other content (also a new stream) was set
+/// meanwhile.
+async fn back_to_schedule(app: AppState, ticket: StreamTicket) {
+    let Some(schedule) = app.manager.schedule() else {
+        return;
+    };
+    let mut shutdown = app.shutdown.clone();
+    tokio::select! {
+        () = tokio::time::sleep(BACK_TO_SCHEDULE_AFTER) => {}
+        _ = shutdown.changed() => return,
+    }
+    if !ticket.is_current() || schedule.is_paused() {
+        return;
+    }
+    tracing::info!(display = %ticket.id, "schedule: back after the stream");
+    let manager = app.manager.clone();
+    let _ = blocking(move || {
+        schedule.apply_now_to(&manager, &ticket.id);
+        Ok(())
+    })
+    .await;
 }

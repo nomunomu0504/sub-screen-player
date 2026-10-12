@@ -110,6 +110,9 @@ impl Entry {
                     let path = spec.image.map(|p| p.display().to_string());
                     format!("show image {}", path.unwrap_or_default())
                 }
+                StartupShow::Layout if spec.layout.is_some() => {
+                    format!("show layout {}", spec.layout.unwrap_or_default())
+                }
                 other => format!("show {}", show_name(other)),
             };
             does.push(what);
@@ -428,6 +431,7 @@ mod tests {
             url: None,
             reload: None,
             fit: None,
+            layout: None,
             brightness: None,
             power: None,
         }

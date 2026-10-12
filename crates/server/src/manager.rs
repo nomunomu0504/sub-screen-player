@@ -21,7 +21,7 @@ use crate::config::{Config, DisplayConfig};
 use crate::metrics::Metrics;
 use crate::notify::{Notification, Overlay, Shown};
 use crate::schedule::{Schedule, State};
-use crate::sources::{Content, Source};
+use crate::sources::{Content, Feed, Source};
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
@@ -446,7 +446,8 @@ impl Manager {
         entry.overlay.attach(&device);
         entry.info = info;
         entry.device = Some(device.clone());
-        entry.generation.fetch_add(1, Ordering::SeqCst);
+        // The content stays the same: a stream keeps its ticket. The player of the device before
+        // was stopped when it was found gone.
         start(entry);
         let timed = entry.timed.is_some();
         drop(inner);
@@ -578,6 +579,27 @@ impl Manager {
     /// Hands the display to a WebSocket stream.
     pub fn begin_stream(&self, id: &str) -> Result<StreamTicket, LookupError> {
         self.replace_content(id, Content::Stream, None, None)
+    }
+
+    /// The `stream` zone of the layout the display shows, for a WebSocket stream, with a ticket
+    /// that is lost when the display shows something else. `None` if it shows no layout with
+    /// one.
+    pub fn stream_zone(&self, id: &str) -> Result<Option<(StreamTicket, Arc<Feed>)>, LookupError> {
+        let inner = self.lock();
+        let id = self.resolve(&inner, id)?;
+        let entry = &inner.entries[&id];
+        let Content::Layout(spec) = &entry.content else {
+            return Ok(None);
+        };
+        let Some(feed) = spec.feed.clone() else {
+            return Ok(None);
+        };
+        let ticket = StreamTicket {
+            mine: entry.generation.load(Ordering::SeqCst),
+            generation: entry.generation.clone(),
+            id,
+        };
+        Ok(Some((ticket, feed)))
     }
 
     fn replace_content(
@@ -1071,6 +1093,23 @@ mod tests {
         let (log, _) = attach(&manager, "a2");
         wait_until(|| log.calls().iter().any(|c| matches!(c, Call::Show(_))));
         assert_eq!(manager.displays()[0].content, "clock");
+        manager.shutdown();
+    }
+
+    #[test]
+    fn a_stream_survives_a_reconnect() {
+        let manager = manager(StartupShow::Nothing);
+        let (_, unplug) = attach(&manager, "a");
+        let ticket = manager.begin_stream("default").unwrap();
+        unplug.unplug();
+        // A frame of the stream finds the display gone.
+        let device = manager.device("fake-0001").unwrap();
+        let _ = device.submit(Frame::blank(1920, 462));
+        wait_until(|| !device.presenter.is_running());
+        manager.scan();
+        attach(&manager, "a2");
+        assert_eq!(manager.displays()[0].content, "stream");
+        assert!(ticket.is_current());
         manager.shutdown();
     }
 

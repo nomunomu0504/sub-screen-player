@@ -241,8 +241,19 @@ pub struct ImageQuery {
     pub seconds: Option<u64>,
 }
 
-/// Query of the requests that change what a display shows (`/clock`, `/dashboard`, `/web`,
-/// `/layout`, `/clear`, `/stop`).
+/// Query of `POST /api/v1/displays/{id}/layout`. Without `name`, the body has the zones.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LayoutQuery {
+    /// A layout of the config's `[layouts]`, shown without a body.
+    pub name: Option<String>,
+    /// Show it for this many seconds, then what showed before.
+    #[serde(rename = "for")]
+    pub seconds: Option<u64>,
+}
+
+/// Query of the other requests that change what a display shows (`/clock`, `/dashboard`,
+/// `/web`, `/clear`, `/stop`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ForQuery {
@@ -257,8 +268,10 @@ pub struct ForQuery {
 pub struct StreamQuery {
     /// What each binary message contains.
     pub format: StreamFormat,
-    /// How encoded images are fitted to the panel.
+    /// How encoded images are fitted to the panel (or the zone).
     pub fit: Option<FitName>,
+    /// Into the `stream` zone of the layout the display shows, instead of the whole display.
+    pub zone: bool,
 }
 
 /// Contents of the binary messages of a stream.

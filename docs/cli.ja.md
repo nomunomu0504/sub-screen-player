@@ -284,7 +284,8 @@ ssp layout clock claude-code web:panel.html --widths 30,,30
 
 `ssp layout` は、パネルを左から順に領域に分け、領域ごとに別の内容を、ブラウザなしで表示します。領域には、ダッシュボードの
 パネル（`clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`）、`dashboard`、`image:<ファイル>`
-か `video:<ファイル>`（画像・アニメーション・動画）、`web:<URL かファイル>`、`nothing` を指定できます。`--widths` で幅を
+か `video:<ファイル>`（画像・アニメーション・動画）、`web:<URL かファイル>`、`stream`（プログラムが送るフレーム。後述）、
+`nothing` を指定できます。`--widths` で幅を
 パーセントで指定し、指定のない領域は残りを分け合います（`30,,30`）。各領域は別々に動くので、動画の隣でも時計は進み、
 部分更新では変わった領域だけを送ります。1つのレイアウトで再生できる動画と表示できる Web ページは、それぞれ1つまでです。
 
@@ -303,6 +304,25 @@ zones = [
 ]
 gap = 16                 # 領域の間のピクセル数
 ```
+
+レイアウトには名前を付けて複数書けます。`[layouts.<名前>]` には `[layout]` と同じものを書き、`show = "layout"` と一緒に
+`layout = "<名前>"` を指定すると、そのレイアウトを表示します。たとえば夜だけ別のレイアウトにするには、次のように書きます。
+
+```toml
+[layouts.evening]
+zones = [{ show = "clock", width = 0.4 }, { show = "metric:ci" }]
+
+[[schedule]]
+at = "19:00"
+show = "layout"
+layout = "evening"
+```
+
+手動では `ssp layout --name evening` で表示します。
+
+`stream` の領域には、プログラムが `?zone=true` を付けた [WebSocket ストリーム](api.ja.md#websocket-ストリーム)で送る
+フレームを表示し、ほかの領域はそのまま動き続けます。たとえば、デーモンの時計の隣にゲームやグラフを出せます。`stream` の
+領域は、1つのレイアウトに1つまでです。
 
 ### しばらく表示して元に戻す
 
@@ -587,10 +607,11 @@ ssp update --to v0.7.1   # 指定したリリースに（前の版に戻すと�
 | `  --reload <SECONDS>` | 指定した秒数ごとにページを読み込み直します。 |
 | `  --yes`・`-y` | 必要なら、確認せずにヘッドレス Chrome をダウンロードします。 |
 | `  --install` | ヘッドレス Chrome のダウンロード（更新）だけを行います。 |
-| `ssp layout <ZONE>...` | 領域を並べて表示します: `clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`・`dashboard`・`image:<FILE>`・`video:<FILE>`・`web:<URL か FILE>`・`nothing`。 |
+| `ssp layout <ZONE>...` | 領域を並べて表示します: `clock`・`cpu`・`memory`・`network`・`disk`・`claude-code`・`metric:<id>`・`dashboard`・`image:<FILE>`・`video:<FILE>`・`web:<URL か FILE>`・`stream`・`nothing`。 |
 | `  --widths <PERCENT,...>` | 領域の幅（パーセント）。指定のない領域は残りを分け合います。 |
 | `  --gap <PIXELS>` | 領域の間の幅。 |
 | `  --fit contain\|cover\|stretch` | 画像や動画を領域に合わせる方法。 |
+| `ssp layout --name <NAME>` | 設定ファイルの `[layouts.<NAME>]` を表示します。 |
 | `ssp stop` | 時計・ダッシュボード・画像・ストリームを止めます。画面には最後の絵が残ります。 |
 | `ssp clear` | 時計・ダッシュボード・画像・ストリームを止め、画面を消去します。 |
 | `--for <TIME>` | `show`・`clock`・`dashboard`・`web`・`layout`・`stop`・`clear` で、この時間だけ表示し、それまでの表示に戻します。秒か、`90s`・`10m`・`2h`。最長 1 週間。`--persist` とは使えません。 |

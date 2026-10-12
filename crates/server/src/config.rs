@@ -1,5 +1,6 @@
 //! The daemon's TOML configuration. Every field has a default, so an empty file is valid.
 
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
@@ -63,8 +64,9 @@ fit = "contain"          # "contain", "cover" or "stretch"
 # Several things side by side, for show = "layout" (in [startup], a schedule entry or a
 # rotation). `show` is a dashboard panel ("clock", "cpu", "memory", "network", "disk",
 # "claude-code", "metric:<id>"), "dashboard", "image" (a picture, animation or video, with
-# `image`) or "web" (with `url`). `width` is a share of the panel (0.3) or pixels (480); zones
-# without one share the rest.
+# `image`), "web" (with `url`) or "stream" (the frames of a WebSocket stream opened with
+# ?zone=true). `width` is a share of the panel (0.3) or pixels (480); zones without one share
+# the rest.
 # [layout]
 # zones = [
 #   { show = "clock", width = 0.3 },
@@ -73,6 +75,11 @@ fit = "contain"          # "contain", "cover" or "stretch"
 # ]
 # gap = 0                # pixels between zones
 # background = "#000000"
+
+# More layouts by name, for show = "layout" with layout = "<name>" (in [startup], a schedule
+# entry or a rotation) and `ssp layout --name <name>`.
+# [layouts.evening]
+# zones = [{ show = "clock", width = 0.4 }, { show = "stream" }]
 
 # Screens shown in turn, for show = "rotation" (in [startup] or a schedule entry).
 # [rotation]
@@ -141,6 +148,9 @@ pub struct Config {
     pub rotation: RotationConfig,
     /// Contents side by side for `show = "layout"`.
     pub layout: LayoutConfig,
+    /// More layouts, by name, for `show = "layout"` with `layout = "<name>"`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub layouts: BTreeMap<String, LayoutConfig>,
     /// Look of the built-in clock.
     pub clock: ClockConfig,
     /// Contents and look of the built-in dashboard.
@@ -166,6 +176,7 @@ impl Default for Config {
             schedule: Vec::new(),
             rotation: RotationConfig::default(),
             layout: LayoutConfig::default(),
+            layouts: BTreeMap::new(),
             clock: ClockConfig::default(),
             dashboard: DashboardConfig::default(),
             web: WebConfig::default(),
@@ -314,6 +325,9 @@ pub struct StartupConfig {
     pub reload: Option<u64>,
     /// How the image is fitted: `"contain"`, `"cover"` or `"stretch"`.
     pub fit: FitName,
+    /// A layout of `[layouts]` for `show = "layout"`; `[layout]` when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
 }
 
 impl Default for StartupConfig {
@@ -324,6 +338,7 @@ impl Default for StartupConfig {
             url: None,
             reload: None,
             fit: FitName::Contain,
+            layout: None,
         }
     }
 }
@@ -358,6 +373,7 @@ impl StartupConfig {
             url: self.url.as_deref(),
             reload: self.reload,
             fit: self.fit,
+            layout: self.layout.as_deref(),
         }
     }
 }
@@ -375,11 +391,21 @@ pub struct ShowSpec<'a> {
     pub reload: Option<u64>,
     /// How an image or video is fitted.
     pub fit: FitName,
+    /// A layout of `[layouts]` for `layout`; `[layout]` when `None`.
+    pub layout: Option<&'a str>,
 }
 
 impl ShowSpec<'_> {
     /// Checks that the options the kind needs are there.
-    fn validate(&self, defined: Defined) -> Result<(), String> {
+    fn validate(&self, defined: Defined<'_>) -> Result<(), String> {
+        if let Some(name) = self.layout {
+            if self.show != StartupShow::Layout {
+                return Err("layout is for show = \"layout\"".into());
+            }
+            if !defined.layouts.contains_key(name) {
+                return Err(format!("layout = {name:?} is not in [layouts]"));
+            }
+        }
         match self.show {
             StartupShow::Image if self.image.is_none() => {
                 Err("show = \"image\" needs image".into())
@@ -388,20 +414,23 @@ impl ShowSpec<'_> {
             StartupShow::Rotation if !defined.rotation => {
                 Err("show = \"rotation\" needs screens in [rotation] show".into())
             }
-            StartupShow::Layout if !defined.layout => {
-                Err("show = \"layout\" needs zones in [layout]".into())
-            }
+            StartupShow::Layout if self.layout.is_none() && !defined.layout => Err(
+                "show = \"layout\" needs zones in [layout], or layout = \"<name>\" of [layouts]"
+                    .into(),
+            ),
             _ if self.reload == Some(0) => Err("reload must be at least 1".into()),
             _ => Ok(()),
         }
     }
 }
 
-/// Which of `[rotation]` and `[layout]` have something in them, for checking `show`.
-#[derive(Debug, Clone, Copy, Default)]
-struct Defined {
+/// Which of `[rotation]` and `[layout]` have something in them, and the layouts with names,
+/// for checking `show`.
+#[derive(Debug, Clone, Copy)]
+struct Defined<'a> {
     rotation: bool,
     layout: bool,
+    layouts: &'a BTreeMap<String, LayoutConfig>,
 }
 
 /// Contents side by side (`[layout]`).
@@ -442,10 +471,11 @@ impl LayoutConfig {
         if self.zones.len() > MAX_ZONES {
             return Err(format!("layout: at most {MAX_ZONES} zones"));
         }
-        let mut webs = 0;
+        let (mut webs, mut streams) = (0, 0);
         for (n, zone) in self.zones.iter().enumerate() {
             let fail = |e: String| format!("layout zone {} ({}): {e}", n + 1, zone.show);
-            match zone.kind().map_err(fail)? {
+            let kind = zone.kind().map_err(fail)?;
+            match kind {
                 ZoneKind::Image => {
                     if zone.image.is_none() {
                         return Err(fail("needs image".into()));
@@ -457,11 +487,14 @@ impl LayoutConfig {
                     }
                     webs += 1;
                 }
-                ZoneKind::Panel(_) | ZoneKind::Dashboard | ZoneKind::Nothing => {
+                ZoneKind::Panel(_) | ZoneKind::Dashboard | ZoneKind::Stream | ZoneKind::Nothing => {
                     if zone.image.is_some() || zone.url.is_some() {
                         return Err(fail("image and url are for image and web zones".into()));
                     }
                 }
+            }
+            if kind == ZoneKind::Stream {
+                streams += 1;
             }
             if zone.width.is_some_and(|w| !(w > 0.0 && w.is_finite())) {
                 return Err(fail("width must be more than 0".into()));
@@ -473,6 +506,9 @@ impl LayoutConfig {
         if webs > 1 {
             return Err("layout: at most one web zone".into());
         }
+        if streams > 1 {
+            return Err("layout: at most one stream zone".into());
+        }
         Ok(())
     }
 }
@@ -482,7 +518,7 @@ impl LayoutConfig {
 #[serde(deny_unknown_fields)]
 pub struct ZoneConfig {
     /// A dashboard panel (`"clock"`, `"cpu"`, `"metric:<id>"`, ...), `"dashboard"`, `"image"`,
-    /// `"web"` or `"nothing"`.
+    /// `"web"`, `"stream"` or `"nothing"`.
     pub show: String,
     /// A share of the panel's width (up to 1) or pixels (more than 1). Zones without one share
     /// what is left.
@@ -513,6 +549,8 @@ pub enum ZoneKind {
     Image,
     /// A web page.
     Web,
+    /// The frames of a WebSocket stream (`stream?zone=true`).
+    Stream,
     /// The background only.
     Nothing,
 }
@@ -524,11 +562,12 @@ impl ZoneConfig {
             "dashboard" => ZoneKind::Dashboard,
             "image" | "video" | "animation" => ZoneKind::Image,
             "web" => ZoneKind::Web,
+            "stream" => ZoneKind::Stream,
             "nothing" => ZoneKind::Nothing,
             other => ZoneKind::Panel(other.parse().map_err(|_| {
                 format!(
                     "unknown zone {other:?}: use a dashboard panel (clock, cpu, memory, network, \
-                     disk, claude-code, metric:<id>), dashboard, image, web or nothing"
+                     disk, claude-code, metric:<id>), dashboard, image, web, stream or nothing"
                 )
             })?),
         })
@@ -573,6 +612,9 @@ pub struct ScheduleEntry {
     /// How an image or video is fitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fit: Option<FitName>,
+    /// A layout of `[layouts]` for `show = "layout"`; `[layout]` when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
     /// Backlight in percent from then on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub brightness: Option<u8>,
@@ -590,6 +632,7 @@ impl ScheduleEntry {
             url: self.url.as_deref(),
             reload: self.reload,
             fit: self.fit.unwrap_or_default(),
+            layout: self.layout.as_deref(),
         })
     }
 
@@ -621,7 +664,7 @@ impl ScheduleEntry {
         Ok(on)
     }
 
-    fn validate(&self, defined: Defined) -> Result<(), String> {
+    fn validate(&self, defined: Defined<'_>) -> Result<(), String> {
         self.time()?;
         self.weekdays()?;
         if self.show.is_none()
@@ -663,7 +706,7 @@ impl Default for RotationConfig {
 }
 
 impl RotationConfig {
-    fn validate(&self, defined: Defined) -> Result<(), String> {
+    fn validate(&self, defined: Defined<'_>) -> Result<(), String> {
         if self.every == 0 {
             return Err("rotation.every must be at least 1".into());
         }
@@ -703,6 +746,7 @@ impl RotationItem {
                     url: None,
                     reload: None,
                     fit: FitName::default(),
+                    layout: None,
                 },
                 None,
             ),
@@ -713,6 +757,7 @@ impl RotationItem {
                     url: spec.url.as_deref(),
                     reload: spec.reload,
                     fit: spec.fit.unwrap_or_default(),
+                    layout: spec.layout.as_deref(),
                 },
                 spec.seconds,
             ),
@@ -738,6 +783,9 @@ pub struct RotationSpec {
     /// How an image or video is fitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fit: Option<FitName>,
+    /// A layout of `[layouts]` for `show = "layout"`; `[layout]` when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
     /// Seconds this screen is shown, instead of `every`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u64>,
@@ -1018,6 +1066,7 @@ impl Config {
         let defined = Defined {
             rotation: !self.rotation.show.is_empty(),
             layout: !self.layout.zones.is_empty(),
+            layouts: &self.layouts,
         };
         self.startup
             .spec()
@@ -1027,6 +1076,23 @@ impl Config {
             .validate(defined)
             .map_err(ConfigError::Invalid)?;
         self.layout.validate().map_err(ConfigError::Invalid)?;
+        for (name, layout) in &self.layouts {
+            let valid_name = (1..=32).contains(&name.len())
+                && name.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
+                });
+            if !valid_name {
+                return invalid(format!(
+                    "layouts.{name:?}: a name is 1-32 of a-z, 0-9, - and _"
+                ));
+            }
+            if layout.zones.is_empty() {
+                return invalid(format!("layouts.{name} has no zones"));
+            }
+            layout
+                .validate()
+                .map_err(|e| ConfigError::Invalid(format!("layouts.{name}: {e}")))?;
+        }
         for (n, entry) in self.schedule.iter().enumerate() {
             entry.validate(defined).map_err(|e| {
                 ConfigError::Invalid(format!("schedule entry {} ({}): {e}", n + 1, entry.at))
@@ -1093,6 +1159,48 @@ mod tests {
         );
         assert_eq!(config.layout.zones.len(), 3);
         assert_eq!(config.layout.zones[1].kind(), Ok(ZoneKind::Image));
+        assert_eq!(config.layouts["evening"].zones.len(), 2);
+    }
+
+    #[test]
+    fn refuses_bad_layouts() {
+        for (toml, expected) in [
+            (
+                "[layouts.Work]\nzones = [{ show = \"clock\" }]",
+                "a name is 1-32",
+            ),
+            ("[layouts.empty]", "layouts.empty has no zones"),
+            (
+                "[layouts.x]\nzones = [{ show = \"web\" }]",
+                "layouts.x: layout zone 1",
+            ),
+            (
+                "[startup]\nshow = \"layout\"\nlayout = \"nope\"",
+                "layout = \"nope\" is not in [layouts]",
+            ),
+            (
+                "[startup]\nlayout = \"x\"\n[layouts.x]\nzones = [{ show = \"clock\" }]",
+                "layout is for show = \"layout\"",
+            ),
+            (
+                "[[schedule]]\nat = \"07:30\"\nshow = \"layout\"",
+                "or layout = \"<name>\" of [layouts]",
+            ),
+        ] {
+            let config: Config = toml::from_str(toml).unwrap_or_else(|e| panic!("{toml}: {e}"));
+            let err = config.validate().unwrap_err().to_string();
+            assert!(err.contains(expected), "{toml}: {err}");
+        }
+        let config: Config = toml::from_str(
+            "[startup]\nshow = \"layout\"\nlayout = \"x\"\n\
+             [rotation]\nshow = [{ show = \"layout\", layout = \"x\" }, \"clock\"]\n\
+             [layouts.x]\nzones = [{ show = \"clock\" }, { show = \"cpu\" }]",
+        )
+        .unwrap();
+        config.validate().unwrap();
+        let metrics = crate::metrics::Metrics::default();
+        let content = crate::sources::Content::from_spec(config.startup.spec(), &config, &metrics);
+        assert_eq!(content.map(|c| c.kind()), Ok("layout"));
     }
 
     #[test]

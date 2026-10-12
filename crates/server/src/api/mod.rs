@@ -22,7 +22,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
 use crate::config::{ClockConfig, Config, DashboardConfig, LayoutConfig};
-use crate::manager::{Chosen, DisplayState, LookupError, Manager};
+use crate::manager::{Chosen, DisplayState, LookupError, Manager, Rebuild};
 use crate::metrics::{Metric, Metrics};
 use crate::notify::{self, Notification};
 use crate::reload::Reloader;
@@ -33,9 +33,9 @@ use crate::sources::{Clock, Content, Picture};
 use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
-    ErrorBody, ForQuery, Health, ImageQuery, MetricUpdate, MetricView, NotificationView,
-    NotifyRequest, PowerRequest, Reloaded, ScheduleEventView, ScheduleView, StatsView, SystemView,
-    WebRequest,
+    ErrorBody, ForQuery, Health, ImageQuery, LayoutQuery, MetricUpdate, MetricView,
+    NotificationView, NotifyRequest, PowerRequest, Reloaded, ScheduleEventView, ScheduleView,
+    StatsView, SystemView, WebRequest,
 };
 
 /// Largest request body accepted for images.
@@ -356,18 +356,43 @@ async fn resume_schedule(State(app): State<AppState>) -> Result<StatusCode, ApiE
 async fn show_layout(
     State(app): State<AppState>,
     Path(id): Path<String>,
-    Query(query): Query<ForQuery>,
-    Json(layout): Json<LayoutConfig>,
+    Query(query): Query<LayoutQuery>,
+    body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
     let time = for_time(query.seconds)?;
+    let zones: Option<LayoutConfig> = optional_json(&body)?;
+    // Again with the new config: a named layout as the config now says.
+    let rebuild: Rebuild = match (query.name, zones) {
+        (Some(name), None) => {
+            if !app.config.layouts.contains_key(&name) {
+                return Err(ApiError::new(
+                    StatusCode::NOT_FOUND,
+                    format!("no layout {name:?} in [layouts] of the config"),
+                ));
+            }
+            Arc::new(move |config: &Config, metrics: &Metrics| {
+                Content::named_layout(&name, config, metrics)
+            })
+        }
+        (None, Some(layout)) => Arc::new(move |config: &Config, metrics: &Metrics| {
+            Content::layout(&layout, config, metrics)
+        }),
+        (Some(_), Some(_)) => {
+            return Err(ApiError::bad_request(
+                "give either zones in the body or a name, not both",
+            ));
+        }
+        (None, None) => {
+            return Err(ApiError::bad_request(
+                "give the zones in the body, or the name of a layout of [layouts] (?name=)",
+            ));
+        }
+    };
     blocking(move || {
         // Reads image and video files, so off the async threads.
-        let content =
-            Content::layout(&layout, &app.config, &app.metrics).map_err(ApiError::bad_request)?;
-        let rebuild =
-            move |config: &Config, metrics: &Metrics| Content::layout(&layout, config, metrics);
+        let content = rebuild(&app.config, &app.metrics).map_err(ApiError::bad_request)?;
         app.manager
-            .choose_for(&id, content, Chosen::Rebuild(Arc::new(rebuild)), time)?;
+            .choose_for(&id, content, Chosen::Rebuild(rebuild), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

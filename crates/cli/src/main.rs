@@ -220,9 +220,12 @@ enum Cmd {
     /// Show several things side by side: dashboard panels, a picture or video, a web page
     Layout {
         /// Zones from left to right: clock, cpu, memory, network, disk, claude-code,
-        /// metric:<id>, dashboard, image:<FILE>, video:<FILE>, web:<URL or FILE>, nothing
-        #[arg(required = true, num_args = 1..)]
+        /// metric:<id>, dashboard, image:<FILE>, video:<FILE>, web:<URL or FILE>, stream, nothing
+        #[arg(required_unless_present = "name", num_args = 1..)]
         zones: Vec<String>,
+        /// A layout of [layouts] in the daemon's config, instead of zones
+        #[arg(long, conflicts_with_all = ["zones", "widths", "gap", "fit"])]
+        name: Option<String>,
         /// Widths in percent, comma-separated, e.g. 30,45,25 or 30,,25; zones without one share
         /// the rest
         #[arg(long, value_delimiter = ',')]
@@ -699,8 +702,14 @@ fn run(cli: Cli) -> Result<()> {
             widths,
             gap,
             fit,
+            name,
             time,
         } => {
+            if let Some(name) = name {
+                let name: String = url::form_urlencoded::byte_serialize(name.as_bytes()).collect();
+                return cli_client(&cli.url, &cli.token, &config_path)?
+                    .post_empty(&with_time(format!("{display}/layout?name={name}"), time));
+            }
             if widths.len() > zones.len() {
                 anyhow::bail!("more --widths than zones");
             }

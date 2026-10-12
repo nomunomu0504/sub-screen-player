@@ -366,9 +366,14 @@ Shows zones side by side (`content` is then `layout`), as `[layout]` in the conf
 
 `show` is a dashboard panel (`clock`, `cpu`, `memory`, `network`, `disk`, `claude-code`,
 `metric:<id>`), `dashboard`, `image` (a picture, animation or video in `image`, a file on the
-daemon's computer), `web` (with `url` and `reload`) or `nothing`. `width` is a share of the panel
-(up to 1) or pixels; zones without one share the rest. Zone edges are on the 16-pixel grid. At
-most 8 zones, one video and one web page; `400` otherwise, or when a file cannot be read.
+daemon's computer), `web` (with `url` and `reload`), `stream` (the frames of a stream sent with
+`?zone=true`, see [below](#websocket-stream)) or `nothing`. `width` is a share of the panel (up to
+1) or pixels; zones without one share the rest. Zone edges are on the 16-pixel grid. At most 8
+zones, one video, one web page and one stream zone; `400` otherwise, or when a file cannot be
+read.
+
+`?name=<name>` with no body shows `[layouts.<name>]` of the config instead (`404` if there is no
+such layout). After `POST /reload`, it is built again from the new config.
 
 ### `POST /displays/{id}/web`
 
@@ -418,6 +423,13 @@ fails), and both return:
   `4000`.
 - A bad frame does not end the stream. The daemon replies with a text message
   `{"error": "..."}` and keeps going.
+- **Into a zone:** with `zone=true`, the frames go into the `stream` zone of the layout the
+  display shows (see [`POST /displays/{id}/layout`](#post-displaysidlayout)), and the other zones
+  keep running; `content` stays `layout`. The request is answered `409` if the display shows no
+  layout with a stream zone (a layout shown as a turn of a rotation does not count). `image`
+  frames are fitted into the zone; raw frames must have the zone's size, which a wrong size is
+  answered with. When the sender ends the stream, the zone keeps the last frame. Showing
+  something else on the display ends the stream (close code `4000`).
 - The stream survives the display being replugged; frames sent while it is unplugged are
   answered with an error.
 - The stream closes when the daemon shuts down.

@@ -2,15 +2,16 @@
 //!
 //! The manager scans for devices every few seconds, opens new ones, notices unplugged ones and
 //! remembers each display's [`Content`] across reconnects. Built-in sources run on a "player"
-//! thread per display.
+//! thread per display. A change for a while ([`Manager::choose_for`]) ends on a timer thread.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use jiff::Timestamp;
 use ssp_core::{
     Display, DisplayInfo, Found, Frame, Presenter, PresenterOptions, PresenterStats, Registry,
     StopAction,
@@ -24,6 +25,9 @@ use crate::sources::{Content, Source};
 
 /// How long to wait before retrying a device that failed to open.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
+
+/// The timer looks at the clock at least this often, so that it notices a computer that slept.
+const TIMER_MAX_WAIT: Duration = Duration::from_secs(60);
 
 /// Errors from looking up a display.
 #[derive(Debug, thiserror::Error)]
@@ -73,6 +77,8 @@ pub struct DisplayState {
     pub stats: Option<PresenterStats>,
     /// The notification being shown.
     pub notification: Option<Shown>,
+    /// When a change for a while ends.
+    pub content_until: Option<Timestamp>,
 }
 
 /// Proof that a WebSocket stream owns a display; lost when other content is set.
@@ -99,8 +105,10 @@ pub struct Manager {
     schedule: Mutex<Option<Arc<Schedule>>>,
     /// What displays were told to show before the config was reloaded, by display id: they
     /// show it again when they connect.
-    restored: Mutex<HashMap<String, (Content, Chosen)>>,
+    restored: Mutex<HashMap<String, Restored>>,
     inner: Mutex<Inner>,
+    /// Wakes the timer when a change for a while starts, and when it is stopped.
+    timer: Condvar,
 }
 
 /// Builds content with the settings of a config, for content chosen through the API that is
@@ -132,10 +140,46 @@ impl Chosen {
     }
 }
 
+/// What a display was told to show through the API, kept across a reload of the config
+/// ([`Manager::chosen`], [`Manager::restore`]).
+#[derive(Clone)]
+pub struct Kept {
+    chosen: Chosen,
+    /// For a change for a while: when it ends, and what was chosen before it (`None`: the
+    /// schedule's or the startup content).
+    timed: Option<(Timestamp, Option<Chosen>)>,
+}
+
+impl Kept {
+    /// How the content was chosen.
+    pub fn chosen(&self) -> &Chosen {
+        &self.chosen
+    }
+}
+
+impl From<Chosen> for Kept {
+    fn from(chosen: Chosen) -> Self {
+        Self {
+            chosen,
+            timed: None,
+        }
+    }
+}
+
+/// [`Kept`] built with the new config, until its display connects.
+struct Restored {
+    content: Content,
+    chosen: Chosen,
+    /// When a change for a while ends, and what to show then (`None`: the schedule's or the
+    /// startup content).
+    timed: Option<(Timestamp, Option<(Content, Chosen)>)>,
+}
+
 #[derive(Default)]
 struct Inner {
     entries: BTreeMap<String, Entry>,
     failed: HashMap<CString, Instant>,
+    timer_stopped: bool,
 }
 
 struct Entry {
@@ -149,6 +193,15 @@ struct Entry {
     player: Option<Player>,
     /// The notification, kept across reconnects.
     overlay: Arc<Overlay>,
+    /// What to show again when a change for a while ends.
+    timed: Option<Timed>,
+}
+
+/// A change for a while: when it ends, and what the display showed before.
+struct Timed {
+    until: Timestamp,
+    content: Content,
+    chosen: Option<Chosen>,
 }
 
 impl Manager {
@@ -162,32 +215,54 @@ impl Manager {
             schedule: Mutex::default(),
             restored: Mutex::default(),
             inner: Mutex::default(),
+            timer: Condvar::new(),
         })
     }
 
     /// What displays were told to show through the API, to show again after a reload.
-    pub fn chosen(&self) -> Vec<(String, Chosen)> {
+    pub fn chosen(&self) -> Vec<(String, Kept)> {
         self.lock()
             .entries
             .iter()
-            .filter_map(|(id, e)| Some((id.clone(), e.chosen.clone()?)))
+            .filter_map(|(id, e)| {
+                let kept = Kept {
+                    chosen: e.chosen.clone()?,
+                    timed: e.timed.as_ref().map(|t| (t.until, t.chosen.clone())),
+                };
+                Some((id.clone(), kept))
+            })
             .collect()
     }
 
     /// Has displays show again what they were told to before the config was reloaded, built
-    /// with `config`, when they connect. What cannot be built any more (a file that is gone)
-    /// gives way to the startup content.
-    pub fn restore(&self, chosen: Vec<(String, Chosen)>, config: &Config, metrics: &Metrics) {
-        let mut restored = self.restored.lock().unwrap_or_else(|p| p.into_inner());
-        for (id, chosen) in chosen {
-            match chosen.content(config, metrics) {
-                Ok(content) => {
-                    restored.insert(id, (content, chosen));
-                }
-                Err(err) => {
-                    tracing::warn!(display = %id, "cannot show again what it showed: {err}");
-                }
+    /// with `config`, when they connect; a change for a while still ends when it would have.
+    /// What cannot be built any more (a file that is gone) gives way to the schedule's or the
+    /// startup content.
+    pub fn restore(&self, kept: Vec<(String, Kept)>, config: &Config, metrics: &Metrics) {
+        let build = |id: &str, chosen: &Chosen| match chosen.content(config, metrics) {
+            Ok(content) => Some(content),
+            Err(err) => {
+                tracing::warn!(display = %id, "cannot show again what it showed: {err}");
+                None
             }
+        };
+        let mut restored = self.restored.lock().unwrap_or_else(|p| p.into_inner());
+        for (id, kept) in kept {
+            let Some(content) = build(&id, &kept.chosen) else {
+                continue;
+            };
+            let timed = kept.timed.map(|(until, before)| {
+                let before = before.and_then(|chosen| Some((build(&id, &chosen)?, chosen)));
+                (until, before)
+            });
+            restored.insert(
+                id,
+                Restored {
+                    content,
+                    chosen: kept.chosen,
+                    timed,
+                },
+            );
         }
     }
 
@@ -334,12 +409,23 @@ impl Manager {
             .unwrap_or_else(|p| p.into_inner())
             .remove(&id);
         let entry = inner.entries.entry(id.clone()).or_insert_with(|| {
-            let (content, chosen) = match restored {
-                Some((content, chosen)) => (content, Some(chosen)),
-                None => (
-                    state.show.clone().unwrap_or_else(|| self.startup.clone()),
-                    None,
-                ),
+            let planned = || state.show.clone().unwrap_or_else(|| self.startup.clone());
+            let (content, chosen, timed) = match restored {
+                Some(restored) => {
+                    let timed = restored.timed.map(|(until, before)| {
+                        let (content, chosen) = match before {
+                            Some((content, chosen)) => (content, Some(chosen)),
+                            None => (planned(), None),
+                        };
+                        Timed {
+                            until,
+                            content,
+                            chosen,
+                        }
+                    });
+                    (restored.content, Some(restored.chosen), timed)
+                }
+                None => (planned(), None, None),
             };
             Entry {
                 info: info.clone(),
@@ -349,6 +435,7 @@ impl Manager {
                 generation: Arc::default(),
                 player: None,
                 overlay: Overlay::new(),
+                timed,
             }
         });
         let device = Arc::new(Device {
@@ -361,7 +448,11 @@ impl Manager {
         entry.device = Some(device.clone());
         entry.generation.fetch_add(1, Ordering::SeqCst);
         start(entry);
+        let timed = entry.timed.is_some();
         drop(inner);
+        if timed {
+            self.timer.notify_all();
+        }
         set_screen(&device.presenter, &id, brightness, state.power);
     }
 
@@ -395,6 +486,7 @@ impl Manager {
                 content: entry.content.kind(),
                 stats: entry.device.as_ref().map(|d| d.presenter.stats()),
                 notification: entry.overlay.current(),
+                content_until: entry.timed.as_ref().map(|t| t.until),
             })
             .collect()
     }
@@ -437,13 +529,28 @@ impl Manager {
 
     /// Changes what a display shows (for the schedule). Kept across reconnects.
     pub fn set_content(&self, id: &str, content: Content) -> Result<(), LookupError> {
-        self.replace_content(id, content, None).map(|_| ())
+        self.replace_content(id, content, None, None).map(|_| ())
     }
 
     /// Changes what a display shows, as told through the API. Kept across reconnects, and
     /// across reloads of the config as `chosen` says.
     pub fn choose(&self, id: &str, content: Content, chosen: Chosen) -> Result<(), LookupError> {
-        self.replace_content(id, content, Some(chosen)).map(|_| ())
+        self.choose_for(id, content, chosen, None)
+    }
+
+    /// [`Manager::choose`], for a while if `time` is given: then the display shows again what it
+    /// showed before (before the first of several such changes in a row), unless something else
+    /// changed what it shows by then. Needs [`Manager::spawn_timer`].
+    pub fn choose_for(
+        &self,
+        id: &str,
+        content: Content,
+        chosen: Chosen,
+        time: Option<Duration>,
+    ) -> Result<(), LookupError> {
+        let until = time.map(|time| Timestamp::now().checked_add(time).unwrap_or(Timestamp::MAX));
+        self.replace_content(id, content, Some(chosen), until)
+            .map(|_| ())
     }
 
     /// Shows `notification` over what the display shows, in place of the current one. A
@@ -470,7 +577,7 @@ impl Manager {
 
     /// Hands the display to a WebSocket stream.
     pub fn begin_stream(&self, id: &str) -> Result<StreamTicket, LookupError> {
-        self.replace_content(id, Content::Stream, None)
+        self.replace_content(id, Content::Stream, None, None)
     }
 
     fn replace_content(
@@ -478,29 +585,87 @@ impl Manager {
         id: &str,
         content: Content,
         chosen: Option<Chosen>,
+        until: Option<Timestamp>,
     ) -> Result<StreamTicket, LookupError> {
         let (ticket, old) = {
             let mut inner = self.lock();
             let id = self.resolve(&inner, id)?;
             let entry = inner.entries.get_mut(&id).expect("resolved above");
-            let old = entry.player.take();
-            entry.content = content;
-            entry.chosen = chosen;
-            let mine = entry.generation.fetch_add(1, Ordering::SeqCst) + 1;
-            start(entry);
+            let earlier = entry.timed.take();
+            entry.timed = until.map(|until| match earlier {
+                Some(earlier) => Timed { until, ..earlier },
+                None => Timed {
+                    until,
+                    content: entry.content.clone(),
+                    chosen: entry.chosen.clone(),
+                },
+            });
+            let old = swap(entry, content, chosen);
             (
                 StreamTicket {
                     id,
                     generation: entry.generation.clone(),
-                    mine,
+                    mine: entry.generation.load(Ordering::SeqCst),
                 },
                 old,
             )
         };
+        if until.is_some() {
+            self.timer.notify_all();
+        }
         if let Some(old) = old {
             old.stop();
         }
         Ok(ticket)
+    }
+
+    /// Ends changes for a while when their time comes, on a thread of its own, until
+    /// [`Timer::stop`].
+    pub fn spawn_timer(self: &Arc<Self>) -> Timer {
+        let manager = self.clone();
+        let thread = std::thread::Builder::new()
+            .name("ssp-timer".into())
+            .spawn(move || manager.end_changes())
+            .expect("failed to spawn a thread");
+        Timer {
+            manager: self.clone(),
+            thread,
+        }
+    }
+
+    fn end_changes(&self) {
+        let mut inner = self.lock();
+        while !inner.timer_stopped {
+            let now = Timestamp::now();
+            let mut old = Vec::new();
+            for (id, entry) in &mut inner.entries {
+                if let Some(timed) = entry.timed.take_if(|t| t.until <= now) {
+                    tracing::info!(display = %id, "back to {}", timed.content.kind());
+                    old.extend(swap(entry, timed.content, timed.chosen));
+                }
+            }
+            if !old.is_empty() {
+                drop(inner);
+                old.into_iter().for_each(Player::stop);
+                inner = self.lock();
+                continue;
+            }
+            let next = inner
+                .entries
+                .values()
+                .filter_map(|e| Some(e.timed.as_ref()?.until))
+                .min();
+            let wait = next.map_or(TIMER_MAX_WAIT, |until| {
+                Duration::try_from(until.duration_since(now))
+                    .unwrap_or_default()
+                    .min(TIMER_MAX_WAIT)
+            });
+            inner = self
+                .timer
+                .wait_timeout(inner, wait)
+                .unwrap_or_else(|p| p.into_inner())
+                .0;
+        }
     }
 
     /// Stops all sources and closes every display with the configured exit action.
@@ -547,6 +712,17 @@ fn set_screen(presenter: &Presenter, id: &str, brightness: Option<u8>, on: Optio
     }
 }
 
+/// Has the entry show `content` in place of what it showed. Returns the player to stop, once the
+/// manager is unlocked.
+fn swap(entry: &mut Entry, content: Content, chosen: Option<Chosen>) -> Option<Player> {
+    let old = entry.player.take();
+    entry.content = content;
+    entry.chosen = chosen;
+    entry.generation.fetch_add(1, Ordering::SeqCst);
+    start(entry);
+    old
+}
+
 /// Starts the entry's content on its device, if both exist.
 fn start(entry: &mut Entry) {
     let (Some(device), Some(source)) = (&entry.device, entry.content.source()) else {
@@ -571,6 +747,21 @@ impl Scanner {
     /// Stops scanning and waits for a running scan to finish.
     pub fn stop(self) {
         drop(self.stop);
+        let _ = self.thread.join();
+    }
+}
+
+/// The thread of [`Manager::spawn_timer`].
+pub struct Timer {
+    manager: Arc<Manager>,
+    thread: JoinHandle<()>,
+}
+
+impl Timer {
+    /// Stops ending changes and waits for the thread to end.
+    pub fn stop(self) {
+        self.manager.lock().timer_stopped = true;
+        self.manager.timer.notify_all();
         let _ = self.thread.join();
     }
 }
@@ -698,7 +889,7 @@ mod tests {
         let gone: Rebuild = Arc::new(|_: &Config, _: &Metrics| Err("gone".to_owned()));
         let third = Manager::new(Registry::new(), &Config::default(), Metrics::default()).unwrap();
         third.restore(
-            vec![("fake-0001".into(), Chosen::Rebuild(gone))],
+            vec![("fake-0001".into(), Chosen::Rebuild(gone).into())],
             &Config::default(),
             &Metrics::default(),
         );
@@ -706,6 +897,123 @@ mod tests {
         assert_eq!(third.display("fake-0001").unwrap().content, "clock");
         again.shutdown();
         third.shutdown();
+    }
+
+    fn dashboard() -> Content {
+        Content::Dashboard(
+            crate::config::DashboardConfig::default(),
+            ClockConfig::default(),
+            Metrics::default(),
+        )
+    }
+
+    fn shows(manager: &Manager) -> &'static str {
+        manager.display("fake-0001").unwrap().content
+    }
+
+    #[test]
+    fn a_change_for_a_while_goes_back() {
+        let manager = Arc::new(manager(StartupShow::Clock));
+        let timer = manager.spawn_timer();
+        attach(&manager, "a");
+        let short = Some(Duration::from_secs(1));
+        manager
+            .choose_for(
+                "default",
+                Content::Nothing,
+                Chosen::same(Content::Nothing),
+                short,
+            )
+            .unwrap();
+        assert_eq!(shows(&manager), "nothing");
+        assert!(manager.display("default").unwrap().content_until.is_some());
+        wait_until(|| shows(&manager) == "clock");
+        let state = manager.display("default").unwrap();
+        assert_eq!(state.content_until, None);
+        assert!(manager.chosen().is_empty(), "the startup content again");
+
+        // Several in a row go back to what showed before the first.
+        manager
+            .choose("default", Content::Nothing, Chosen::same(Content::Nothing))
+            .unwrap();
+        let long = Some(Duration::from_secs(60));
+        manager
+            .choose_for("default", dashboard(), Chosen::same(dashboard()), long)
+            .unwrap();
+        manager
+            .choose_for(
+                "default",
+                Content::Clock(ClockConfig::default()),
+                Chosen::same(Content::Clock(ClockConfig::default())),
+                short,
+            )
+            .unwrap();
+        wait_until(|| shows(&manager) == "nothing");
+        assert_eq!(manager.chosen().len(), 1, "chosen through the API again");
+        timer.stop();
+        manager.shutdown();
+    }
+
+    #[test]
+    fn another_change_ends_a_change_for_a_while() {
+        let manager = Arc::new(manager(StartupShow::Clock));
+        let timer = manager.spawn_timer();
+        attach(&manager, "a");
+        let short = Some(Duration::from_millis(100));
+        manager
+            .choose_for(
+                "default",
+                Content::Nothing,
+                Chosen::same(Content::Nothing),
+                short,
+            )
+            .unwrap();
+        // The schedule's next entry.
+        manager.set_content("default", dashboard()).unwrap();
+        assert_eq!(manager.display("default").unwrap().content_until, None);
+        manager
+            .choose_for(
+                "default",
+                Content::Nothing,
+                Chosen::same(Content::Nothing),
+                short,
+            )
+            .unwrap();
+        let ticket = manager.begin_stream("default").unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(shows(&manager), "stream");
+        assert!(ticket.is_current());
+        timer.stop();
+        manager.shutdown();
+    }
+
+    #[test]
+    fn a_change_for_a_while_lasts_through_a_reload() {
+        let manager = manager(StartupShow::Clock);
+        attach(&manager, "a");
+        manager
+            .choose("default", Content::Nothing, Chosen::same(Content::Nothing))
+            .unwrap();
+        let time = Some(Duration::from_secs(2));
+        manager
+            .choose_for("default", dashboard(), Chosen::same(dashboard()), time)
+            .unwrap();
+        let until = manager.display("default").unwrap().content_until;
+        let kept = manager.chosen();
+        manager.close();
+
+        let again = Arc::new(
+            Manager::new(Registry::new(), &Config::default(), Metrics::default()).unwrap(),
+        );
+        again.restore(kept, &Config::default(), &Metrics::default());
+        let timer = again.spawn_timer();
+        attach(&again, "a");
+        assert_eq!(shows(&again), "dashboard");
+        assert_eq!(again.display("default").unwrap().content_until, until);
+        wait_until(|| shows(&again) == "nothing");
+        assert_eq!(again.chosen().len(), 1);
+        timer.stop();
+        again.shutdown();
     }
 
     #[test]

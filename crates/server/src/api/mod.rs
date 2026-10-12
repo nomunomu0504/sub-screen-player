@@ -33,12 +33,27 @@ use crate::sources::{Clock, Content, Picture};
 use crate::web::Web;
 use types::{
     BrightnessRequest, CapabilitiesView, ChromeView, ClockRequest, DashboardRequest, DisplayView,
-    ErrorBody, Health, ImageQuery, MetricUpdate, MetricView, NotificationView, NotifyRequest,
-    PowerRequest, Reloaded, ScheduleEventView, ScheduleView, StatsView, SystemView, WebRequest,
+    ErrorBody, ForQuery, Health, ImageQuery, MetricUpdate, MetricView, NotificationView,
+    NotifyRequest, PowerRequest, Reloaded, ScheduleEventView, ScheduleView, StatsView, SystemView,
+    WebRequest,
 };
 
 /// Largest request body accepted for images.
 const MAX_IMAGE_BYTES: usize = 64 << 20;
+
+/// Longest change for a while (`for`): a week.
+const MAX_FOR_SECONDS: u64 = 7 * 24 * 3600;
+
+/// The time of a change for a while, from the query's `for`.
+fn for_time(seconds: Option<u64>) -> Result<Option<Duration>, ApiError> {
+    match seconds {
+        None => Ok(None),
+        Some(s @ 1..=MAX_FOR_SECONDS) => Ok(Some(Duration::from_secs(s))),
+        Some(_) => Err(ApiError::bad_request(format!(
+            "for must be 1 to {MAX_FOR_SECONDS} seconds (a week)"
+        ))),
+    }
+}
 
 /// Shared state of all handlers.
 #[derive(Clone)]
@@ -284,6 +299,12 @@ fn view(state: DisplayState) -> DisplayView {
                 sticky: shown.left.is_none(),
             }
         }),
+        content_seconds_left: state.content_until.map(|until| {
+            let left = Duration::try_from(until.duration_since(jiff::Timestamp::now()))
+                .unwrap_or_default();
+            // Rounded up, so a change about to end does not say 0.
+            left.as_secs() + u64::from(left.subsec_nanos() > 0)
+        }),
         id: state.id,
     }
 }
@@ -335,8 +356,10 @@ async fn resume_schedule(State(app): State<AppState>) -> Result<StatusCode, ApiE
 async fn show_layout(
     State(app): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
     Json(layout): Json<LayoutConfig>,
 ) -> Result<StatusCode, ApiError> {
+    let time = for_time(query.seconds)?;
     blocking(move || {
         // Reads image and video files, so off the async threads.
         let content =
@@ -344,7 +367,7 @@ async fn show_layout(
         let rebuild =
             move |config: &Config, metrics: &Metrics| Content::layout(&layout, config, metrics);
         app.manager
-            .choose(&id, content, Chosen::Rebuild(Arc::new(rebuild)))?;
+            .choose_for(&id, content, Chosen::Rebuild(Arc::new(rebuild)), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -450,6 +473,12 @@ async fn show_image(
     body: Body,
 ) -> Result<StatusCode, ApiError> {
     let fit = query.fit.unwrap_or_default().into();
+    let time = for_time(query.seconds)?;
+    if query.persist && time.is_some() {
+        return Err(ApiError::bad_request(
+            "persist stores the image for good; it does not go with for",
+        ));
+    }
     // The first bytes tell images from videos; videos go to a file instead of memory.
     let mut chunks = body.into_data_stream();
     let mut bytes = Vec::new();
@@ -460,7 +489,7 @@ async fn show_image(
         }
     }
     if video::is_video(&bytes) && image::guess_format(&bytes).is_err() {
-        return show_video(app, id, query, fit, bytes, chunks).await;
+        return show_video(app, id, query, fit, time, bytes, chunks).await;
     }
     while let Some(chunk) = chunks.next().await {
         let chunk = chunk.map_err(unreadable)?;
@@ -482,7 +511,7 @@ async fn show_image(
         }
         let content = picture.into_content(fit);
         app.manager
-            .choose(&id, content.clone(), Chosen::same(content))?;
+            .choose_for(&id, content.clone(), Chosen::same(content), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -494,6 +523,7 @@ async fn show_video(
     id: String,
     query: ImageQuery,
     fit: Fit,
+    time: Option<Duration>,
     head: Vec<u8>,
     mut chunks: BodyDataStream,
 ) -> Result<StatusCode, ApiError> {
@@ -525,7 +555,7 @@ async fn show_video(
             fit,
         };
         app.manager
-            .choose(&id, content.clone(), Chosen::same(content))?;
+            .choose_for(&id, content.clone(), Chosen::same(content), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -571,9 +601,11 @@ fn too_large(limit: u64, what: &str) -> ApiError {
 async fn show_web(
     State(app): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
     Json(request): Json<WebRequest>,
 ) -> Result<StatusCode, ApiError> {
     let page = WebPage::new(&request.url, request.reload).map_err(ApiError::bad_request)?;
+    let time = for_time(query.seconds)?;
     blocking(move || {
         // Find (or download, if allowed) the browser now, so a missing one is reported here
         // rather than only on the display.
@@ -592,7 +624,7 @@ async fn show_web(
             })
         };
         app.manager
-            .choose(&id, content, Chosen::Rebuild(Arc::new(rebuild)))?;
+            .choose_for(&id, content, Chosen::Rebuild(Arc::new(rebuild)), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
@@ -647,11 +679,13 @@ async fn power(
 async fn clear(
     State(app): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
 ) -> Result<StatusCode, ApiError> {
+    let time = for_time(query.seconds)?;
     blocking(move || {
         let device = app.manager.device(&id)?;
         app.manager
-            .choose(&id, Content::Nothing, Chosen::same(Content::Nothing))?;
+            .choose_for(&id, Content::Nothing, Chosen::same(Content::Nothing), time)?;
         device.clear()?;
         Ok(StatusCode::NO_CONTENT)
     })
@@ -661,18 +695,21 @@ async fn clear(
 async fn clock(
     State(app): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
+    let time = for_time(query.seconds)?;
     let request: ClockRequest = optional_json(&body)?.unwrap_or_default();
     let config = clock_with(&app.clock, &request).map_err(ApiError::bad_request)?;
     // Again over the new `[clock]`.
     let rebuild =
         move |config: &Config, _: &Metrics| clock_with(&config.clock, &request).map(Content::Clock);
     blocking(move || {
-        app.manager.choose(
+        app.manager.choose_for(
             &id,
             Content::Clock(config),
             Chosen::Rebuild(Arc::new(rebuild)),
+            time,
         )?;
         Ok(StatusCode::NO_CONTENT)
     })
@@ -703,8 +740,10 @@ fn clock_with(base: &ClockConfig, request: &ClockRequest) -> Result<ClockConfig,
 async fn dashboard(
     State(app): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
+    let time = for_time(query.seconds)?;
     let request: DashboardRequest = optional_json(&body)?.unwrap_or_default();
     let config = dashboard_with(&app.dashboard, &request).map_err(ApiError::bad_request)?;
     let clock = app.clock.clone();
@@ -715,10 +754,11 @@ async fn dashboard(
             .map(|d| Content::Dashboard(d, config.clock.clone(), metrics.clone()))
     };
     blocking(move || {
-        app.manager.choose(
+        app.manager.choose_for(
             &id,
             Content::Dashboard(config, clock, metrics),
             Chosen::Rebuild(Arc::new(rebuild)),
+            time,
         )?;
         Ok(StatusCode::NO_CONTENT)
     })
@@ -739,10 +779,15 @@ fn dashboard_with(
     Ok(config)
 }
 
-async fn stop(State(app): State<AppState>, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+async fn stop(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<ForQuery>,
+) -> Result<StatusCode, ApiError> {
+    let time = for_time(query.seconds)?;
     blocking(move || {
         app.manager
-            .choose(&id, Content::Nothing, Chosen::same(Content::Nothing))?;
+            .choose_for(&id, Content::Nothing, Chosen::same(Content::Nothing), time)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await

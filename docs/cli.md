@@ -146,7 +146,7 @@ ssp notify --dismiss
 ![A notification over the clock](images/notify.png)
 
 `ssp notify` draws a message over whatever the display shows, for 10 seconds (`--for
-<seconds>`, up to a day) or until it is dismissed or replaced (`--sticky`); then the screen goes
+<time>`, such as `60` or `5m`, up to a day) or until it is dismissed or replaced (`--sticky`); then the screen goes
 back to what it showed. The content keeps running underneath: the clock keeps ticking above the
 banner, a video keeps playing. A new notification replaces the current one. `--detail` adds a
 smaller line, `--color` sets the background (`red`, `orange`, `yellow`, `green`, `blue`, `gray`
@@ -326,6 +326,22 @@ zones = [
 gap = 16                 # pixels between zones
 ```
 
+### Show something for a while, then go back
+
+`--for` shows something for a while, then what the display showed before:
+
+```sh
+ssp show build-failed.png --for 10m
+ssp web https://example.com/standup.html --for 15m
+ssp clear --for 1h        # black for an hour
+```
+
+The time is seconds (`90`) or a number with `s`, `m` or `h` (`90s`, `10m`, `2h`), up to a week.
+`ssp show`, `web`, `clock`, `dashboard`, `layout`, `stop` and `clear` take it, and `ssp status`
+shows how long is left. Another change before then (by hand, the schedule's next entry, a
+stream) ends it early. Several in a row go back to what showed before the first one. To show a
+message over the screen instead, use `ssp notify`.
+
 ### Stop, blank or turn off the screen
 
 | Command | What happens to the picture | The screen | The clock / dashboard / image / stream |
@@ -376,7 +392,8 @@ entry that shows something also switches the screen on, unless it says `power = 
 (`"mon"` to `"sun"`) limits an entry to some days, and `display = "<id>"` to one display. When
 the daemon starts or a display connects, it gets what the schedule says at that moment.
 
-Changes by hand (`ssp clock`, `ssp brightness`, `ssp off`, the API) last until the next entry.
+Changes by hand (`ssp clock`, `ssp brightness`, `ssp off`, the API) last until the next entry,
+or until their `--for` time is up.
 A WebSocket stream lasts until its sender ends it: two seconds later, the display shows what
 the schedule says. `ssp schedule` shows the last and the next entries; `ssp schedule pause` stops the changes, and
 `ssp schedule resume` applies what the schedule says now and starts them again.
@@ -610,6 +627,7 @@ These work with every command.
 | `  --fit contain\|cover\|stretch` | How pictures and videos are fitted into their zones. |
 | `ssp stop` | Stop the clock, dashboard, image or stream. The screen keeps its last picture. |
 | `ssp clear` | Stop the clock, dashboard, image or stream and blank the screen. |
+| `--for <TIME>` | With `show`, `clock`, `dashboard`, `web`, `layout`, `stop` and `clear`: show it for this long, then what was shown before. Seconds, or `90s`, `10m`, `2h`; up to a week. Not with `--persist`. |
 
 ### Screen
 
@@ -620,7 +638,7 @@ These work with every command.
 | `ssp off` | Switch the screen off. What is being shown keeps running. |
 | `ssp notify <TEXT>` | Show a message over the screen for a while, then go back to what was shown. |
 | `  --detail <TEXT>` | A smaller line under the message. |
-| `  --for <SECONDS>` | How long it stays: 1 to 86400, default 10. |
+| `  --for <TIME>` | How long it stays: seconds, or `90s`, `5m`, `2h`; up to a day, default 10 seconds. |
 | `  --sticky` | Keep it until dismissed or replaced. |
 | `  --style banner\|full` | Draw it across the bottom third (default) or the whole panel. |
 | `  --color <COLOR>` | `red`, `orange`, `yellow`, `green`, `blue` (default), `gray` or `#rrggbb`. |

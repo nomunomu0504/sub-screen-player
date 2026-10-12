@@ -92,7 +92,7 @@ struct Daemon {
     /// Why the last reload went back to the config before, for `GET /health`.
     reload_error: Arc<std::sync::Mutex<Option<String>>>,
     /// What displays were told to show through the API before the reload, to show again.
-    chosen: std::sync::Mutex<Vec<(String, manager::Chosen)>>,
+    chosen: std::sync::Mutex<Vec<(String, manager::Kept)>>,
 }
 
 impl Daemon {
@@ -144,6 +144,7 @@ impl Daemon {
         manager.restore(chosen, &config, &metrics);
 
         let scanner = manager.spawn_scanner(SCAN_INTERVAL);
+        let timer = manager.spawn_timer();
         let scheduler = schedule.map(|s| s.spawn(manager.clone()));
         // Browsers a killed daemon left running; looking at all processes takes a moment.
         let _ = std::thread::Builder::new()
@@ -183,6 +184,7 @@ impl Daemon {
                 scheduler.stop();
             }
             scanner.stop();
+            timer.stop();
             if reloading {
                 manager.close();
             } else {

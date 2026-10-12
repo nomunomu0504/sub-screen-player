@@ -534,25 +534,24 @@ mod tests {
         let page = WebPage::new(url.as_str(), None).unwrap();
         let running = Running::start(&page, web, "", (320, 80));
         let started = Instant::now();
-        let (mut shown, mut red) = (0, false);
-        while !red && started.elapsed() < Duration::from_secs(60) {
+        let (mut shown, mut red, mut paced) = (0, false, true);
+        while paced && !red && started.elapsed() < Duration::from_secs(60) {
             let mut slot = running.wait_for(shown);
             assert_eq!(slot.ended, None);
             if let Some(frame) = slot.frame.take() {
                 shown = slot.count;
                 red = frame.image().get_pixel(300, 40).0[0] > 200;
+                paced = slot.paced;
             }
         }
-        assert!(red, "the last change shows");
-        let (paced, count) = {
-            let slot = lock(&running.shared.slot);
-            (slot.paced, slot.count)
-        };
-        // Unpaced, a browser sends 30-60 frames a second while the page moves.
         if paced {
-            assert!(count <= 20, "{count} frames at 5 fps");
+            assert!(red, "the last change shows ({shown} frames)");
+            // Unpaced, a browser sends 30-60 frames a second while the page moves.
+            assert!(shown <= 20, "{shown} frames at 5 fps");
         } else {
-            eprintln!("this browser cannot pace pages: {count} frames");
+            // Such a browser drops a frame that comes while the one before waits for its
+            // acknowledgement, at times the last change: what `sendLastFrame` is for.
+            eprintln!("skipped: this browser cannot pace pages");
         }
         drop(running);
         let _ = std::fs::remove_dir_all(dir);

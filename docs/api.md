@@ -85,6 +85,15 @@ Ids look like `d92-470B03781D1F` (driver id + USB serial number) and are listed 
 | `POST` | `/schedule/pause` | | Stops the changes at set times |
 | `POST` | `/schedule/resume` | | Applies the schedule now and starts the changes again |
 
+The requests that change what a display shows (`image`, `clock`, `dashboard`, `web`, `layout`,
+`clear`, `stop`) take the query parameter `for`: show it for so many seconds (1 to 604800, a
+week), then what the display showed before. Anything else that changes what the display shows
+before then ends it early.
+
+```sh
+curl -X POST "http://127.0.0.1:7920/api/v1/displays/default/clock?for=600"
+```
+
 ### `GET /health`
 
 ```json
@@ -149,6 +158,8 @@ kept. `ssp config reload` does all of this and waits.
 - `notification` appears while a notification is shown (see below):
   `{"text": "CI failed", "style": "banner", "color": "#dc2626", "seconds_left": 8, "sticky": false}`,
   with `detail` if it has one and without `seconds_left` if it is sticky.
+- `content_seconds_left` appears during a change for a while (`for`): the seconds until the
+  display shows again what it showed before.
 
 ### `POST /displays/{id}/image`
 
@@ -162,6 +173,7 @@ Query parameters:
 |---|---|---|
 | `fit` | `contain` (letterbox), `cover` (crop), `stretch` | `contain` |
 | `persist` | `true` also stores the image on the device (survives power loss, writes flash); the first frame of an animation | `false` |
+| `for` | Seconds to show it, then what showed before (see above); not with `persist` | |
 
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"

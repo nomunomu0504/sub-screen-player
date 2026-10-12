@@ -5,8 +5,8 @@
 //! moment is, for each of show, brightness and power, the latest occurrence of an entry that sets
 //! it, looking back up to a week on the days each entry applies. A `show` also switches the
 //! screen on, unless its entry sets `power`. The daemon applies the state to a display when it
-//! connects, and each entry at its time; changes by hand last until the next entry, and a
-//! WebSocket stream until its sender ends it. While paused, nothing is applied; resuming applies
+//! connects, and each entry at its time; changes by hand last until the next entry or the end of
+//! their time (`for`), and a WebSocket stream until its sender ends it. While paused, nothing is applied; resuming applies
 //! the state at once.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};

@@ -23,7 +23,7 @@ use super::types::{
 };
 use super::{AppState, router};
 use crate::config::{Config, RotationItem, ScheduleEntry, StartupConfig, StartupShow};
-use crate::manager::Manager;
+use crate::manager::{Manager, Timer};
 use crate::metrics::Metrics;
 use crate::reload::Reloader;
 use crate::schedule::Schedule;
@@ -44,6 +44,8 @@ struct Api {
     manager: Arc<Manager>,
     log: CallLog,
     dir: PathBuf,
+    /// Ends changes for a while, as in the daemon.
+    timer: Option<Timer>,
     /// Kept so that open WebSocket streams do not see the daemon stopping.
     _shutdown: watch::Sender<bool>,
 }
@@ -73,6 +75,7 @@ impl Api {
         let state = adjust(state, &metrics);
         Self {
             router: router(state),
+            timer: Some(manager.spawn_timer()),
             manager,
             log,
             dir,
@@ -114,6 +117,9 @@ impl Api {
 
 impl Drop for Api {
     fn drop(&mut self) {
+        if let Some(timer) = self.timer.take() {
+            timer.stop();
+        }
         self.manager.shutdown();
         let _ = std::fs::remove_dir_all(&self.dir);
     }
@@ -1128,7 +1134,11 @@ async fn chosen_content_is_built_again_with_the_new_config() {
     let rebuilt = || {
         let chosen = api.manager.chosen();
         assert_eq!(chosen.len(), 1);
-        chosen[0].1.content(&new, &Metrics::default()).unwrap()
+        chosen[0]
+            .1
+            .chosen()
+            .content(&new, &Metrics::default())
+            .unwrap()
     };
 
     // The clock keeps what the request set, over the new `[clock]`.
@@ -1159,4 +1169,40 @@ async fn chosen_content_is_built_again_with_the_new_config() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert_eq!(rebuilt().kind(), "nothing");
     let _ = std::fs::remove_file(fake_chrome);
+}
+
+#[tokio::test]
+async fn a_change_for_a_while_goes_back() {
+    let api = Api::new(config());
+    let me = format!("/api/v1/displays/{DISPLAY}");
+    let uri = |path: &str| format!("{me}/{path}");
+    let (status, body) = api.send(post(&uri("clock?for=1"), "")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let display: DisplayView = api.get(&me).await;
+    assert_eq!(display.content, "clock");
+    assert_eq!(display.content_seconds_left, Some(1));
+    let started = Instant::now();
+    while api.content().await != "nothing" {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "still showing the clock"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let display: DisplayView = api.get(&me).await;
+    assert_eq!(display.content_seconds_left, None);
+
+    for (path, body) in [
+        ("clock?for=0", Body::empty()),
+        ("stop?for=604801", Body::empty()),
+    ] {
+        let (status, answer) = api.send(post(&uri(path), body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path}: {answer}");
+        assert!(error(&answer).contains("for must be"), "{answer}");
+    }
+    let (status, answer) = api
+        .send(post(&uri("image?persist=true&for=5"), png()))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answer}");
+    assert_eq!(api.content().await, "nothing");
 }

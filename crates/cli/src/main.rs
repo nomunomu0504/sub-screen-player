@@ -120,6 +120,10 @@ enum Cmd {
         /// Also store the image on the device so it stays after power loss (writes flash memory)
         #[arg(long)]
         persist: bool,
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time,
+              conflicts_with = "persist")]
+        time: Option<u64>,
     },
     /// Show a web page or a local HTML file, drawn by headless Chrome
     Web {
@@ -135,6 +139,9 @@ enum Cmd {
         /// Only download headless Chrome (about 100 MB)
         #[arg(long)]
         install: bool,
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
     },
     /// Show the built-in clock
     Clock {
@@ -150,6 +157,9 @@ enum Cmd {
         /// Names for %a and %A, from Sunday, e.g. "日,月,火,水,木,金,土"
         #[arg(long, value_delimiter = ',')]
         weekdays: Option<Vec<String>>,
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
     },
     /// Show the built-in dashboard: the time, CPU, memory, network, disk and your own metrics
     Dashboard {
@@ -157,6 +167,9 @@ enum Cmd {
         /// metric:<id>, e.g. "clock,metric:ci,cpu"
         #[arg(long, value_delimiter = ',')]
         widgets: Option<Vec<Widget>>,
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
     },
     /// Send figures to the dashboard's `metric:<id>` panels
     Metric {
@@ -171,9 +184,8 @@ enum Cmd {
         /// A smaller line under the message (at most 120 characters)
         #[arg(long)]
         detail: Option<String>,
-        /// How long it stays, in seconds [default: 10]
-        #[arg(long = "for", value_name = "SECONDS",
-              value_parser = clap::value_parser!(u64).range(1..=86400))]
+        /// How long it stays: seconds, or 90s, 5m [default: 10]
+        #[arg(long = "for", value_name = "TIME", value_parser = notify_time)]
         seconds: Option<u64>,
         /// Keep it until dismissed or replaced
         #[arg(long, conflicts_with = "seconds")]
@@ -221,6 +233,9 @@ enum Cmd {
         /// How pictures and videos are fitted into their zones
         #[arg(long, value_enum, default_value_t = FitArg::Contain)]
         fit: FitArg,
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
     },
     /// Show the schedule of the config ([[schedule]]), or pause and resume it
     Schedule {
@@ -238,9 +253,17 @@ enum Cmd {
     /// Switch the screen off
     Off,
     /// Blank the screen
-    Clear,
+    Clear {
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
+    },
     /// Stop the clock, dashboard or image; the screen keeps its last picture
-    Stop,
+    Stop {
+        /// Show it for this long, then what was shown before: seconds, or 90s, 10m, 2h
+        #[arg(long = "for", value_name = "TIME", value_parser = while_time)]
+        time: Option<u64>,
+    },
     /// Start the daemon automatically at login
     Service {
         #[command(subcommand)]
@@ -534,19 +557,25 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Show { path, fit, persist } => {
+        Cmd::Show {
+            path,
+            fit,
+            persist,
+            time,
+        } => {
             if persist && looks_like_a_video(&path) {
                 anyhow::bail!("--persist stores a picture on the display; it does not take videos");
             }
             let query = format!("?fit={}&persist={persist}", fit.name());
             cli_client(&cli.url, &cli.token, &config_path)?
-                .post_file(&format!("{display}/image{query}"), &path)
+                .post_file(&with_time(format!("{display}/image{query}"), time), &path)
         }
         Cmd::Web {
             page,
             reload,
             yes,
             install,
+            time,
         } => {
             let client = cli_client(&cli.url, &cli.token, &config_path)?;
             ensure_chrome(&client, yes || install)?;
@@ -557,13 +586,14 @@ fn run(cli: Cli) -> Result<()> {
                 url: page_url(&page)?,
                 reload,
             };
-            client.post_json(&format!("{display}/web"), &request)
+            client.post_json(&with_time(format!("{display}/web"), time), &request)
         }
         Cmd::Clock {
             no_seconds,
             format,
             date_format,
             weekdays,
+            time,
         } => {
             let request = ClockRequest {
                 seconds: no_seconds.then_some(false),
@@ -573,15 +603,15 @@ fn run(cli: Cli) -> Result<()> {
                 ..ClockRequest::default()
             };
             cli_client(&cli.url, &cli.token, &config_path)?
-                .post_json(&format!("{display}/clock"), &request)
+                .post_json(&with_time(format!("{display}/clock"), time), &request)
         }
-        Cmd::Dashboard { widgets } => {
+        Cmd::Dashboard { widgets, time } => {
             let request = DashboardRequest {
                 widgets,
                 ..DashboardRequest::default()
             };
             cli_client(&cli.url, &cli.token, &config_path)?
-                .post_json(&format!("{display}/dashboard"), &request)
+                .post_json(&with_time(format!("{display}/dashboard"), time), &request)
         }
         Cmd::Metric { action } => metric(&cli_client(&cli.url, &cli.token, &config_path)?, action),
         Cmd::Notify {
@@ -669,6 +699,7 @@ fn run(cli: Cli) -> Result<()> {
             widths,
             gap,
             fit,
+            time,
         } => {
             if widths.len() > zones.len() {
                 anyhow::bail!("more --widths than zones");
@@ -688,7 +719,7 @@ fn run(cli: Cli) -> Result<()> {
                 ..LayoutConfig::default()
             };
             cli_client(&cli.url, &cli.token, &config_path)?
-                .post_json(&format!("{display}/layout"), &layout)
+                .post_json(&with_time(format!("{display}/layout"), time), &layout)
         }
         Cmd::Schedule { action } => {
             let client = cli_client(&cli.url, &cli.token, &config_path)?;
@@ -711,12 +742,10 @@ fn run(cli: Cli) -> Result<()> {
                 on: matches!(cli.command, Cmd::On),
             },
         ),
-        Cmd::Clear => {
-            cli_client(&cli.url, &cli.token, &config_path)?.post_empty(&format!("{display}/clear"))
-        }
-        Cmd::Stop => {
-            cli_client(&cli.url, &cli.token, &config_path)?.post_empty(&format!("{display}/stop"))
-        }
+        Cmd::Clear { time } => cli_client(&cli.url, &cli.token, &config_path)?
+            .post_empty(&with_time(format!("{display}/clear"), time)),
+        Cmd::Stop { time } => cli_client(&cli.url, &cli.token, &config_path)?
+            .post_empty(&with_time(format!("{display}/stop"), time)),
         Cmd::Service { action } => {
             let message = match action {
                 ServiceCmd::Install => service::install(&config_path)?,
@@ -1048,7 +1077,16 @@ fn status(client: &Client) -> Result<()> {
         } else {
             "unplugged"
         };
-        say!("\n{}  {} ({state}, showing {})", d.id, d.model, d.content);
+        let left = d
+            .content_seconds_left
+            .map(|s| format!(" for {} more", time_left(s)))
+            .unwrap_or_default();
+        say!(
+            "\n{}  {} ({state}, showing {}{left})",
+            d.id,
+            d.model,
+            d.content
+        );
         if let Some(fw) = &d.firmware {
             say!("  firmware  {fw}");
         }
@@ -1169,6 +1207,61 @@ impl From<FitArg> for FitName {
 }
 
 /// A URL as it is, or a file as a `file://` URL.
+/// Seconds from `90`, `90s`, `10m` or `2h`.
+fn seconds(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let (number, scale) = match text.chars().last() {
+        Some('s') => (&text[..text.len() - 1], 1),
+        Some('m') => (&text[..text.len() - 1], 60),
+        Some('h') => (&text[..text.len() - 1], 3600),
+        _ => (text, 1),
+    };
+    number
+        .parse::<u64>()
+        .ok()
+        .and_then(|n| n.checked_mul(scale))
+        .ok_or_else(|| format!("{text:?} is not a time: give seconds, or 90s, 10m, 2h"))
+}
+
+/// `--for` of the commands that change what a display shows: up to a week.
+fn while_time(text: &str) -> Result<u64, String> {
+    match seconds(text)? {
+        s @ 1..=604_800 => Ok(s),
+        _ => Err("give 1 second to a week (168h)".into()),
+    }
+}
+
+/// `--for` of `ssp notify`: up to a day.
+fn notify_time(text: &str) -> Result<u64, String> {
+    match seconds(text)? {
+        s @ 1..=86_400 => Ok(s),
+        _ => Err("give 1 second to a day (24h)".into()),
+    }
+}
+
+/// `path` with `for` added to its query, if a time is given.
+fn with_time(path: String, time: Option<u64>) -> String {
+    match time {
+        None => path,
+        Some(time) => {
+            let join = if path.contains('?') { '&' } else { '?' };
+            format!("{path}{join}for={time}")
+        }
+    }
+}
+
+/// `90` as `90 s`, `1500` as `25 min`, `9000` as `2 h 30 min`.
+fn time_left(seconds: u64) -> String {
+    match seconds {
+        0..120 => format!("{seconds} s"),
+        120..7200 => format!("{} min", seconds.div_ceil(60)),
+        _ => {
+            let minutes = seconds.div_ceil(60);
+            format!("{} h {} min", minutes / 60, minutes % 60)
+        }
+    }
+}
+
 fn page_url(page: &str) -> Result<String> {
     if let Ok(url) = url::Url::parse(page)
         && matches!(url.scheme(), "http" | "https" | "file")
@@ -1401,6 +1494,33 @@ mod tests {
         assert!(text.ends_with('…'));
         let detail = detail.unwrap();
         assert_eq!(detail.chars().count(), ssp_server::notify::MAX_DETAIL);
+    }
+
+    #[test]
+    fn reads_times() {
+        assert_eq!(seconds("90"), Ok(90));
+        assert_eq!(seconds("90s"), Ok(90));
+        assert_eq!(seconds("10m"), Ok(600));
+        assert_eq!(seconds(" 2h "), Ok(7200));
+        assert!(seconds("10 minutes").is_err());
+        assert!(seconds("m").is_err());
+        assert!(seconds("-5").is_err());
+        assert_eq!(while_time("168h"), Ok(604_800));
+        assert!(while_time("0").is_err());
+        assert!(while_time("169h").is_err());
+        assert!(notify_time("25h").is_err());
+        assert_eq!(
+            with_time("default/image?fit=contain".into(), Some(60)),
+            "default/image?fit=contain&for=60"
+        );
+        assert_eq!(
+            with_time("default/stop".into(), Some(5)),
+            "default/stop?for=5"
+        );
+        assert_eq!(with_time("default/stop".into(), None), "default/stop");
+        assert_eq!(time_left(90), "90 s");
+        assert_eq!(time_left(1500), "25 min");
+        assert_eq!(time_left(9000), "2 h 30 min");
     }
 
     #[test]

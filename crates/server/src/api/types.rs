@@ -64,6 +64,10 @@ pub struct DisplayView {
     /// and from daemons before 0.5.0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notification: Option<NotificationView>,
+    /// Seconds until a change for a while (`for`) ends and the display shows again what it
+    /// showed before. Missing otherwise, and from daemons before 0.10.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_seconds_left: Option<u64>,
 }
 
 /// A notification being shown, in [`DisplayView`].
@@ -232,6 +236,19 @@ pub struct ImageQuery {
     pub fit: Option<FitName>,
     /// Also store the image on the device so it survives power cycles.
     pub persist: bool,
+    /// Show it for this many seconds, then what showed before.
+    #[serde(rename = "for")]
+    pub seconds: Option<u64>,
+}
+
+/// Query of the requests that change what a display shows (`/clock`, `/dashboard`, `/web`,
+/// `/layout`, `/clear`, `/stop`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ForQuery {
+    /// Show it for this many seconds, then what showed before.
+    #[serde(rename = "for")]
+    pub seconds: Option<u64>,
 }
 
 /// Query of `GET /api/v1/displays/{id}/stream` (WebSocket).

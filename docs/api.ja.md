@@ -82,6 +82,14 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 | `POST` | `/schedule/pause` | | 時刻による切り替えを止める |
 | `POST` | `/schedule/resume` | | 今の状態を当てはめて切り替えを再開する |
 
+表示する内容を変えるリクエスト（`image`・`clock`・`dashboard`・`web`・`layout`・`clear`・`stop`）は、クエリパラメータ
+`for` を受け付けます。その秒数（1〜604800、1 週間）だけ表示し、それまでの表示に戻します。それより前に表示する内容を
+変えるほかの操作があれば、そこで終わります。
+
+```sh
+curl -X POST "http://127.0.0.1:7920/api/v1/displays/default/clock?for=600"
+```
+
 ### `GET /health`
 
 ```json
@@ -142,6 +150,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 - `notification` は通知を出している間だけ入ります（後述）:
   `{"text": "CI が失敗しました", "style": "banner", "color": "#dc2626", "seconds_left": 8, "sticky": false}`。
   2行目があれば `detail` が入り、`sticky` のときは `seconds_left` がありません。
+- `content_seconds_left` は、しばらくのあいだだけの変更（`for`）の間だけ入ります。それまでの表示に戻るまでの秒数です。
 
 ### `POST /displays/{id}/image`
 
@@ -154,6 +163,7 @@ ID は `d92-470B03781D1F`（ドライバ ID ＋ USB シリアル番号）のよ�
 |---|---|---|
 | `fit` | `contain`（全体を収めて余白は黒）、`cover`（はみ出しを切り取り）、`stretch`（引き伸ばし） | `contain` |
 | `persist` | `true` でデバイスにも保存（電源を切っても残る。フラッシュに書き込みます）。アニメーションは最初のコマ | `false` |
+| `for` | 表示する秒数。そのあとそれまでの表示に戻します（上記）。`persist` とは使えません | |
 
 ```sh
 curl --data-binary @photo.png "http://127.0.0.1:7920/api/v1/displays/default/image?fit=cover"

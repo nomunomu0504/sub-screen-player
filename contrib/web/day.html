@@ -24,7 +24,9 @@
     background: linear-gradient(90deg, #22d3ee, var(--accent)); }
   .fill::after { content: ""; position: absolute; inset: 0; border-radius: 28px;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
-    background-size: 40% 100%; background-repeat: no-repeat; animation: shine 3s linear infinite; }
+    background-size: 40% 100%; background-repeat: no-repeat; background-position: -60% 0; }
+  /* Once a minute: a page that moves all the time keeps the browser drawing (and the CPU busy). */
+  .fill.shine::after { animation: shine 3s linear; }
   @keyframes shine { from { background-position: -60% 0; } to { background-position: 160% 0; } }
   .percent { font-size: 64px; font-weight: 600; margin-top: 18px; font-variant-numeric: tabular-nums; }
 </style>
@@ -53,7 +55,10 @@
     $('fill').style.width = (share * 100).toFixed(2) + '%';
     $('percent').textContent = (share * 100).toFixed(1) + '% of the day';
     $('left').textContent = `${Math.floor(left / 60)} h ${left % 60} min left`;
+    if (now.getSeconds() === 0) $('fill').classList.add('shine');
   }
+  $('fill').addEventListener('animationend', () => $('fill').classList.remove('shine'));
+  $('fill').classList.add('shine');
   update();
   setInterval(update, 1000);
 </script>

@@ -163,7 +163,7 @@ export const copy: Record<Lang, Copy> = {
 				['Up to 60 fps', 'A single Rust binary. If frames arrive faster than the display takes them, only the newest is sent.'],
 				['HTTP + WebSocket API', 'Draw on the screen from any language: send one image, a stream of frames, or just a number.'],
 				['Starts at login', 'Unplug the display and plug it back in — it carries on with what it was showing.'],
-				['Localhost only by default', 'The API listens on your own machine. Nothing is sent to the outside.'],
+				['Localhost only by default', 'The API listens on your own machine. The only request to the outside is a daily check for a new version, which you can turn off.'],
 			],
 		},
 		api: {
@@ -283,7 +283,7 @@ export const copy: Record<Lang, Copy> = {
 				['最大 60fps', 'Rust 製の単一バイナリです。ディスプレイが受け取れる速さを超えたら、最新のフレームだけを送ります。'],
 				['HTTP + WebSocket API', 'どの言語からでも描画できます。画像 1 枚でも、連続したフレームでも、数値 1 つでも。'],
 				['ログイン時に自動起動', 'ディスプレイを抜き差ししても、表示していた内容をそのまま続けます。'],
-				['初期設定は localhost のみ', 'API は自分の PC の中だけで待ち受けます。外部には何も送りません。'],
+				['初期設定は localhost のみ', 'API は自分の PC の中だけで待ち受けます。外部への問い合わせは 1 日 1 回の新しい版の確認だけで、止めることもできます。'],
 			],
 		},
 		api: {

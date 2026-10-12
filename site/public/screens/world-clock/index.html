@@ -1,0 +1,126 @@
+<!doctype html>
+<!--
+  sub-screen-player screen gallery: "world-clock".
+  The time in several places, with their date, the difference to this computer's time and
+  whether it is day or night there. Needs nothing from the daemon. Made for a 1920x462 panel:
+
+    ssp web "https://subscreen.dev/screens/world-clock/?zones=Asia/Tokyo,Europe/London,America/New_York"
+
+  ?zones= takes up to six time zones by their IANA names (Tokyo, London, New York and Los
+  Angeles if not); ?labels= names them in the same order (the city of the zone if not).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=462">
+<title>World clock — sub-screen-player screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg: #05070b; --panel: #0b0f17; --line: #1c2431; --text: #f0f2f8; --muted: #8591a3;
+    --mint: #6ee7b7; --blue: #60a5fa; --amber: #fbbf24; --violet: #c4b5fd; --size: 150px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  main { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 24px; height: 100vh; padding: 36px 44px; }
+  .panel { display: flex; flex-direction: column; justify-content: space-between; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 22px; padding: 26px 28px; min-width: 0; }
+  .panel.here { border-color: #2c4a43; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .label { font-size: 24px; letter-spacing: 3px; color: var(--muted); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .here .label { color: var(--mint); }
+  .icon { width: 44px; height: 44px; flex: none; }
+  .icon path, .icon circle, .icon line { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+  .time { font-size: var(--size); font-weight: 700; letter-spacing: calc(var(--size) / -25); line-height: 1;
+    font-variant-numeric: tabular-nums; }
+  .date { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .diff { font-size: 22px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .wrong { color: var(--amber); font-size: 26px; }
+</style>
+</head>
+<body>
+<main id="main"></main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const query = new URLSearchParams(location.search);
+  const list = (key) => (query.get(key) || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const zones = (list('zones').length ? list('zones') : ['Asia/Tokyo', 'Europe/London', 'America/New_York', 'America/Los_Angeles']).slice(0, 6);
+  const labels = list('labels');
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // The time in `zone` as its parts; null for a name the browser does not know.
+  function partsIn(zone, date) {
+    try {
+      const format = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric',
+        month: 'short', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      return Object.fromEntries(format.formatToParts(date).map((p) => [p.type, p.value]));
+    } catch {
+      return null;
+    }
+  }
+
+  // Minutes `zone` is ahead of UTC.
+  function offset(zone, date) {
+    const p = partsIn(zone, date);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const local = Date.UTC(+p.year, months.indexOf(p.month), +p.day, +p.hour, +p.minute);
+    return Math.round((local - Math.floor(date / 6e4) * 6e4) / 6e4);
+  }
+
+  const hours = (minutes) => {
+    const sign = minutes < 0 ? '−' : '+';
+    const m = Math.abs(minutes);
+    return `${sign}${Math.floor(m / 60)}${m % 60 ? `:${String(m % 60).padStart(2, '0')}` : ''} h`;
+  };
+
+  const SUN = `<circle cx="50" cy="50" r="18" stroke="#fbbf24"/>` + [0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+    const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+    return `<line x1="${50 + 28 * c}" y1="${50 + 28 * s}" x2="${50 + 38 * c}" y2="${50 + 38 * s}" stroke="#fbbf24"/>`;
+  }).join('');
+  const MOON = `<path d="M62 22a30 30 0 1 0 18 46a24 24 0 0 1-18-46z" stroke="#c4b5fd"/>`;
+
+  // One panel per zone; the time fits the panel's width.
+  const width = (1920 - 88 - 24 * (zones.length - 1)) / zones.length - 56;
+  document.documentElement.style.setProperty('--size', `${Math.min(180, Math.floor(width / 3.05))}px`);
+  $('main').innerHTML = zones.map((zone) =>
+    `<section class="panel${zone === here ? ' here' : ''}"><div class="head"><span class="label"></span>` +
+    `<svg class="icon" viewBox="0 0 100 100"></svg></div><div class="time">--:--</div>` +
+    `<div><div class="date"></div><div class="diff"></div></div></section>`).join('');
+  const panels = [...document.querySelectorAll('.panel')];
+  zones.forEach((zone, i) => {
+    panels[i].querySelector('.label').textContent = (labels[i] || zone.split('/').pop().replace(/_/g, ' ')).toUpperCase();
+  });
+
+  // Everything here changes once a minute: only then is the page drawn again.
+  let shown = -1;
+  function tick() {
+    const now = new Date();
+    const minute = Math.floor(now / 6e4);
+    if (minute === shown) return;
+    shown = minute;
+    const mine = -now.getTimezoneOffset();
+    zones.forEach((zone, i) => {
+      const panel = panels[i];
+      const p = partsIn(zone, now);
+      if (!p) {
+        panel.querySelector('.time').textContent = '--:--';
+        panel.querySelector('.date').innerHTML = '<span class="wrong">unknown zone</span>';
+        panel.querySelector('.diff').textContent = zone;
+        return;
+      }
+      panel.querySelector('.time').textContent = `${p.hour}:${p.minute}`;
+      panel.querySelector('.date').textContent = `${p.weekday}, ${p.month} ${p.day}`;
+      const diff = offset(zone, now) - mine;
+      panel.querySelector('.diff').textContent = diff === 0 ? 'same time as here' : `${hours(diff)} from here`;
+      const hour = +p.hour;
+      panel.querySelector('.icon').innerHTML = hour >= 6 && hour < 18 ? SUN : MOON;
+    });
+  }
+
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

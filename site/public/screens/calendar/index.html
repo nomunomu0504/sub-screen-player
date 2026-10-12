@@ -1,0 +1,127 @@
+<!doctype html>
+<!--
+  sub-screen-player screen gallery: "calendar".
+  The time and the date with this month and the next as calendars, today marked. Needs nothing
+  from the daemon. Made for a 1920x462 panel:
+
+    ssp web https://subscreen.dev/screens/calendar/
+
+  ?monday starts the weeks on Monday (Sunday if not).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=462">
+<title>Calendar — sub-screen-player screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg: #05070b; --panel: #0b0f17; --line: #1c2431; --text: #f0f2f8; --muted: #8591a3;
+    --mint: #6ee7b7; --blue: #60a5fa; --amber: #fbbf24; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  main { display: grid; grid-template-columns: 560px 1fr 1fr; gap: 24px; height: 100vh; padding: 36px 44px; }
+  .clock { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+  .time { font-size: 150px; font-weight: 700; letter-spacing: -6px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .time .s { color: var(--muted); font-size: 70px; letter-spacing: -2px; margin-left: 10px; }
+  .date { font-size: 30px; color: var(--muted); padding-left: 6px; }
+  .week { font-size: 22px; color: var(--muted); padding-left: 6px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .panel { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 22px; padding: 22px 28px; min-width: 0; }
+  .label { font-size: 22px; letter-spacing: 3px; color: var(--muted); }
+  .month { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: repeat(7, 1fr);
+    margin-top: 10px; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .month span { display: flex; align-items: center; justify-content: center; }
+  .month .head { font-size: 18px; letter-spacing: 2px; color: var(--muted); }
+  .month .sun { color: var(--amber); }
+  .month .sat { color: var(--blue); }
+  .month .past { opacity: .4; }
+  .month .today { position: relative; z-index: 0; color: var(--bg); font-weight: 700; }
+  .month .today::before { content: ""; position: absolute; width: 50px; height: 40px; border-radius: 12px;
+    background: var(--mint); z-index: -1; }
+</style>
+</head>
+<body>
+<main>
+  <section class="clock">
+    <div class="time"><span id="hm">--:--</span><span class="s" id="sec">--</span></div>
+    <div class="date" id="date"></div>
+    <div class="week" id="week"></div>
+  </section>
+  <section class="panel">
+    <div class="label" id="this-label"></div>
+    <div class="month" id="this-month"></div>
+  </section>
+  <section class="panel">
+    <div class="label" id="next-label"></div>
+    <div class="month" id="next-month"></div>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const monday = new URLSearchParams(location.search).has('monday');
+  const pad = (n) => String(n).padStart(2, '0');
+  const NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+  // The month of `first` (its first day) as a 7x6 grid under the weekday names; days before
+  // `today` are dimmed and `today` is marked.
+  function month(first, today) {
+    const order = monday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    const kind = (weekday) => (weekday === 0 ? ' sun' : weekday === 6 ? ' sat' : '');
+    let cells = order.map((d) => `<span class="head${kind(d)}">${NAMES[d]}</span>`).join('');
+    const lead = order.indexOf(first.getDay());
+    const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    for (let i = 0; i < 42; i++) {
+      const day = i - lead + 1;
+      if (day < 1 || day > days) { cells += '<span></span>'; continue; }
+      const date = new Date(first.getFullYear(), first.getMonth(), day);
+      let cls = kind(date.getDay());
+      if (date < today) cls += ' past';
+      if (date.getTime() === today.getTime()) cls += ' today';
+      cells += `<span class="${cls.trim()}">${day}</span>`;
+    }
+    return cells;
+  }
+
+  // ISO 8601 week number.
+  function isoWeek(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const start = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d - start) / 864e5 + 1) / 7);
+  }
+
+  // The calendars change once a day; the rest of the second only the clock.
+  let shown = '';
+  function day(now) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const key = today.toDateString();
+    if (key === shown) return;
+    shown = key;
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const title = (d) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    $('this-label').textContent = title(first);
+    $('this-month').innerHTML = month(first, today);
+    $('next-label').textContent = title(next);
+    $('next-month').innerHTML = month(next, today);
+    $('date').textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const yearDay = Math.round((today - new Date(now.getFullYear(), 0, 1)) / 864e5) + 1;
+    const yearDays = Math.round((new Date(now.getFullYear() + 1, 0, 1) - new Date(now.getFullYear(), 0, 1)) / 864e5);
+    $('week').textContent = `week ${isoWeek(today)} · day ${yearDay} of ${yearDays}`;
+  }
+
+  function tick() {
+    const now = new Date();
+    $('hm').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    $('sec').textContent = pad(now.getSeconds());
+    day(now);
+  }
+
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

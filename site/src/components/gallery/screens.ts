@@ -8,6 +8,9 @@ import claudeCode from '../../assets/gallery/claude-code.png';
 import metrics from '../../assets/gallery/metrics.png';
 import weather from '../../assets/gallery/weather.png';
 import day from '../../assets/gallery/day.png';
+import calendar from '../../assets/gallery/calendar.png';
+import worldClock from '../../assets/gallery/world-clock.png';
+import countdown from '../../assets/gallery/countdown.png';
 
 export interface Screen {
 	name: string;
@@ -72,5 +75,38 @@ export const screens: Screen[] = [
 			en: 'The time, the date and how much of the day has gone. Needs nothing from the daemon.',
 			ja: '時刻と日付、1 日のうちどれだけ過ぎたか。デーモンの数値は使いません。',
 		},
+	},
+	{
+		name: 'calendar',
+		image: calendar,
+		reads: [],
+		title: { en: 'Calendar', ja: 'カレンダー' },
+		text: {
+			en: 'The time and the date with this month and the next, today marked, and the week of the year. Weeks start on Sunday; ?monday starts them on Monday.',
+			ja: '時刻と日付に、今月と来月のカレンダー（今日に印）と、年の何週目か。週は日曜始まりで、?monday で月曜始まりになります。',
+		},
+		variant: 'ssp web "https://subscreen.dev/screens/calendar/?monday"',
+	},
+	{
+		name: 'world-clock',
+		image: worldClock,
+		reads: [],
+		title: { en: 'World clock', ja: '世界時計' },
+		text: {
+			en: 'The time in up to six places, with their date, how far they are from your time and whether it is day or night there. Give the time zones with ?zones= (Tokyo, London, New York and Los Angeles if not) and their names with ?labels=.',
+			ja: '最大 6 か所の時刻と日付、手元の時刻との差、昼か夜か。タイムゾーンは ?zones= で指定し（省略すると東京・ロンドン・ニューヨーク・ロサンゼルス）、?labels= で表示名を付けられます。',
+		},
+		variant: 'ssp web "https://subscreen.dev/screens/world-clock/?zones=Asia/Tokyo,Asia/Singapore,Europe/Berlin&labels=Tokyo,Singapore,Berlin"',
+	},
+	{
+		name: 'countdown',
+		image: countdown,
+		reads: [],
+		title: { en: 'Countdown', ja: 'カウントダウン' },
+		text: {
+			en: 'Days, hours and minutes until a moment, and how long ago it was once it has passed. Give it with ?to= (2026-12-24T18:00, your time) and name it with ?label=; without them, it counts to the new year.',
+			ja: 'ある時刻までの日数・時間・分と、過ぎてからはその経過時間。時刻は ?to=（2026-12-24T18:00 のように手元の時刻で）、名前は ?label= で指定します。省略すると新年までを数えます。',
+		},
+		variant: 'ssp web "https://subscreen.dev/screens/countdown/?to=2026-12-24T18:00&label=Party"',
 	},
 ];

@@ -1206,7 +1206,6 @@ impl From<FitArg> for FitName {
     }
 }
 
-/// A URL as it is, or a file as a `file://` URL.
 /// Seconds from `90`, `90s`, `10m` or `2h`.
 fn seconds(text: &str) -> Result<u64, String> {
     let text = text.trim();
@@ -1262,6 +1261,7 @@ fn time_left(seconds: u64) -> String {
     }
 }
 
+/// A URL as it is, or a file as a `file://` URL.
 fn page_url(page: &str) -> Result<String> {
     if let Ok(url) = url::Url::parse(page)
         && matches!(url.scheme(), "http" | "https" | "file")

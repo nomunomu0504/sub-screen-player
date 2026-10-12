@@ -1176,11 +1176,11 @@ async fn a_change_for_a_while_goes_back() {
     let api = Api::new(config());
     let me = format!("/api/v1/displays/{DISPLAY}");
     let uri = |path: &str| format!("{me}/{path}");
-    let (status, body) = api.send(post(&uri("clock?for=1"), "")).await;
+    let (status, body) = api.send(post(&uri("clock?for=2"), "")).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
     let display: DisplayView = api.get(&me).await;
     assert_eq!(display.content, "clock");
-    assert_eq!(display.content_seconds_left, Some(1));
+    assert_eq!(display.content_seconds_left, Some(2));
     let started = Instant::now();
     while api.content().await != "nothing" {
         assert!(

@@ -916,7 +916,7 @@ mod tests {
         let manager = Arc::new(manager(StartupShow::Clock));
         let timer = manager.spawn_timer();
         attach(&manager, "a");
-        let short = Some(Duration::from_millis(150));
+        let short = Some(Duration::from_secs(1));
         manager
             .choose_for(
                 "default",
@@ -994,7 +994,7 @@ mod tests {
         manager
             .choose("default", Content::Nothing, Chosen::same(Content::Nothing))
             .unwrap();
-        let time = Some(Duration::from_millis(400));
+        let time = Some(Duration::from_secs(2));
         manager
             .choose_for("default", dashboard(), Chosen::same(dashboard()), time)
             .unwrap();

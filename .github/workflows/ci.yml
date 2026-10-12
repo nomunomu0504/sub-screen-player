@@ -42,25 +42,36 @@ jobs:
       - name: Lint
         run: mise run lint
 
-      # The runners come with Google Chrome; the web page test uses it when it is set. Ubuntu
-      # 24.04 keeps Chrome's sandbox from starting unless user namespaces are allowed.
-      - name: Find Chrome
+      # The web page tests use the browser in SSP_TEST_CHROME: the headless Chrome that
+      # `ssp web --install` downloads (the current stable one, which paces pages), and after the
+      # tests the runner's Google Chrome, which can be older. Ubuntu 24.04 keeps Chrome's sandbox
+      # from starting unless user namespaces are allowed.
+      - name: Download headless Chrome
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           fi
+          chrome=$(mise exec -- cargo run -q --locked -p ssp-server --example install-chrome \
+            -- "$RUNNER_TEMP/chrome")
+          echo "SSP_TEST_CHROME=$chrome" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: mise run test
+
+      - name: Web pages with Google Chrome
+        shell: bash
+        run: |
           for chrome in /usr/bin/google-chrome \
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
               "C:/Program Files/Google/Chrome/Application/chrome.exe"; do
             if [ -f "$chrome" ]; then
-              echo "SSP_TEST_CHROME=$chrome" >> "$GITHUB_ENV"
-              break
+              SSP_TEST_CHROME="$chrome" mise exec -- cargo test --locked -p ssp-server --lib \
+                -- sources::web:: web::cdp::
+              exit
             fi
           done
-
-      - name: Test
-        run: mise run test
+          echo "no Google Chrome on this runner"
 
       - name: Release build
         run: mise run build

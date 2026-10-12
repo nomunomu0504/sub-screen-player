@@ -56,7 +56,9 @@ device-specific protocol has to be written; everything else is shared.
 - **Hotplug**: unplug and replug the display and it carries on with what it was showing.
 - **Autostart** at login (launchd, systemd user unit or the Windows `Run` key).
 - **Secure by default**: the API listens on localhost only and refuses requests from web
-  pages. Exposing it on the network requires a token.
+  pages. Exposing it on the network requires a token. The only request `ssp` makes by itself
+  is `ssp status` checking for a newer version, at most once a day, which can be turned off
+  ([details](docs/cli.md#keep-ssp-up-to-date)).
 
 ## What it can show
 

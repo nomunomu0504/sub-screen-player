@@ -343,8 +343,6 @@ fn to_event(message: Value) -> Option<Event> {
 mod tests {
     use super::*;
 
-    /// A browser left by a daemon that is gone is stopped and its profile deleted. Uses the
-    /// browser in `SSP_TEST_CHROME`, if set.
     #[test]
     fn finds_the_devtools_address_in_the_log() {
         let log = "[1009/203100.1:WARNING] something\n\
@@ -356,6 +354,8 @@ mod tests {
         assert_eq!(devtools_from_log("Fontconfig error\n"), None);
     }
 
+    /// A browser left by a daemon that is gone is stopped and its profile deleted. Uses the
+    /// browser in `SSP_TEST_CHROME`, if set.
     #[test]
     fn cleans_up_after_a_killed_daemon() {
         let Some(chrome) = std::env::var_os("SSP_TEST_CHROME") else {

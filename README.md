@@ -6,6 +6,8 @@
 
 [日本語](README.ja.md) · **Website: [subscreen.dev](https://subscreen.dev/)** (downloads, one-line installer, docs)
 
+![A system dashboard; a clock, a video and a CI panel side by side; the weather; a Claude Code notification over the clock; a world clock](docs/images/overview.png)
+
 Drive small USB "sub screens" (the long bar displays that sit under a monitor or inside a PC
 case) from macOS, Linux and Windows. A single binary, `ssp`, runs a small daemon that keeps
 the display alive and shows a clock, a system dashboard with your own figures, images,

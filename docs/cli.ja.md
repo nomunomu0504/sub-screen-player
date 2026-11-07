@@ -542,7 +542,12 @@ ssp update --to v0.7.1   # 指定したリリースに（前の版に戻すと�
   実行するコマンド（`taskkill /im ssp.exe /f`、`scoop update ssp`、`ssp service install`）を表示します。
 
 再起動するのは、この `ssp` を動かす自動起動のデーモンだけです。手で起動したデーモン（`ssp serve`）には触らず、
-再起動するように表示します。
+再起動するように表示します。自動起動が別の場所に入れた `ssp` を動かしているときは、新しい `ssp` で
+`ssp service install` を実行すると、自動起動の向き先を変えてデーモンを再起動します。
+
+再起動するまで、古いデーモンは新しい設定やリクエストを知りません。たとえば、知らない設定を書いて
+`ssp config reload` を実行すると `unknown field` で失敗します。デーモンがリクエストを断り、そのデーモンが `ssp`
+より古い版のときは、エラーにそのことと再起動の方法が出ます。
 
 新しい版があるかどうかは、`ssp status` が 1 日に 1 回まで
 <https://subscreen.dev/latest.json> を読んで調べます。送るのは `User-Agent: ssp/<版>` を付けた普通の `GET` だけで、

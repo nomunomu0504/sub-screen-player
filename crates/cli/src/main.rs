@@ -475,10 +475,28 @@ fn write_stdout(text: std::fmt::Arguments<'_>) {
 
 fn main() {
     let cli = Cli::parse();
+    let daemon = (cli.url.clone(), cli.token.clone(), cli.config.clone());
     if let Err(err) = run(cli) {
         eprintln!("error: {err:#}");
+        if let Some(note) = refused_by_older_daemon(&err, &daemon.0, &daemon.1, daemon.2) {
+            eprintln!("{note}");
+        }
         std::process::exit(1);
     }
+}
+
+/// When the daemon refused a request and runs an older version than this `ssp`, that is a
+/// likely reason (a setting or a request it does not know yet): says so, and how to restart it.
+fn refused_by_older_daemon(
+    err: &anyhow::Error,
+    url: &Option<String>,
+    token: &Option<String>,
+    config: Option<PathBuf>,
+) -> Option<String> {
+    err.downcast_ref::<client::Refused>()?;
+    let config = config.or_else(|| default_config_path().ok())?;
+    let health = cli_client(url, token, &config).ok()?.health().ok()?;
+    update::older_daemon(&health.version)
 }
 
 fn run(cli: Cli) -> Result<()> {
@@ -828,6 +846,12 @@ fn restart_after_update(
                 "The autostart entry runs {}, not this ssp; it was left alone.",
                 program.display()
             );
+            if let Some(old) = running().filter(|v| v != version) {
+                say!(
+                    "The daemon still runs {old}. To use {version}, point the autostart entry \
+                     at this ssp with `ssp service install` (on Windows, end ssp.exe first)."
+                );
+            }
             return;
         }
         Ok(None) => Ok(None),
@@ -1060,19 +1084,8 @@ fn print_schedule(schedule: &ScheduleView, indent: &str) {
 fn status(client: &Client) -> Result<()> {
     let health = client.health()?;
     say!("Daemon {} at {}", health.version, client.base());
-    let mine = env!("CARGO_PKG_VERSION");
-    if update::newer(mine, &health.version) {
-        let restart = if cfg!(target_os = "macos") {
-            "ssp service install"
-        } else if cfg!(windows) {
-            "end ssp.exe, then ssp service install"
-        } else {
-            "systemctl --user restart sub-screen-player"
-        };
-        say!(
-            "  It runs {}, older than this ssp ({mine}): restart it to use {mine} ({restart}).",
-            health.version
-        );
+    if let Some(note) = update::older_daemon(&health.version) {
+        say!("  {note}");
     }
     // Daemons before 0.5.0 have no schedule.
     if let Ok(schedule) = client.schedule()

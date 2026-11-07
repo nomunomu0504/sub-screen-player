@@ -279,7 +279,10 @@ mod platform {
         std::fs::create_dir_all(path.parent().expect("has a parent"))?;
         std::fs::write(&path, unit).with_context(|| format!("cannot write {}", path.display()))?;
         systemctl(&["daemon-reload"])?;
-        systemctl(&["enable", "--now", UNIT])?;
+        systemctl(&["enable", UNIT])?;
+        // `enable --now` leaves a running daemon alone, which would keep running the program
+        // the unit named before (an older ssp, or one installed elsewhere).
+        systemctl(&["restart", UNIT])?;
         Ok(format!(
             "Installed {} and started the daemon.\nLogs: journalctl --user -u {UNIT}\n\
              If no display is found, install the udev rule from contrib/linux (see README).",

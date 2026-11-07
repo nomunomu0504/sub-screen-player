@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use image::RgbImage;
 
 use crate::regions::{self, Change, Rect};
-use crate::{Display, DisplayInfo, EncodedImage, Encoder, Error, Frame, Result, panel_image};
+use crate::{
+    Display, DisplayInfo, EncodedImage, Encoder, Error, Frame, Result, Rotation, panel_image,
+};
 
 /// Most regions a partly changed frame is sent as. The D92 needs a few milliseconds per image,
 /// so a frame in many small pieces would take longer than in a few larger ones.
@@ -42,6 +44,9 @@ pub struct PresenterOptions {
     pub skip_duplicates: bool,
     /// Send only the changed parts of a frame, on displays that take partial images.
     pub partial_updates: bool,
+    /// Turn every picture half round, for a display mounted upside down. Frames are still
+    /// drawn the right way up; [`Presenter::info`] gives the panel's combined rotation.
+    pub upside_down: bool,
 }
 
 impl Default for PresenterOptions {
@@ -52,6 +57,7 @@ impl Default for PresenterOptions {
             min_quality: Encoder::DEFAULT_MIN_QUALITY,
             skip_duplicates: true,
             partial_updates: true,
+            upside_down: false,
         }
     }
 }
@@ -154,7 +160,11 @@ struct Command {
 impl Presenter {
     /// Takes ownership of `display` and starts the worker threads.
     pub fn spawn(display: Box<dyn Display>, options: PresenterOptions) -> Self {
-        let info = display.info().clone();
+        let mut info = display.info().clone();
+        if options.upside_down {
+            // A half turn keeps the encoded size, so the driver takes the images as before.
+            info.panel.rotation = info.panel.rotation.then(Rotation::Half);
+        }
         let quality = options.quality.clamp(1, 100);
         let min_quality = options.min_quality.clamp(1, quality);
         let shared = Arc::new(Shared {
@@ -703,7 +713,7 @@ impl Worker {
     }
 
     fn save(&mut self, frame: &Frame) -> Result<()> {
-        let info = self.display.info();
+        let info = &self.planner.info;
         let image = self
             .encoder
             .encode(frame, &info.panel, info.capabilities.max_image_bytes)?;
@@ -717,7 +727,7 @@ impl Worker {
                 let Some(picture) = latest else {
                     return Ok(());
                 };
-                let (width, height) = self.display.info().panel.encoded_size();
+                let (width, height) = self.planner.info.panel.encoded_size();
                 let whole = Rect {
                     x: 0,
                     y: 0,
@@ -985,6 +995,57 @@ mod tests {
         );
         assert_eq!(presenter.stats().partial, 1);
         assert_eq!(shows(&log.calls()), 1);
+    }
+
+    #[test]
+    fn turns_everything_half_round_for_a_display_upside_down() {
+        let (display, log) = FakeDisplay::new();
+        let options = PresenterOptions {
+            upside_down: true,
+            ..PresenterOptions::default()
+        };
+        let presenter = Presenter::spawn(Box::new(display.partial_images()), options);
+        let panel = presenter.info().panel;
+        assert_eq!(panel.rotation, Rotation::CounterClockwise90);
+        let encoded = |frame: &Frame| {
+            Call::Show(
+                Encoder::default()
+                    .encode(frame, &panel, usize::MAX)
+                    .unwrap()
+                    .data,
+            )
+        };
+
+        presenter.submit(frame(30)).unwrap();
+        wait_until(|| shows(&log.calls()) == 1);
+        assert_eq!(log.calls()[0], encoded(&frame(30)));
+        // Landscape x 100..110, y 50..60 is panel x 50..59, y 1810..1819 after the turn
+        // counter-clockwise, i.e. the 16x16 tile at 48, 1808.
+        let boxed = frame_with_box(30, 100, 50, 10, 10);
+        presenter.submit(boxed.clone()).unwrap();
+        wait_until(|| parts(&log.calls()).len() == 1);
+        assert_eq!(
+            parts(&log.calls()),
+            [Call::ShowPart {
+                x: 48,
+                y: 1808,
+                width: 16,
+                height: 16
+            }]
+        );
+
+        // Pictures stored on the device are turned as well.
+        presenter.save(frame(40)).unwrap();
+        presenter.stop(StopAction::SaveLast).unwrap();
+        let saved: Vec<Call> = log
+            .take()
+            .into_iter()
+            .filter_map(|c| match c {
+                Call::Save(data) => Some(Call::Show(data)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(saved, [encoded(&frame(40)), encoded(&boxed)]);
     }
 
     #[test]

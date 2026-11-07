@@ -33,6 +33,7 @@ quality = 85             # JPEG quality, 1-100
 min_quality = 70         # lowest quality used to keep up with fast animations and streams
                          # (the same as quality keeps it fixed)
 partial_updates = true   # send only the changed parts of a frame (D92), e.g. a clock's seconds
+rotate = 0               # 180 turns the picture upside down, for a display mounted that way
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]
@@ -265,6 +266,8 @@ pub struct DisplayConfig {
     pub min_quality: u8,
     /// Send only the changed parts of a frame, on displays that can show partial images.
     pub partial_updates: bool,
+    /// Degrees the picture is turned: 0, or 180 for a display mounted upside down.
+    pub rotate: u16,
     /// What to do to the screens when the daemon exits.
     pub on_exit: OnExit,
 }
@@ -277,6 +280,7 @@ impl Default for DisplayConfig {
             quality: 85,
             min_quality: 70,
             partial_updates: true,
+            rotate: 0,
             on_exit: OnExit::Leave,
         }
     }
@@ -1060,6 +1064,9 @@ impl Config {
         if self.display.max_fps == 0 {
             return invalid("display.max_fps must be at least 1".into());
         }
+        if !matches!(self.display.rotate, 0 | 180) {
+            return invalid("display.rotate must be 0 or 180 (degrees)".into());
+        }
         if !(1..=60).contains(&self.web.fps) {
             return invalid("web.fps must be 1..=60".into());
         }
@@ -1328,6 +1335,20 @@ mod tests {
         for (fps, valid) in [(0, false), (1, true), (60, true), (61, false)] {
             let config: Config = toml::from_str(&format!("[web]\nfps = {fps}")).unwrap();
             assert_eq!(config.validate().is_ok(), valid, "fps = {fps}");
+        }
+    }
+
+    #[test]
+    fn turns_the_picture_only_upside_down() {
+        for (rotate, valid) in [
+            (0, true),
+            (180, true),
+            (90, false),
+            (270, false),
+            (360, false),
+        ] {
+            let config: Config = toml::from_str(&format!("[display]\nrotate = {rotate}")).unwrap();
+            assert_eq!(config.validate().is_ok(), valid, "rotate = {rotate}");
         }
     }
 

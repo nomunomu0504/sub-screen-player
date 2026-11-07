@@ -18,6 +18,32 @@ pub enum Rotation {
     CounterClockwise90,
 }
 
+impl Rotation {
+    /// This turn followed by `next`, as one turn.
+    pub fn then(self, next: Rotation) -> Rotation {
+        Self::from_quarters(self.quarters() + next.quarters())
+    }
+
+    /// Quarter turns clockwise.
+    fn quarters(self) -> u8 {
+        match self {
+            Rotation::None => 0,
+            Rotation::Clockwise90 => 1,
+            Rotation::Half => 2,
+            Rotation::CounterClockwise90 => 3,
+        }
+    }
+
+    fn from_quarters(quarters: u8) -> Self {
+        match quarters % 4 {
+            0 => Rotation::None,
+            1 => Rotation::Clockwise90,
+            2 => Rotation::Half,
+            _ => Rotation::CounterClockwise90,
+        }
+    }
+}
+
 /// How images are encoded for the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

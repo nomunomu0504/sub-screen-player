@@ -86,7 +86,9 @@ Dependencies only point downwards: `cli` → `server` → `drivers/*` → `core`
    still picture gets it too.
 2. `Presenter::submit` stores it in a one-frame slot and returns at once. A frame still
    waiting in the slot is dropped (counted as `dropped`).
-3. The **encoder thread** takes the frame and rotates it. On displays that take partial images
+3. The **encoder thread** takes the frame and rotates it into the panel's orientation (the
+   driver's `PanelSpec::rotation`, plus a half turn with `[display] rotate = 180`, combined
+   into one turn by the presenter). On displays that take partial images
    (`partial_updates`), it compares the picture with what the screen will show, in 16x16
    tiles, and encodes only the changed parts (at most 4 rectangles, on the tile grid so no
    seams show) when they cover at most half of the screen; nothing changed means nothing is

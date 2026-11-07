@@ -378,6 +378,7 @@ impl Manager {
             min_quality: self.display.min_quality,
             skip_duplicates: true,
             partial_updates: self.display.partial_updates,
+            upside_down: self.display.rotate == 180,
         };
         let presenter = Presenter::spawn(display, options);
         let mut inner = self.lock();

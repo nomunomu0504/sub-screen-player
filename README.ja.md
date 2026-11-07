@@ -260,6 +260,7 @@ listen = "127.0.0.1:7920"
 
 [display]
 brightness = 80          # 接続時に設定する明るさ
+rotate = 0               # 上下逆に付けたディスプレイは 180
 on_exit = "leave"        # 終了時: "leave" / "save-last" / "clear" / "sleep"
 
 [startup]

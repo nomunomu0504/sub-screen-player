@@ -270,6 +270,7 @@ listen = "127.0.0.1:7920"
 
 [display]
 brightness = 80          # applied when a display connects
+rotate = 0               # 180 for a display mounted upside down
 on_exit = "leave"        # "leave", "save-last", "clear" or "sleep"
 
 [startup]

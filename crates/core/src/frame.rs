@@ -382,6 +382,25 @@ mod tests {
     }
 
     #[test]
+    fn combined_turns_match_turning_twice() {
+        use Rotation::*;
+        for first in [None, Clockwise90, Half, CounterClockwise90] {
+            for next in [None, Clockwise90, Half, CounterClockwise90] {
+                let mut once = Vec::new();
+                rotate(&numbered(), first, &mut once);
+                let (w, h) = panel(first).encoded_size();
+                let once = RgbImage::from_raw(w, h, once).unwrap();
+                let mut twice = Vec::new();
+                rotate(&once, next, &mut twice);
+                let twice: Vec<u8> = twice.chunks(3).map(|p| p[0]).collect();
+                assert_eq!(reds(first.then(next)), twice, "{first:?} then {next:?}");
+            }
+        }
+        // A D92 mounted upside down.
+        assert_eq!(Clockwise90.then(Half), CounterClockwise90);
+    }
+
+    #[test]
     fn encodes_baseline_jpeg_in_panel_orientation() {
         let spec = PanelSpec {
             width: 64,

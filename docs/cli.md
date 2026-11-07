@@ -451,6 +451,22 @@ ssp -d d92-5C2A11FE0A42 show photo.jpg
 Without `--display`, commands go to `default`: the first connected display in id order.
 Each display remembers what it shows, also when it is unplugged and plugged in again.
 
+### Mount the display upside down
+
+If the display hangs the other way round (under a monitor, or with its cable on the other
+side), turn everything it shows half round in the config file:
+
+```toml
+[display]
+rotate = 180
+```
+
+`ssp config reload` applies it. The clock, dashboards, web pages, notifications, streams and
+pictures stored on the display (`--persist`, `on_exit = "save-last"`) all come out the right
+way up; a program that streams frames keeps drawing them as before. Only `0` and `180` are
+accepted, and the setting applies to every display. What the display shows by itself, without
+ssp (while it starts, for example), stays as it is.
+
 ### Control the display from another computer
 
 By default the daemon only accepts connections from the same computer. To allow others, set

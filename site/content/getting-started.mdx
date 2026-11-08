@@ -29,13 +29,20 @@ import InstallCommand from '../../components/InstallCommand.astro';
    You can also [download the archive](../download/) yourself or
    [build from source](https://github.com/nomunomu0504/sub-screen-player#install).
 
-2. **Linux only: allow access to the display.** Install the udev rule, then replug the display.
+2. **Linux only: allow access to the display.** Install the udev rule and apply it (replugging
+   the display applies it too).
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/nomunomu0504/sub-screen-player/main/contrib/linux/70-sub-screen-player.rules \
      | sudo tee /etc/udev/rules.d/70-sub-screen-player.rules > /dev/null
    sudo udevadm control --reload-rules
+   sudo udevadm trigger --action=add --subsystem-match=hidraw
    ```
+
+   The rule lets whoever is logged in at the computer's screen use the display, and the
+   `plugdev` group, for a computer used without a desktop (a Raspberry Pi over SSH). Debian,
+   Ubuntu and Raspberry Pi OS put the first user in `plugdev`. To show web pages there as well,
+   install the [browser libraries](../cli/#show-a-web-page) too.
 
 3. **Plug in the display and start the daemon.** The clock appears.
 

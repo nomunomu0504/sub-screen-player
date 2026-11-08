@@ -261,9 +261,26 @@ chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 50% ほどを使います。その大半はブラウザがページを描く分なので、常に動いているアニメーションやトランジションが最も負荷になります。
 `[web] fps`（1〜60、既定は 30）で、ページが変わっている間に 1 秒あたり何フレームまで受け取るかを決めます。最後の変化は必ず
 表示します。Chrome 153 以前は、すべてのフレームを送ってきます。ページを表示できないとき（ネットワークがない、ファイルがない、
-ブラウザが起動しないなど）は、ディスプレイに理由を表示します。Linux では、ダウンロードした Chrome に一般的なブラウザ用の
-ライブラリが必要です。起動しないときは、ディストリビューションの `chromium` を入れて `[web] chrome` に指定してください。
-Ubuntu では `sudo apt install chromium` で snap 版が入り、`chrome = "/snap/bin/chromium"` と指定します（v0.8.1 から）。
+ブラウザが起動しないなど）は、ディスプレイに理由を表示します。
+
+Linux では、`ssp web --install` でダウンロードするヘッドレス Chrome に、一般的なブラウザ用のライブラリが必要です。
+デスクトップのない PC（Raspberry Pi やサーバー）では足りないことが多く、そのときはディスプレイに
+`error while loading shared libraries` と表示されます。Debian 13、Ubuntu 24.04、Debian 13 ベースの Raspberry Pi OS では
+次のように入れます。
+
+```sh
+sudo apt install libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 \
+  libcairo2 libcups2t64 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64 libnspr4 libnss3 \
+  libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+  libxkbcommon0 libxrandr2
+```
+
+Debian 12 と Ubuntu 22.04 では、名前から `t64` を外してください。まだ足りないものは
+`ldd ~/.local/share/sub-screen-player/chrome/*/chrome-headless-shell-*/chrome-headless-shell | grep 'not found'` で分かります。
+代わりに、ディストリビューションの `chromium` を入れて `[web] chrome` に指定することもできます。Ubuntu では
+`sudo apt install chromium` で snap 版が入り、`chrome = "/snap/bin/chromium"` と指定します（v0.8.1 から）。
+ディストリビューションの Chromium が 154 より古いと、すべてのフレームを送ってきます（上の `[web] fps` を参照）。
+
 デーモンの起動時にページを表示するには、次のように設定します。
 
 ```toml
@@ -668,7 +685,8 @@ ssp update --to v0.7.1   # 指定したリリースに（前の版に戻すと�
 `install` はすぐにデーモンを起動します。登録には、インストールした時点の `ssp` 実行ファイルと設定ファイルのパスが
 記録されるので、どちらかを移動したら `install` をやり直してください。
 設定を編集したら、`ssp config reload` で再起動せずに反映できます（Linux では
-`systemctl --user reload sub-screen-player` からも実行されます）。
+`systemctl --user reload sub-screen-player` からも実行されます）。`journalctl --user` でジャーナルが見つからない
+環境（Raspberry Pi OS など）では、`journalctl --user-unit sub-screen-player` でログを見られます。
 
 ### 設定ファイル
 
@@ -720,7 +738,9 @@ Web ページ・レイアウトは新しい設定と指定したオプション�
    - 「The daemon is not running」と表示され、ディスプレイが「Plugged in」と出ている: `ssp serve` か
      `ssp service install` でデーモンを起動してください。
    - ディスプレイがまったく表示されない: ケーブルを確認してください。Linux では udev ルールを入れて
-     （[README](../README.ja.md#インストール) を参照）、ディスプレイを挿し直してください。
+     （[README](../README.ja.md#インストール) を参照）、ディスプレイを挿し直してください。ルールが効いているかは
+     `ls -l /dev/hidraw*` で分かります。効いていればディスプレイのグループが `root` ではなく `plugdev` になります。
+     デスクトップにログインせずに（SSH で）使うときは、ユーザーが `plugdev` に入っている必要があります（`id` で確認）。
 3. **デーモンのログに「cannot open ... display」と出る**: メーカー製アプリや2つ目の `ssp serve` など、ほかのプログラムが
    ディスプレイを使っています。それを終了してください。デーモンは 10 秒ごとに再試行します。
 4. **「cannot listen on 127.0.0.1:7920 (is the daemon already running?)」と出る**: すでにデーモンが動いている

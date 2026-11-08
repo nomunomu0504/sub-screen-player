@@ -234,7 +234,16 @@ and in `contrib/linux/` of the source:
 ```sh
 sudo cp contrib/linux/70-sub-screen-player.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --subsystem-match=hidraw   # instead of replugging
 ```
+
+The rule gives the display to whoever is logged in at the computer's screen, and to the
+`plugdev` group, for computers used without a desktop session (a Raspberry Pi over SSH). Debian,
+Ubuntu and Raspberry Pi OS put the first user in `plugdev`; `id` shows your groups.
+`ls -l /dev/hidraw*` shows `plugdev` as the group of the display once the rule applies.
+
+To show web pages, the headless Chrome that `ssp web --install` downloads needs the usual
+browser libraries; see [Show a web page](docs/cli.md#show-a-web-page).
 
 ## Quick start
 

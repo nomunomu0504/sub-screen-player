@@ -1,6 +1,12 @@
-# Lets the logged-in user access supported displays without root.
+# Lets your user access supported displays without root:
+# - TAG+="uaccess": whoever is logged in at the computer's own screen (a desktop session).
+# - GROUP="plugdev": members of plugdev, also without a desktop session (a Raspberry Pi or a
+#   server used over SSH). Debian, Ubuntu and Raspberry Pi OS put the first user in plugdev;
+#   check with `id`, or add yourself: sudo usermod -aG plugdev $USER (then log in again).
 # Install: sudo cp 70-sub-screen-player.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
-# Then replug the display. One line per supported device (see docs/adding-a-device.md).
+# Then replug the display, or apply the rule to a plugged-in one:
+#   sudo udevadm trigger --action=add --subsystem-match=hidraw
+# One line per supported device (see docs/adding-a-device.md).
 
 # upHere / MiraBox D92 (9.2", 1920x462)
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2100", ATTRS{idProduct}=="0006", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2100", ATTRS{idProduct}=="0006", MODE="0660", GROUP="plugdev", TAG+="uaccess"

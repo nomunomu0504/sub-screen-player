@@ -70,6 +70,16 @@ impl Feed {
         self.lock().size
     }
 
+    /// [`Feed::size`], waiting up to `timeout` for a layout that is starting: the layout runs on
+    /// the display's player thread, a moment after the request that showed it was answered.
+    pub fn wait_for_size(&self, timeout: Duration) -> Option<(u32, u32)> {
+        let state = self.lock();
+        self.changed
+            .wait_timeout_while(state, timeout, |s| s.size.is_none())
+            .map_or_else(|p| p.into_inner().0, |(state, _)| state)
+            .size
+    }
+
     /// Shows `frame` in the zone. A frame of another size than [`Feed::size`] is ignored.
     pub fn put(&self, frame: Frame) {
         let mut state = self.lock();
@@ -88,6 +98,8 @@ impl Feed {
         if state.size != Some(size) {
             state.size = Some(size);
             state.frame = None;
+            drop(state);
+            self.changed.notify_all();
         }
     }
 }
@@ -478,8 +490,15 @@ mod tests {
                 assert!(started.elapsed() < Duration::from_secs(10), "not drawn");
             }
         };
+        // A sender that comes before the layout runs waits for its size.
+        assert_eq!(feed.wait_for_size(Duration::from_millis(10)), None);
+        let waiting = std::thread::spawn({
+            let feed = feed.clone();
+            move || feed.wait_for_size(Duration::from_secs(10))
+        });
         // The background until the first frame.
         draw_until(&mut layout, &mut frame, [255, 0, 0], [9, 9, 9]);
+        assert_eq!(waiting.join().unwrap(), Some((960, 462)));
         assert_eq!(feed.size(), Some((960, 462)));
         feed.put(Frame::blank(10, 10));
         let green = RgbImage::from_pixel(960, 462, Rgb([0, 255, 0]));

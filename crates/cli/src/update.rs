@@ -118,6 +118,26 @@ fn cache_path() -> Option<PathBuf> {
     Some(dirs.data_local_dir().join("update-check.json"))
 }
 
+/// What to say when the daemon runs an older version than this `ssp`, for example after
+/// `ssp update` replaced the program but not the running daemon: it may not know a setting or
+/// a request this `ssp` does.
+pub fn older_daemon(daemon: &str) -> Option<String> {
+    if !newer(VERSION, daemon) {
+        return None;
+    }
+    let restart = if cfg!(target_os = "macos") {
+        "`ssp service install`"
+    } else if cfg!(windows) {
+        "end ssp.exe, then `ssp service install`"
+    } else {
+        "`systemctl --user restart sub-screen-player`"
+    };
+    Some(format!(
+        "The daemon runs {daemon}, older than this ssp ({VERSION}): restart it to use \
+         {VERSION} ({restart}; if you started it by hand, `ssp serve` again)."
+    ))
+}
+
 /// Whether version `candidate` is newer than `current` (`1.2.3`, with or without `v`).
 pub fn newer(candidate: &str, current: &str) -> bool {
     matches!((parse(candidate), parse(current)), (Some(a), Some(b)) if a > b)
@@ -149,6 +169,19 @@ mod tests {
         assert!(!newer("0.6.0", "0.6.1"));
         assert!(!newer("garbage", "0.6.1"));
         assert!(!newer("0.7.0", ""));
+    }
+
+    #[test]
+    fn tells_how_to_restart_an_older_daemon() {
+        let note = older_daemon("0.0.1").unwrap();
+        assert!(
+            note.starts_with("The daemon runs 0.0.1, older than this ssp"),
+            "{note}"
+        );
+        assert!(note.contains(&format!("to use {VERSION}")), "{note}");
+        assert_eq!(older_daemon(VERSION), None);
+        assert_eq!(older_daemon("999.0.0"), None);
+        assert_eq!(older_daemon("unknown"), None);
     }
 
     #[test]

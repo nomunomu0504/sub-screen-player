@@ -574,7 +574,14 @@ ssp update --to v0.7.1   # a given release, also to go back
   `ssp service install`).
 
 Only the autostart entry that runs this `ssp` is restarted. A daemon started by hand
-(`ssp serve`) is left alone, and `ssp update` says to restart it.
+(`ssp serve`) is left alone, and `ssp update` says to restart it. If the autostart entry runs
+an `ssp` installed elsewhere, `ssp service install` with the new one points it there and
+restarts the daemon.
+
+Until it is restarted, the old daemon does not know newer settings and requests: for example
+`ssp config reload` with a setting it does not know fails with `unknown field`. When the daemon
+refuses a request and runs an older version than `ssp`, the error says so and how to restart
+it.
 
 To know when a newer version is out, `ssp status` reads
 <https://subscreen.dev/latest.json> at most once a day: a plain `GET` with

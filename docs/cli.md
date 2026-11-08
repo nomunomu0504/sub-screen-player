@@ -715,7 +715,12 @@ These work with every command.
 | Restart (e.g. after updating `ssp`) | `ssp service install` again | `systemctl --user restart sub-screen-player` | End `ssp.exe` in Task Manager, then `ssp service install` |
 | Logs | `~/Library/Logs/sub-screen-player.log` | `journalctl --user -u sub-screen-player` | `%LOCALAPPDATA%\sub-screen-player\ssp.log` |
 
-`install` starts the daemon right away. The entry records the path of the `ssp` executable and
+`install` starts the daemon right away. On Linux, a user unit stops when you log out, also from
+SSH, and starts at your next login; to keep the daemon running and start it when the computer
+starts (a Raspberry Pi, a server), run `sudo loginctl enable-linger $USER` once.
+`ssp service install` and `ssp service status` say so while it is off.
+
+The entry records the path of the `ssp` executable and
 of the config file at the time of installing, so run `install` again after moving either. After
 editing the config, `ssp config reload` applies it without a restart (on Linux,
 `systemctl --user reload sub-screen-player` runs it). Where `journalctl --user` finds no journal

@@ -65,6 +65,13 @@ import InstallCommand from '../../components/InstallCommand.astro';
    ssp service install
    ```
 
+   On Linux the daemon stops when you log out, also from SSH. To keep it running, and start
+   it when the computer starts (a Raspberry Pi, for example):
+
+   ```sh
+   sudo loginctl enable-linger $USER
+   ```
+
 </Steps>
 
 <Aside type="tip" title="Something does not work?">

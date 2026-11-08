@@ -65,6 +65,13 @@ import InstallCommand from '../../../components/InstallCommand.astro';
    ssp service install
    ```
 
+   Linux では、ログアウトするとデーモンも止まります（SSH の切断も同じです）。ログアウト後も動かし続け、PC の起動時に
+   始めるには（Raspberry Pi など）、次を実行します。
+
+   ```sh
+   sudo loginctl enable-linger $USER
+   ```
+
 </Steps>
 
 <Aside type="tip" title="うまく動かないときは">

@@ -682,7 +682,12 @@ ssp update --to v0.7.1   # 指定したリリースに（前の版に戻すと�
 | 再起動（`ssp` を更新したときなど） | もう一度 `ssp service install` | `systemctl --user restart sub-screen-player` | タスクマネージャーで `ssp.exe` を終了してから `ssp service install` |
 | ログ | `~/Library/Logs/sub-screen-player.log` | `journalctl --user -u sub-screen-player` | `%LOCALAPPDATA%\sub-screen-player\ssp.log` |
 
-`install` はすぐにデーモンを起動します。登録には、インストールした時点の `ssp` 実行ファイルと設定ファイルのパスが
+`install` はすぐにデーモンを起動します。Linux のユーザーユニットは、ログアウトすると止まり（SSH の切断も同じです）、
+次のログインで起動します。ログアウト後も動かし続け、PC の起動時に始めるには（Raspberry Pi やサーバーなど）、
+`sudo loginctl enable-linger $USER` を一度実行してください。これが無効な間は、`ssp service install` と
+`ssp service status` がそう表示します。
+
+登録には、インストールした時点の `ssp` 実行ファイルと設定ファイルのパスが
 記録されるので、どちらかを移動したら `install` をやり直してください。
 設定を編集したら、`ssp config reload` で再起動せずに反映できます（Linux では
 `systemctl --user reload sub-screen-player` からも実行されます）。`journalctl --user` でジャーナルが見つからない

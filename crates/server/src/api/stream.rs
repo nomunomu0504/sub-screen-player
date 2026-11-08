@@ -33,6 +33,9 @@ const CLOSE_REPLACED: u16 = 4000;
 /// takes over again, so that a sender that reconnects at once does not make it flicker.
 const BACK_TO_SCHEDULE_AFTER: Duration = Duration::from_secs(2);
 
+/// How long a frame for a stream zone waits for a layout that is starting to know the zone's size.
+const ZONE_SIZE_WAIT: Duration = Duration::from_secs(2);
+
 /// Where the frames of a stream go.
 #[derive(Clone)]
 enum Target {
@@ -124,7 +127,7 @@ async fn run(
                     device.submit(decode(panel.width, panel.height)?)?;
                 }
                 Target::Zone(feed) => {
-                    let (width, height) = feed.size().ok_or_else(|| {
+                    let (width, height) = feed.wait_for_size(ZONE_SIZE_WAIT).ok_or_else(|| {
                         ApiError::new(StatusCode::CONFLICT, "the layout is not shown yet")
                     })?;
                     let frame = decode(width, height).map_err(|e| {

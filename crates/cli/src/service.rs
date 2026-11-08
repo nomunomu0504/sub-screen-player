@@ -501,6 +501,28 @@ pub fn runs_this(program: &Path) -> bool {
     program == this || real(program).is_some_and(|p| Some(p) == real(&this))
 }
 
+/// On Linux, the user's systemd, and the daemon with it, stops when the user's last session ends
+/// (an SSH session too), unless lingering is on. Says how to turn it on, if it is off.
+#[cfg(target_os = "linux")]
+pub fn linger_note() -> Option<String> {
+    let user = std::env::var("USER").ok().filter(|u| !u.is_empty())?;
+    let mut loginctl = Command::new("loginctl");
+    loginctl.args(["show-user", user.as_str(), "--property=Linger", "--value"]);
+    let linger = run(&mut loginctl).ok()?;
+    (linger.trim() == "no").then(|| {
+        format!(
+            "The daemon stops when you log out, also from SSH, and starts at your next login. \
+             To keep it running, and start it when the computer starts:\n  \
+             sudo loginctl enable-linger {user}"
+        )
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn linger_note() -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

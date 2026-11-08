@@ -774,12 +774,15 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Stop { time } => cli_client(&cli.url, &cli.token, &config_path)?
             .post_empty(&with_time(format!("{display}/stop"), time)),
         Cmd::Service { action } => {
-            let message = match action {
-                ServiceCmd::Install => service::install(&config_path)?,
-                ServiceCmd::Uninstall => service::uninstall()?,
-                ServiceCmd::Status => service::status()?,
+            let (message, installed) = match action {
+                ServiceCmd::Install => (service::install(&config_path)?, true),
+                ServiceCmd::Uninstall => (service::uninstall()?, false),
+                ServiceCmd::Status => (service::status()?, service::program()?.is_some()),
             };
             say!("{message}");
+            if let Some(note) = service::linger_note().filter(|_| installed) {
+                say!("{note}");
+            }
             Ok(())
         }
         Cmd::Config { action } => match action {

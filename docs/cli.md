@@ -281,10 +281,26 @@ that is the browser drawing the page, so animations and transitions that run all
 the most. `[web] fps` (1-60, default 30) sets how many frames a second are taken from a page while
 it changes; the last change is always shown. Chrome 153 and older send every frame. If a page
 cannot be shown (no network, a missing file, a browser that cannot start), the display says why.
-On Linux, a downloaded Chrome needs the usual browser libraries; if it does not start, install
-`chromium` from your distribution and set `[web] chrome` to it; on Ubuntu, `sudo apt install chromium`
-installs the snap, which is `chrome = "/snap/bin/chromium"` (from v0.8.1). To show a page whenever
-the daemon starts:
+
+On Linux, the headless Chrome that `ssp web --install` downloads needs the usual browser
+libraries, which a computer without a desktop (a Raspberry Pi, a server) often lacks: the
+display then says `error while loading shared libraries`. On Debian 13, Ubuntu 24.04 and the
+Raspberry Pi OS based on Debian 13:
+
+```sh
+sudo apt install libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 \
+  libcairo2 libcups2t64 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64 libnspr4 libnss3 \
+  libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+  libxkbcommon0 libxrandr2
+```
+
+On Debian 12 and Ubuntu 22.04, drop `t64` from the names. To see what is still missing:
+`ldd ~/.local/share/sub-screen-player/chrome/*/chrome-headless-shell-*/chrome-headless-shell | grep 'not found'`.
+Or install `chromium` from your distribution and set `[web] chrome` to it; on Ubuntu,
+`sudo apt install chromium` installs the snap, which is `chrome = "/snap/bin/chromium"` (from
+v0.8.1). A distribution's Chromium older than 154 sends every frame (see `[web] fps` above).
+
+To show a page whenever the daemon starts:
 
 ```toml
 [startup]
@@ -706,10 +722,16 @@ These work with every command.
 | Restart (e.g. after updating `ssp`) | `ssp service install` again | `systemctl --user restart sub-screen-player` | End `ssp.exe` in Task Manager, then `ssp service install` |
 | Logs | `~/Library/Logs/sub-screen-player.log` | `journalctl --user -u sub-screen-player` | `%LOCALAPPDATA%\sub-screen-player\ssp.log` |
 
-`install` starts the daemon right away. The entry records the path of the `ssp` executable and
+`install` starts the daemon right away. On Linux, a user unit stops when you log out, also from
+SSH, and starts at your next login; to keep the daemon running and start it when the computer
+starts (a Raspberry Pi, a server), run `sudo loginctl enable-linger $USER` once.
+`ssp service install` and `ssp service status` say so while it is off.
+
+The entry records the path of the `ssp` executable and
 of the config file at the time of installing, so run `install` again after moving either. After
 editing the config, `ssp config reload` applies it without a restart (on Linux,
-`systemctl --user reload sub-screen-player` runs it).
+`systemctl --user reload sub-screen-player` runs it). Where `journalctl --user` finds no journal
+files (Raspberry Pi OS, for example), `journalctl --user-unit sub-screen-player` shows the log.
 
 ### Config file
 
@@ -765,7 +787,9 @@ with a comment. The daemon reads the file when it starts.
    - "The daemon is not running" and your display is listed as plugged in: start the daemon
      with `ssp serve` or `ssp service install`.
    - Your display is not listed at all: check the cable. On Linux, install the udev rule (see
-     the [README](../README.md#install)) and replug the display.
+     the [README](../README.md#install)) and replug the display. `ls -l /dev/hidraw*` shows
+     whether it applies: the display's group is `plugdev` then, not `root`. Without a desktop
+     session (over SSH), your user has to be in `plugdev` (`id`).
 3. **The daemon log says "cannot open ... display"**: another program is using the display,
    for example the vendor's app or a second `ssp serve`. Close it; the daemon retries every
    10 seconds.

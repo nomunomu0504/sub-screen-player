@@ -29,13 +29,20 @@ import InstallCommand from '../../../components/InstallCommand.astro';
    [アーカイブを自分でダウンロード](../download/)したり、
    [ソースからビルド](https://github.com/nomunomu0504/sub-screen-player/blob/main/README.ja.md#インストール)したりもできます。
 
-2. **Linux の場合のみ: ディスプレイへのアクセスを許可します。** udev ルールを入れてから、ディスプレイを挿し直してください。
+2. **Linux の場合のみ: ディスプレイへのアクセスを許可します。** udev ルールを入れて反映します（ディスプレイを
+   挿し直しても反映されます）。
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/nomunomu0504/sub-screen-player/main/contrib/linux/70-sub-screen-player.rules \
      | sudo tee /etc/udev/rules.d/70-sub-screen-player.rules > /dev/null
    sudo udevadm control --reload-rules
+   sudo udevadm trigger --action=add --subsystem-match=hidraw
    ```
+
+   このルールは、PC の画面の前でログインしている人と、`plugdev` グループにディスプレイを使わせます。`plugdev` は、
+   デスクトップなしで使う PC（SSH で使う Raspberry Pi など）のためです。Debian・Ubuntu・Raspberry Pi OS では最初の
+   ユーザーが `plugdev` に入っています。そうした PC で Web ページも表示するなら、
+   [ブラウザ用のライブラリ](../cli/#web-ページを表示する)も入れてください。
 
 3. **ディスプレイをつないで、デーモンを起動します。** 時計が表示されます。
 
@@ -56,6 +63,13 @@ import InstallCommand from '../../../components/InstallCommand.astro';
 
    ```sh
    ssp service install
+   ```
+
+   Linux では、ログアウトするとデーモンも止まります（SSH の切断も同じです）。ログアウト後も動かし続け、PC の起動時に
+   始めるには（Raspberry Pi など）、次を実行します。
+
+   ```sh
+   sudo loginctl enable-linger $USER
    ```
 
 </Steps>

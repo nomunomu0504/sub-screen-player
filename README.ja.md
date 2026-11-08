@@ -225,7 +225,17 @@ Linux 向けアーカイブと、ソースの `contrib/linux/` に入ってい�
 ```sh
 sudo cp contrib/linux/70-sub-screen-player.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --subsystem-match=hidraw   # 挿し直す代わりに
 ```
+
+このルールは、PC の画面の前でログインしている人と、`plugdev` グループにディスプレイを使わせます。`plugdev` は、
+デスクトップにログインせずに使う PC（SSH で使う Raspberry Pi など）のためです。Debian・Ubuntu・Raspberry Pi OS では
+最初のユーザーが `plugdev` に入っています（`id` で確認できます）。ルールが効くと、`ls -l /dev/hidraw*` でディスプレイの
+グループが `plugdev` になります。こうした PC では `sudo loginctl enable-linger $USER` も実行してください。実行しないと、
+`ssp service install` で起動したデーモンが SSH の切断で止まります。
+
+Web ページを表示するには、`ssp web --install` でダウンロードするヘッドレス Chrome に、一般的なブラウザ用のライブラリが
+必要です。[Web ページを表示する](docs/cli.ja.md#web-ページを表示する)を参照してください。
 
 ## 使い方
 
